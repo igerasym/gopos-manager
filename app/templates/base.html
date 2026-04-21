@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>☕ Cafe Manager</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+        nav { background: #2c3e50; padding: 12px 24px; display: flex; gap: 20px; align-items: center; }
+        nav a { color: #ecf0f1; text-decoration: none; font-weight: 500; }
+        nav a:hover { color: #3498db; }
+        nav .brand { font-size: 1.3em; margin-right: 20px; }
+        .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+        .card { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+        .stat { text-align: center; }
+        .stat .num { font-size: 2em; font-weight: 700; color: #2c3e50; }
+        .stat .label { color: #7f8c8d; font-size: .9em; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; }
+        tr:hover { background: #f8f9fa; }
+        .btn { display: inline-block; padding: 8px 16px; background: #3498db; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: .9em; text-decoration: none; }
+        .btn:hover { background: #2980b9; }
+        .btn-danger { background: #e74c3c; }
+        .btn-danger:hover { background: #c0392b; }
+        .btn-success { background: #27ae60; }
+        .btn-success:hover { background: #219a52; }
+        form.inline { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+        form.inline label { font-size: .85em; color: #555; }
+        form.inline input, form.inline select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; }
+        .alert { padding: 12px 16px; border-radius: 4px; margin-bottom: 16px; }
+        .alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffc107; }
+        h2 { margin-bottom: 16px; color: #2c3e50; }
+        {% block extra_style %}{% endblock %}
+    </style>
+</head>
+<body>
+    <nav>
+        <span class="brand">☕ Cafe Manager</span>
+        <a href="/">Dashboard</a>
+        <a href="/inventory">Inventory</a>
+        <a href="/recipes">Recipes</a>
+        <form action="/sync" method="post" style="margin-left:auto;">
+            <button class="btn btn-success" type="submit">🔄 Sync GoPOS</button>
+        </form>
+    </nav>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

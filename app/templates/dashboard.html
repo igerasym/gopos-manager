@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Sales Dashboard</h2>
+
+<div class="card">
+    <form class="inline" method="get" action="/">
+        <div>
+            <label>Date</label><br>
+            <input type="date" name="date" value="{{ date }}">
+        </div>
+        <button class="btn" type="submit">Show</button>
+    </form>
+</div>
+
+<div class="card grid">
+    <div class="stat">
+        <div class="num">{{ '%.2f'|format(totals['revenue']) }} zł</div>
+        <div class="label">Revenue</div>
+    </div>
+    <div class="stat">
+        <div class="num">{{ '%.2f'|format(totals['profit']) }} zł</div>
+        <div class="label">Net Profit</div>
+    </div>
+    <div class="stat">
+        <div class="num">{{ totals['items']|int }}</div>
+        <div class="label">Items Sold</div>
+    </div>
+</div>
+
+{% if low_stock %}
+<div class="alert alert-warning">
+    ⚠️ <strong>Low stock:</strong>
+    {% for item in low_stock %}
+        {{ item['name'] }} ({{ item['quantity'] }} {{ item['unit'] }}){% if not loop.last %}, {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+    <h2>Products — {{ date }}</h2>
+    {% if sales %}
+    <table>
+        <thead>
+            <tr><th>Product</th><th>Qty</th><th>Revenue</th><th>Profit</th></tr>
+        </thead>
+        <tbody>
+            {% for s in sales %}
+            <tr>
+                <td>{{ s['product_name'] }}</td>
+                <td>{{ s['quantity']|int }}</td>
+                <td>{{ '%.2f'|format(s['total_money']) }} zł</td>
+                <td>{{ '%.2f'|format(s['net_profit']) }} zł</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No sales data for this date. Click <strong>Sync GoPOS</strong> to import.</p>
+    {% endif %}
+</div>
+{% endblock %}

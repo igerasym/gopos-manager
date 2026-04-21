@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Recipes</h2>
+
+<div class="card">
+    <h2>Add Recipe Entry</h2>
+    <form class="inline" method="post" action="/recipes/add">
+        <div><label>Product (from GoPOS)</label><br>
+            <input name="product_name" list="products" required>
+            <datalist id="products">
+                {% for p in products %}<option value="{{ p['product_name'] }}">{% endfor %}
+            </datalist>
+        </div>
+        <div><label>Ingredient</label><br>
+            <select name="ingredient_id" required>
+                {% for i in ingredients %}<option value="{{ i['id'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>{% endfor %}
+            </select>
+        </div>
+        <div><label>Amount per 1 serving</label><br><input name="amount" type="number" step="0.1" required></div>
+        <button class="btn" type="submit">+ Add</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Current Recipes</h2>
+    <table>
+        <thead>
+            <tr><th>Product</th><th>Ingredient</th><th>Amount</th><th>Unit</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for r in recipes %}
+            <tr>
+                <td>{{ r['product_name'] }}</td>
+                <td>{{ r['ingredient'] }}</td>
+                <td>{{ r['amount'] }}</td>
+                <td>{{ r['unit'] }}</td>
+                <td>
+                    <form method="post" action="/recipes/delete/{{ r['id'] }}" style="display:inline;">
+                        <button class="btn btn-danger" type="submit">✕</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
