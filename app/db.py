@@ -50,6 +50,21 @@ def init_db():
             price REAL DEFAULT 0,
             note TEXT DEFAULT ''
         );
+
+        CREATE TABLE IF NOT EXISTS inventory_deductions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            ingredient_id INTEGER NOT NULL REFERENCES ingredients(id),
+            amount REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS sync_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            status TEXT NOT NULL DEFAULT 'running',
+            message TEXT DEFAULT ''
+        );
     ''')
     db.commit()
     db.close()

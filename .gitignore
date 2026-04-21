@@ -1,6 +1,8 @@
 .env
 data/*.db
 data/*.csv
+data/*.png
 __pycache__/
 *.pyc
 .venv/
+.vscode/

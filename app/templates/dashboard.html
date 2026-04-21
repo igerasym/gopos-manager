@@ -1,29 +1,66 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Sales Dashboard</h2>
 
-<div class="card">
-    <form class="inline" method="get" action="/">
-        <div>
-            <label>Date</label><br>
-            <input type="date" name="date" value="{{ date }}">
+<!-- Date filter -->
+<div class="card" style="padding: 14px 20px;">
+    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;">
+        {% for name, pf, pt in presets %}
+        <a href="/?date_from={{ pf }}&date_to={{ pt }}"
+           class="btn btn-sm {{ 'btn-primary' if active_preset == name else 'btn-outline' }}">
+            {{ name }}
+        </a>
+        {% endfor %}
+    </div>
+    <form class="form-row" method="get" action="/">
+        <div class="form-group">
+            <label>From</label>
+            <input type="date" class="form-control" name="date_from" value="{{ date_from }}">
         </div>
-        <button class="btn" type="submit">Show</button>
+        <div class="form-group">
+            <label>To</label>
+            <input type="date" class="form-control" name="date_to" value="{{ date_to }}">
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">Apply</button>
     </form>
 </div>
 
-<div class="card grid">
-    <div class="stat">
-        <div class="num">{{ '%.2f'|format(totals['revenue']) }} zł</div>
-        <div class="label">Revenue</div>
+<!-- KPI row -->
+<div class="grid-4" style="margin-bottom: 16px;">
+    <div class="card kpi">
+        <div class="kpi-label">Revenue</div>
+        <div class="kpi-value">{{ '{:,.0f}'.format(totals['revenue']) }} zł</div>
+        {% if prev_totals['revenue'] > 0 %}
+            {% set change = ((totals['revenue'] - prev_totals['revenue']) / prev_totals['revenue'] * 100) %}
+            <div class="kpi-change {{ 'up' if change >= 0 else 'down' }}">
+                {{ '{:+.1f}'.format(change) }}% vs prev period
+            </div>
+        {% else %}
+            <div class="kpi-change neutral">no prev data</div>
+        {% endif %}
     </div>
-    <div class="stat">
-        <div class="num">{{ '%.2f'|format(totals['profit']) }} zł</div>
-        <div class="label">Net Profit</div>
+    <div class="card kpi">
+        <div class="kpi-label">Net Revenue</div>
+        <div class="kpi-value">{{ '{:,.0f}'.format(totals['net_revenue']) }} zł</div>
+        <div class="kpi-change neutral">excl. VAT</div>
     </div>
-    <div class="stat">
-        <div class="num">{{ totals['items']|int }}</div>
-        <div class="label">Items Sold</div>
+    <div class="card kpi">
+        <div class="kpi-label">Items Sold</div>
+        <div class="kpi-value">{{ totals['items']|int }}</div>
+        {% if prev_totals['items'] > 0 %}
+            {% set change = ((totals['items'] - prev_totals['items']) / prev_totals['items'] * 100) %}
+            <div class="kpi-change {{ 'up' if change >= 0 else 'down' }}">
+                {{ '{:+.1f}'.format(change) }}% vs prev period
+            </div>
+        {% else %}
+            <div class="kpi-change neutral">no prev data</div>
+        {% endif %}
+    </div>
+    <div class="card kpi">
+        <div class="kpi-label">Discounts</div>
+        <div class="kpi-value">{{ '{:,.0f}'.format(totals['discounts']) }} zł</div>
+        {% if totals['revenue'] > 0 %}
+        <div class="kpi-change neutral">{{ '{:.1f}'.format(totals['discounts'] / totals['revenue'] * 100) }}% of revenue</div>
+        {% endif %}
     </div>
 </div>
 
@@ -31,31 +68,185 @@
 <div class="alert alert-warning">
     ⚠️ <strong>Low stock:</strong>
     {% for item in low_stock %}
-        {{ item['name'] }} ({{ item['quantity'] }} {{ item['unit'] }}){% if not loop.last %}, {% endif %}
+        {{ item['name'] }} ({{ item['quantity']|round(1) }} {{ item['unit'] }}){% if not loop.last %}, {% endif %}
     {% endfor %}
 </div>
 {% endif %}
 
+<!-- Charts row -->
+<div class="grid-2">
+    <!-- Top by Revenue -->
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <div class="card-title">Top Products by Revenue</div>
+                <div class="card-subtitle">{{ date_from }}{% if date_from != date_to %} → {{ date_to }}{% endif %}</div>
+            </div>
+        </div>
+        <div class="bar-chart">
+            {% set max_rev = top_products[0]['rev'] if top_products else 1 %}
+            {% for p in top_products %}
+            <div class="bar-row">
+                <div class="bar-label" title="{{ p['product_name'] }}">{{ p['product_name'] }}</div>
+                <div class="bar-track">
+                    <div class="bar-fill" style="width: {{ (p['rev'] / max_rev * 100)|round }}%; min-width: 40px;">
+                        <span>{{ p['qty']|int }} pcs</span>
+                    </div>
+                </div>
+                <div class="bar-value">{{ '{:,.0f}'.format(p['rev']) }} zł</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Top by Quantity -->
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <div class="card-title">Top Products by Quantity</div>
+                <div class="card-subtitle">most popular items</div>
+            </div>
+        </div>
+        <div class="bar-chart">
+            {% set max_qty = top_by_qty[0]['qty'] if top_by_qty else 1 %}
+            {% for p in top_by_qty %}
+            <div class="bar-row">
+                <div class="bar-label" title="{{ p['product_name'] }}">{{ p['product_name'] }}</div>
+                <div class="bar-track">
+                    <div class="bar-fill" style="width: {{ (p['qty'] / max_qty * 100)|round }}%; min-width: 40px; background: var(--green);">
+                        <span>{{ '{:,.0f}'.format(p['rev']) }} zł</span>
+                    </div>
+                </div>
+                <div class="bar-value">{{ p['qty']|int }} pcs</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Daily trend (if multi-day) -->
+{% if daily|length > 1 %}
 <div class="card">
-    <h2>Products — {{ date }}</h2>
+    <div class="card-header">
+        <div>
+            <div class="card-title">Daily Revenue Trend</div>
+            <div class="card-subtitle">{{ date_from }} → {{ date_to }}</div>
+        </div>
+    </div>
+    <div style="display: flex; align-items: flex-end; gap: 4px; height: 120px; padding-top: 8px;">
+        {% set max_daily = daily|map(attribute='revenue')|max %}
+        {% for d in daily %}
+        <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+            <span style="font-size: .7em; font-weight: 600; color: var(--text-secondary);">{{ '{:,.0f}'.format(d['revenue']) }}</span>
+            <div style="width: 100%; max-width: 48px; background: var(--accent); border-radius: 4px 4px 0 0; height: {{ (d['revenue'] / max_daily * 80)|round if max_daily else 0 }}px; min-height: 4px;"></div>
+            <span style="font-size: .7em; color: var(--text-secondary);">{{ d['date'][5:] }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Full sales table -->
+<div class="card">
+    <div class="card-header">
+        <div>
+            <div class="card-title">All Products</div>
+            <div class="card-subtitle">{{ sales|length }} products · {{ date_from }}{% if date_from != date_to %} → {{ date_to }}{% endif %}</div>
+        </div>
+    </div>
     {% if sales %}
-    <table>
+    <table id="products-table">
         <thead>
-            <tr><th>Product</th><th>Qty</th><th>Revenue</th><th>Profit</th></tr>
+            <tr>
+                <th class="sortable" data-col="0" data-type="num">#</th>
+                <th class="sortable" data-col="1" data-type="str">Product</th>
+                <th class="sortable text-right" data-col="2" data-type="num">Qty</th>
+                <th class="sortable text-right" data-col="3" data-type="num">Revenue</th>
+                <th class="sortable text-right" data-col="4" data-type="num">Net</th>
+                <th class="sortable text-right" data-col="5" data-type="num">Discount</th>
+                <th class="sortable text-right" data-col="6" data-type="num">Profit</th>
+                <th class="sortable text-right" data-col="7" data-type="num">Share</th>
+            </tr>
         </thead>
         <tbody>
             {% for s in sales %}
             <tr>
-                <td>{{ s['product_name'] }}</td>
-                <td>{{ s['quantity']|int }}</td>
-                <td>{{ '%.2f'|format(s['total_money']) }} zł</td>
-                <td>{{ '%.2f'|format(s['net_profit']) }} zł</td>
+                <td class="text-muted" data-val="{{ loop.index }}">{{ loop.index }}</td>
+                <td data-val="{{ s['product_name'] }}">{{ s['product_name'] }}</td>
+                <td class="text-right" data-val="{{ s['quantity'] }}">{{ s['quantity']|int }}</td>
+                <td class="text-right" data-val="{{ s['total_money'] }}">{{ '{:,.2f}'.format(s['total_money']) }} zł</td>
+                <td class="text-right text-muted" data-val="{{ s['net_total'] }}">{{ '{:,.2f}'.format(s['net_total']) }} zł</td>
+                <td class="text-right" data-val="{{ s['discount'] }}">
+                    {% if s['discount'] > 0 %}
+                    <span class="badge badge-orange">-{{ '{:,.0f}'.format(s['discount']) }}</span>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="text-right" data-val="{{ s['net_profit'] }}">{{ '{:,.2f}'.format(s['net_profit']) }} zł</td>
+                <td class="text-right text-muted" data-val="{{ (s['total_money'] / totals['revenue'] * 100) if totals['revenue'] > 0 else 0 }}">
+                    {% if totals['revenue'] > 0 %}
+                    {{ '{:.1f}'.format(s['total_money'] / totals['revenue'] * 100) }}%
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
     {% else %}
-    <p>No sales data for this date. Click <strong>Sync GoPOS</strong> to import.</p>
+    <p style="padding: 20px 0; text-align: center; color: var(--text-secondary);">
+        No sales data for this period. Click <strong>Sync GoPOS</strong> to import.
+    </p>
     {% endif %}
 </div>
+
+{% endblock %}
+
+{% block extra_style %}
+.sortable { cursor: pointer; user-select: none; position: relative; padding-right: 18px !important; }
+.sortable:hover { color: var(--accent); }
+.sortable::after { content: '⇅'; position: absolute; right: 4px; opacity: .3; font-size: .8em; }
+.sortable.asc::after { content: '↑'; opacity: .8; color: var(--accent); }
+.sortable.desc::after { content: '↓'; opacity: .8; color: var(--accent); }
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.getElementById('products-table');
+    if (!table) return;
+    const headers = table.querySelectorAll('th.sortable');
+    let currentCol = -1, currentDir = 'asc';
+
+    headers.forEach(th => {
+        th.addEventListener('click', function() {
+            const col = parseInt(this.dataset.col);
+            const type = this.dataset.type;
+            if (currentCol === col) {
+                currentDir = currentDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentDir = type === 'str' ? 'asc' : 'desc';
+                currentCol = col;
+            }
+            headers.forEach(h => h.classList.remove('asc', 'desc'));
+            this.classList.add(currentDir);
+
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort((a, b) => {
+                const aVal = a.children[col].dataset.val;
+                const bVal = b.children[col].dataset.val;
+                let cmp;
+                if (type === 'num') {
+                    cmp = parseFloat(aVal) - parseFloat(bVal);
+                } else {
+                    cmp = aVal.localeCompare(bVal);
+                }
+                return currentDir === 'asc' ? cmp : -cmp;
+            });
+            rows.forEach(r => tbody.appendChild(r));
+        });
+    });
+});
+</script>
 {% endblock %}
