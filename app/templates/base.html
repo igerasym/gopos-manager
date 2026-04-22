@@ -206,6 +206,10 @@
                     btn.style.opacity = '1';
                     if (polling) { clearInterval(polling); polling = null; }
                     window.location.reload();
+                } else if (d.status === 'done' && !syncing) {
+                    if (d.finished_at) {
+                        el.innerHTML = '<span style="color:rgba(255,255,255,.4); font-size:.75em;">Останній синк: ' + d.finished_at.substring(5, 16) + '</span>';
+                    }
                 } else if (d.status === 'error') {
                     syncing = false;
                     el.innerHTML = '<span style="color:#f87171;">✗ ' + d.message.substring(0, 60) + '</span>';
@@ -218,6 +222,9 @@
                 }
             }).catch(() => {});
         }
+
+        // Check last sync on page load
+        check();
 
         document.querySelector('form[action="/sync"]').addEventListener('submit', function(e) {
             e.preventDefault();
