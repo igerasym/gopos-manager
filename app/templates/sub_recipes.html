@@ -17,11 +17,11 @@
 {% block content %}
 
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <div>
-        <h2 style="margin:0;">Напівфабрикати</h2>
-        <span class="text-muted" style="font-size:.85em;">Соуси, заготовки, оброблені продукти</span>
+    <h2 style="margin:0;">Кухня</h2>
+    <div style="display:flex; gap:6px;">
+        <a href="/recipes" class="btn btn-sm {{ 'btn-primary' if request.url.path == '/recipes' else 'btn-outline' }}">Рецепти</a>
+        <a href="/recipes/sub" class="btn btn-sm {{ 'btn-primary' if '/sub' in request.url.path else 'btn-outline' }}">Напівфабрикати</a>
     </div>
-    <a href="/recipes" class="btn btn-outline btn-sm">← Рецепти</a>
 </div>
 
 {% for s in subs %}

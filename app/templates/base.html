@@ -186,6 +186,23 @@
             .hamburger { display: none; }
         }
 
+        /* Modal */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,.4); z-index: 300; align-items: center; justify-content: center;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: var(--card); border-radius: 16px; padding: 28px; width: 90%; max-width: 420px;
+            box-shadow: 0 8px 32px rgba(0,0,0,.15); animation: modalIn .2s ease;
+        }
+        @keyframes modalIn { from { transform: scale(.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .modal h3 { font-size: 1.1em; margin-bottom: 12px; color: var(--text); }
+        .modal p { font-size: .9em; color: var(--text-secondary); margin-bottom: 8px; }
+        .modal .deps { margin: 12px 0; padding: 10px 14px; background: var(--bg); border-radius: 8px; font-size: .85em; }
+        .modal .deps span { display: inline-block; background: var(--orange-bg); color: #92400e; padding: 2px 8px; border-radius: 12px; font-size: .8em; margin: 2px; }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
         {% block extra_style %}{% endblock %}
     </style>
 </head>
@@ -193,15 +210,13 @@
     <nav>
         <span class="brand">☕ The Frame</span>
         <button class="hamburger" onclick="document.querySelector('.nav-links').classList.toggle('open')">☰</button>
-        <div class="nav-links">
+        <div class="nav-links" onclick="if(window.innerWidth<769)this.classList.remove('open')">
             {% if request.state.user and request.state.user.role == 'admin' %}
             <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Дашборд</a>
             {% endif %}
-            <a href="/inventory" class="{% if request.url.path == '/inventory' %}active{% endif %}">Склад</a>
-            <a href="/inventory/upload" class="{% if '/inventory/upload' in request.url.path %}active{% endif %}">Завантажити фактуру</a>
+            <a href="/inventory" class="{% if request.url.path == '/inventory' or '/inventory/upload' in request.url.path %}active{% endif %}">Склад</a>
             <a href="/inventory/history" class="{% if '/inventory/count' in request.url.path or '/inventory/history' in request.url.path %}active{% endif %}">Інвентаризація</a>
-            <a href="/recipes" class="{% if request.url.path == '/recipes' %}active{% endif %}">Рецепти</a>
-            <a href="/recipes/sub" class="{% if '/recipes/sub' in request.url.path %}active{% endif %}">Напівфабрикати</a>
+            <a href="/recipes" class="{% if '/recipes' in request.url.path %}active{% endif %}">Кухня</a>
             {% if request.state.user and request.state.user.role == 'admin' %}
             <a href="/users" class="{% if '/users' in request.url.path %}active{% endif %}">Користувачі</a>
             {% endif %}
@@ -221,6 +236,58 @@
         {% block content %}{% endblock %}
     </div>
     {% block extra_js %}{% endblock %}
+
+    <!-- Delete confirmation modal -->
+    <div class="modal-overlay" id="delete-modal">
+        <div class="modal">
+            <h3>⚠️ Видалити інгредієнт?</h3>
+            <p id="modal-name" style="font-weight:600; color:var(--text);"></p>
+            <div id="modal-deps" class="deps" style="display:none;"></div>
+            <p id="modal-warning" style="color:var(--red); font-size:.85em; display:none;">
+                Цей інгредієнт буде видалений з усіх рецептів і напівфабрикатів!
+            </p>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeDeleteModal()">Скасувати</button>
+                <form id="modal-form" method="post" style="display:inline;">
+                    <button class="btn" style="background:var(--red); color:#fff;" type="submit">Видалити</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function openDeleteModal(ingredientId) {
+        const modal = document.getElementById('delete-modal');
+        const form = document.getElementById('modal-form');
+        const nameEl = document.getElementById('modal-name');
+        const depsEl = document.getElementById('modal-deps');
+        const warnEl = document.getElementById('modal-warning');
+
+        form.action = '/ingredients/delete/' + ingredientId;
+        nameEl.textContent = 'Завантаження...';
+        depsEl.style.display = 'none';
+        warnEl.style.display = 'none';
+        modal.classList.add('open');
+
+        fetch('/api/ingredient/' + ingredientId + '/deps')
+            .then(r => r.json())
+            .then(d => {
+                nameEl.textContent = d.name;
+                const all = [...d.recipes, ...d.sub_recipes.map(s => '🔧 ' + s)];
+                if (all.length > 0) {
+                    depsEl.innerHTML = '<strong>Використовується в:</strong><br>' + all.map(n => '<span>' + n + '</span>').join(' ');
+                    depsEl.style.display = 'block';
+                    warnEl.style.display = 'block';
+                }
+            });
+    }
+    function closeDeleteModal() {
+        document.getElementById('delete-modal').classList.remove('open');
+    }
+    document.getElementById('delete-modal').addEventListener('click', function(e) {
+        if (e.target === this) closeDeleteModal();
+    });
+    </script>
     {% if request.state.user and request.state.user.role == 'admin' %}
     <script>
     (function() {

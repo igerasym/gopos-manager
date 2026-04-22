@@ -54,7 +54,8 @@
                     <td class="text-right current-qty">{{ '{:.1f}'.format(i['quantity']) }}</td>
                     <td class="text-right">
                         <input type="number" name="qty_{{ i['id'] }}" class="count-input"
-                               step="0.01" placeholder="{{ '{:.1f}'.format(i['quantity']) }}">
+                               step="0.01" placeholder="—"
+                               onfocus="if(!this.value)this.value=this.placeholder=='—'?'':'0'">
                     </td>
                 </tr>
                 {% endfor %}
@@ -62,7 +63,8 @@
         </table>
     </div>
 
-    <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+    <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;">
+        <span class="text-muted" style="font-size:.8em; align-self:center;">Порожні поля = не рахував (буде пропущено)</span>
         <a href="/inventory" class="btn btn-outline">Скасувати</a>
         <button type="submit" class="btn btn-primary" onclick="return confirm('Зберегти інвентаризацію? Це оновить усі залишки.');">
             ✓ Зберегти інвентаризацію
@@ -79,6 +81,16 @@ document.getElementById('count-search').addEventListener('input', function() {
     document.querySelectorAll('#count-table tbody tr').forEach(tr => {
         const name = tr.children[0].textContent.toLowerCase();
         tr.style.display = name.includes(q) ? '' : 'none';
+    });
+});
+// Enter → next input (mobile friendly)
+document.querySelectorAll('.count-input').forEach((input, idx, all) => {
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const next = all[idx + 1];
+            if (next) { next.focus(); next.select(); }
+        }
     });
 });
 </script>

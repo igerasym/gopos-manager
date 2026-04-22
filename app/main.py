@@ -288,15 +288,21 @@ async def inventory_page(request: Request, supplier: str = ''):
     db = get_db()
     if supplier:
         items = db.execute('''
-            SELECT i.*, s.name as supplier_name
-            FROM ingredients i LEFT JOIN suppliers s ON i.supplier_id = s.id
-            WHERE s.name = ? ORDER BY i.name
+            SELECT i.*, s.name as supplier_name,
+                   CASE WHEN sr.id IS NOT NULL THEN 1 ELSE 0 END as is_sub_recipe
+            FROM ingredients i
+            LEFT JOIN suppliers s ON i.supplier_id = s.id
+            LEFT JOIN sub_recipes sr ON sr.ingredient_id = i.id
+            WHERE s.name = ? ORDER BY is_sub_recipe, i.name
         ''', (supplier,)).fetchall()
     else:
         items = db.execute('''
-            SELECT i.*, s.name as supplier_name
-            FROM ingredients i LEFT JOIN suppliers s ON i.supplier_id = s.id
-            ORDER BY i.name
+            SELECT i.*, s.name as supplier_name,
+                   CASE WHEN sr.id IS NOT NULL THEN 1 ELSE 0 END as is_sub_recipe
+            FROM ingredients i
+            LEFT JOIN suppliers s ON i.supplier_id = s.id
+            LEFT JOIN sub_recipes sr ON sr.ingredient_id = i.id
+            ORDER BY is_sub_recipe, i.name
         ''').fetchall()
     suppliers = db.execute('SELECT id, name FROM suppliers ORDER BY name').fetchall()
     db.close()
@@ -771,12 +777,21 @@ async def recipes_page(request: Request):
 
     orphan_products = sorted(set(recipe_map.keys()) - {c['product_name'] for c in cards})
 
+    # Average selling price per product (for food cost %)
+    avg_prices = db.execute('''
+        SELECT product_name, SUM(total_money) / SUM(quantity) as avg_price
+        FROM sales WHERE quantity > 0
+        GROUP BY product_name
+    ''').fetchall()
+    price_map = {r['product_name']: r['avg_price'] for r in avg_prices}
+
     ingredients = db.execute('SELECT id, name, unit FROM ingredients ORDER BY name').fetchall()
     products = db.execute('SELECT DISTINCT product_name FROM sales ORDER BY product_name').fetchall()
     categories = db.execute('SELECT DISTINCT category FROM recipe_cards WHERE category != "" ORDER BY category').fetchall()
     db.close()
     return templates.TemplateResponse(request, 'recipes.html', context={
         'cards': cards, 'recipe_map': recipe_map, 'cost_map': cost_map,
+        'price_map': price_map,
         'orphan_products': orphan_products,
         'ingredients': ingredients, 'products': products,
         'categories': categories,
@@ -871,11 +886,40 @@ async def edit_ingredient(
 @app.post('/ingredients/delete/{ingredient_id}')
 async def delete_ingredient(ingredient_id: int):
     db = get_db()
+    # Remove all references
+    db.execute('DELETE FROM sub_recipe_items WHERE ingredient_id = ?', (ingredient_id,))
     db.execute('DELETE FROM recipes WHERE ingredient_id = ?', (ingredient_id,))
+    db.execute('DELETE FROM deliveries WHERE ingredient_id = ?', (ingredient_id,))
+    db.execute('DELETE FROM inventory_deductions WHERE ingredient_id = ?', (ingredient_id,))
+    db.execute('DELETE FROM stock_count_items WHERE ingredient_id = ?', (ingredient_id,))
+    # Remove sub-recipe if this ingredient is one
+    db.execute('DELETE FROM sub_recipe_items WHERE sub_recipe_id IN (SELECT id FROM sub_recipes WHERE ingredient_id = ?)', (ingredient_id,))
+    db.execute('DELETE FROM sub_recipes WHERE ingredient_id = ?', (ingredient_id,))
     db.execute('DELETE FROM ingredients WHERE id = ?', (ingredient_id,))
     db.commit()
     db.close()
     return RedirectResponse('/inventory', status_code=303)
+
+
+@app.get('/api/ingredient/{ingredient_id}/deps')
+async def ingredient_deps(ingredient_id: int):
+    db = get_db()
+    ing = db.execute('SELECT name FROM ingredients WHERE id = ?', (ingredient_id,)).fetchone()
+    recipes = db.execute(
+        'SELECT DISTINCT product_name FROM recipes WHERE ingredient_id = ?', (ingredient_id,)
+    ).fetchall()
+    subs = db.execute('''
+        SELECT i.name FROM sub_recipe_items sri
+        JOIN sub_recipes sr ON sri.sub_recipe_id = sr.id
+        JOIN ingredients i ON sr.ingredient_id = i.id
+        WHERE sri.ingredient_id = ?
+    ''', (ingredient_id,)).fetchall()
+    db.close()
+    return JSONResponse({
+        'name': ing['name'] if ing else '',
+        'recipes': [r['product_name'] for r in recipes],
+        'sub_recipes': [s['name'] for s in subs],
+    })
 
 
 # ── Users (admin only) ──────────────────────────────────────

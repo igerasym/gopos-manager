@@ -21,7 +21,10 @@
 
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
     <h2 style="margin:0;">Склад</h2>
-    <span class="text-muted" style="font-size:.85em;">{{ items|length }} інгредієнтів</span>
+    <div style="display:flex; gap:6px;">
+        <a href="/inventory" class="btn btn-sm {{ 'btn-primary' if request.url.path == '/inventory' else 'btn-outline' }}">Запаси</a>
+        <a href="/inventory/upload" class="btn btn-sm {{ 'btn-primary' if '/upload' in request.url.path else 'btn-outline' }}">Завантажити фактуру</a>
+    </div>
 </div>
 
 {% set has_low = [] %}
@@ -120,11 +123,21 @@
             </tr>
         </thead>
         <tbody>
+            {% set shown_sub_header = namespace(value=false) %}
             {% for i in items %}
+            {% if i['is_sub_recipe'] and not shown_sub_header.value %}
+            {% set shown_sub_header.value = true %}
             <tr>
+                <td colspan="8" style="background:var(--bg); padding:10px 12px; font-size:.75em; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:var(--text-secondary); border-bottom:2px solid var(--border);">
+                    🔧 Напівфабрикати
+                </td>
+            </tr>
+            {% endif %}
+            <tr{% if i['is_sub_recipe'] %} style="background:#faf5ff;"{% endif %}>
                 <td>
                     <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
                         <input type="text" name="name" value="{{ i['name'] }}">
+                        {% if i['is_sub_recipe'] %}<span class="badge" style="background:#ede9fe; color:#5b21b6; font-size:.65em; vertical-align:middle;">ПФ</span>{% endif %}
                         <button class="btn btn-primary save-btn" type="submit">✓</button>
                     </form>
                 </td>
@@ -175,9 +188,9 @@
                     {% endif %}
                 </td>
                 <td class="text-right">
-                    <form method="post" action="/ingredients/delete/{{ i['id'] }}" style="display:inline;"
-                          onsubmit="return confirm('Видалити?');">
-                        <button class="btn btn-outline btn-sm" type="submit" style="padding:2px 6px; font-size:.7em; color:var(--red);">✕</button>
+                    <form method="post" action="/ingredients/delete/{{ i['id'] }}" style="display:inline;">
+                        <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
+                                onclick="openDeleteModal({{ i['id'] }})">✕</button>
                     </form>
                 </td>
             </tr>
