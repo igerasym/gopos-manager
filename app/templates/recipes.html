@@ -108,9 +108,10 @@
                             <td>{{ r['ingredient'] }}</td>
                             <td class="text-right">
                                 <form method="post" action="/recipes/update/{{ r['id'] }}" class="inline-edit">
-                                    <input type="number" name="amount" value="{{ r['amount'] }}" step="any" style="display:none;">
-                                    <input type="number" value="{{ r['display_amount'] }}" step="any"
-                                           onchange="this.previousElementSibling.value = this.value / {{ 1000 if r['unit'] in ['kg','L'] else 1 }}; this.previousElementSibling.form.submit();">
+                                    <input type="text" inputmode="decimal" name="display_amount" value="{{ r['display_amount'] }}"
+                                           style="width:70px; padding:3px 6px; border:1px solid transparent; border-radius:4px; font-size:.85em; text-align:right; background:transparent;">
+                                    <input type="hidden" name="display_unit" value="{{ r['display_unit'] }}">
+                                    <input type="hidden" name="base_unit" value="{{ r['unit'] }}">
                                     <button class="btn btn-primary save-btn" type="submit">✓</button>
                                 </form>
                             </td>

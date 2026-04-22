@@ -143,7 +143,7 @@
                 </td>
                 <td class="text-right">
                     <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
-                        <input type="number" name="quantity" value="{{ i['quantity'] }}" step="0.01">
+                        <input type="number" name="quantity" value="{{ i['quantity'] }}" step="any">
                         <button class="btn btn-primary save-btn" type="submit">✓</button>
                     </form>
                 </td>
@@ -159,13 +159,13 @@
                 </td>
                 <td class="text-right hide-mobile">
                     <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
-                        <input type="number" name="unit_price" value="{{ i['unit_price'] or 0 }}" step="0.001">
+                        <input type="number" name="unit_price" value="{{ i['unit_price'] or 0 }}" step="any">
                         <button class="btn btn-primary save-btn" type="submit">✓</button>
                     </form>
                 </td>
                 <td class="text-right hide-mobile">
                     <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
-                        <input type="number" name="min_quantity" value="{{ i['min_quantity'] }}" step="0.1">
+                        <input type="number" name="min_quantity" value="{{ i['min_quantity'] }}" step="any">
                         <button class="btn btn-primary save-btn" type="submit">✓</button>
                     </form>
                 </td>
