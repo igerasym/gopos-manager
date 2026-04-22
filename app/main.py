@@ -777,9 +777,9 @@ async def recipes_page(request: Request):
 
     orphan_products = sorted(set(recipe_map.keys()) - {c['product_name'] for c in cards})
 
-    # Average selling price per product (for food cost %)
+    # Average selling price per product (without discounts = real menu price)
     avg_prices = db.execute('''
-        SELECT product_name, SUM(total_money) / SUM(quantity) as avg_price
+        SELECT product_name, SUM(total_money + discount) / SUM(quantity) as avg_price
         FROM sales WHERE quantity > 0
         GROUP BY product_name
     ''').fetchall()

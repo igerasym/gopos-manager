@@ -76,7 +76,7 @@
                 {% if sell_price > 0 and cost > 0 %}
                 {% set fc_pct = (cost / sell_price * 100) %}
                 <span class="badge {{ 'badge-green' if fc_pct <= 30 else 'badge-red' if fc_pct > 40 else 'badge-orange' }}">
-                    FC {{ '{:.0f}'.format(fc_pct) }}%
+                    Food Cost {{ '{:.0f}'.format(fc_pct) }}%
                 </span>
                 {% endif %}
                 {% if sell_price > 0 %}
