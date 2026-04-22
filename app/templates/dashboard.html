@@ -126,15 +126,6 @@
     </div>
 </div>
 
-{% if low_stock %}
-<div class="alert alert-warning">
-    ⚠️ <strong>Низький запас:</strong>
-    {% for item in low_stock %}
-        {{ item['name'] }} ({{ item['quantity']|round(1) }} {{ item['unit'] }}){% if not loop.last %}, {% endif %}
-    {% endfor %}
-</div>
-{% endif %}
-
 <!-- Charts row -->
 <div class="grid-2">
     <div class="card">

@@ -24,6 +24,17 @@
     <span class="text-muted" style="font-size:.85em;">{{ items|length }} інгредієнтів</span>
 </div>
 
+{% set has_low = [] %}
+{% for i in items if i['quantity'] <= i['min_quantity'] and i['min_quantity'] > 0 %}{% if has_low.append(i) %}{% endif %}{% endfor %}
+{% if has_low|length > 0 %}
+<div class="alert alert-warning" style="margin-bottom:16px;">
+    ⚠️ <strong>Низький запас:</strong>
+    {% for i in has_low %}
+        {{ i['name'] }} ({{ i['quantity']|round(1) }} {{ i['unit'] }}){% if not loop.last %}, {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
+
 <div class="grid-2" style="margin-bottom: 16px;">
     <div class="card">
         <div class="card-header"><div class="card-title">Додати інгредієнт</div></div>
@@ -165,7 +176,7 @@
                 </td>
                 <td class="text-right">
                     <form method="post" action="/ingredients/delete/{{ i['id'] }}" style="display:inline;"
-                          onsubmit="return confirm('Видалити {{ i[\"name\"] }}?');">
+                          onsubmit="return confirm('Видалити?');">
                         <button class="btn btn-outline btn-sm" type="submit" style="padding:2px 6px; font-size:.7em; color:var(--red);">✕</button>
                     </form>
                 </td>
