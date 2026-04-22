@@ -214,8 +214,11 @@
             </div>
             <div class="form-group" style="flex:1;">
                 <label>Категорія</label>
-                <input name="category" list="categories" class="form-control">
+                <input name="category" list="categories" class="form-control" placeholder="напр. Основні страви">
                 <datalist id="categories">
+                    <option value="Сніданки">
+                    <option value="Основні страви">
+                    <option value="Додатки">
                     {% for c in categories %}<option value="{{ c['category'] }}">{% endfor %}
                 </datalist>
             </div>
