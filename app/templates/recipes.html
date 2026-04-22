@@ -46,15 +46,15 @@
 {% block content %}
 
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <h2 style="margin:0;">Recipe Cards</h2>
-    <span class="text-muted" style="font-size:.85em;">{{ cards|length }} recipes</span>
+    <h2 style="margin:0;">Технологічні картки</h2>
+    <span class="text-muted" style="font-size:.85em;">{{ cards|length }} рецептів</span>
 </div>
 
 {% set current_cat = namespace(value='') %}
 {% for card in cards %}
     {% if card['category'] != current_cat.value %}
         {% set current_cat.value = card['category'] %}
-        <div class="section-title">{{ card['category'] or 'Uncategorized' }}</div>
+        <div class="section-title">{{ card['category'] or 'Без категорії' }}</div>
     {% endif %}
 
     {% set ingredients_list = recipe_map.get(card['product_name'], []) %}
@@ -62,12 +62,12 @@
         <div class="tech-card-header" onclick="this.parentElement.classList.toggle('open')">
             <h3>
                 {{ card['product_name'] }}
-                <span class="ingredient-count">{{ ingredients_list|length }} ingredients</span>
+                <span class="ingredient-count">{{ ingredients_list|length }} інгредієнтів</span>
             </h3>
             <div class="tech-card-meta">
                 {% set cost = cost_map.get(card['product_name'], 0) %}
                 {% if cost > 0 %}
-                <span class="badge" style="background:#ede9fe; color:#5b21b6;">Cost: {{ '{:.2f}'.format(cost) }} zł</span>
+                <span class="badge" style="background:#ede9fe; color:#5b21b6;">Вартість: {{ '{:.2f}'.format(cost) }} zł</span>
                 {% endif %}
                 {% if card['portion_weight'] %}
                 <span class="badge badge-green">{{ card['portion_weight'] }}</span>
@@ -81,11 +81,11 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Ingredient</th>
-                            <th class="text-right" style="width:100px;">Amount</th>
-                            <th style="width:60px;">Unit</th>
-                            <th class="text-right" style="width:80px;">Price/unit</th>
-                            <th class="text-right" style="width:80px;">Cost</th>
+                            <th>Інгредієнт</th>
+                            <th class="text-right" style="width:100px;">Кількість</th>
+                            <th style="width:60px;">Одиниця</th>
+                            <th class="text-right" style="width:80px;">Ціна/од.</th>
+                            <th class="text-right" style="width:80px;">Вартість</th>
                             <th style="width:50px;"></th>
                         </tr>
                     </thead>
@@ -125,7 +125,7 @@
                     </tbody>
                     <tfoot>
                         <tr style="border-top: 2px solid var(--border);">
-                            <td colspan="4" class="text-right" style="font-weight:600; font-size:.85em;">Total cost:</td>
+                            <td colspan="4" class="text-right" style="font-weight:600; font-size:.85em;">Загальна вартість:</td>
                             <td class="text-right" style="font-weight:700; font-size:.9em; color:var(--accent);">
                                 {{ '{:.2f}'.format(cost_map.get(card['product_name'], 0)) }} zł
                             </td>
@@ -138,7 +138,7 @@
 
             {% if card['description'] %}
             <div class="tech-card-desc">
-                <strong style="color:var(--text);">Preparation:</strong><br>
+                <strong style="color:var(--text);">Приготування:</strong><br>
                 {{ card['description'] }}
             </div>
             {% endif %}
@@ -147,14 +147,14 @@
                 <form class="form-row" method="post" action="/recipes/add" style="width:100%;">
                     <input type="hidden" name="product_name" value="{{ card['product_name'] }}">
                     <div class="form-group" style="flex:2;">
-                        <label>Add ingredient</label>
+                        <label>Додати інгредієнт</label>
                         <select name="ingredient_id" class="form-control" required style="font-size:.85em;">
                             <option value="">—</option>
                             {% for i in ingredients %}<option value="{{ i['id'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>{% endfor %}
                         </select>
                     </div>
                     <div class="form-group" style="flex:0 0 80px;">
-                        <label>Amount</label>
+                        <label>Кількість</label>
                         <input name="amount" type="number" step="0.01" class="form-control" required style="font-size:.85em;">
                     </div>
                     <button class="btn btn-primary btn-sm" type="submit">+</button>
@@ -165,22 +165,22 @@
 {% endfor %}
 
 {% if orphan_products %}
-<div class="section-title">No recipe card</div>
+<div class="section-title">Без технологічної картки</div>
 {% for pname in orphan_products %}
 <div class="tech-card" style="border-left: 3px solid var(--orange);">
     <div class="tech-card-header" onclick="this.parentElement.classList.toggle('open')">
-        <h3>{{ pname }} <span class="ingredient-count">{{ recipe_map[pname]|length }} ingredients</span></h3>
+        <h3>{{ pname }} <span class="ingredient-count">{{ recipe_map[pname]|length }} інгредієнтів</span></h3>
         <form method="post" action="/recipes/card" style="display:flex; gap:6px; align-items:end;" onclick="event.stopPropagation();">
             <input type="hidden" name="product_name" value="{{ pname }}">
-            <input name="category" placeholder="Category" class="form-control" style="width:100px; font-size:.8em; padding:4px 8px;">
-            <input name="portion_weight" placeholder="Portion" class="form-control" style="width:80px; font-size:.8em; padding:4px 8px;">
-            <button class="btn btn-success btn-sm" type="submit" style="font-size:.75em;">Create</button>
+            <input name="category" placeholder="Категорія" class="form-control" style="width:100px; font-size:.8em; padding:4px 8px;">
+            <input name="portion_weight" placeholder="Порція" class="form-control" style="width:80px; font-size:.8em; padding:4px 8px;">
+            <button class="btn btn-success btn-sm" type="submit" style="font-size:.75em;">Створити</button>
         </form>
     </div>
     <div class="tech-card-body">
         <div class="tech-card-ingredients">
             <table>
-                <thead><tr><th>Ingredient</th><th class="text-right" style="width:120px;">Amount</th><th style="width:80px;">Unit</th><th style="width:60px;"></th></tr></thead>
+                <thead><tr><th>Інгредієнт</th><th class="text-right" style="width:120px;">Кількість</th><th style="width:80px;">Одиниця</th><th style="width:60px;"></th></tr></thead>
                 <tbody>
                     {% for r in recipe_map[pname] %}
                     <tr>
@@ -207,34 +207,34 @@
 {% endfor %}
 {% endif %}
 
-<div class="section-title">New recipe card</div>
+<div class="section-title">Нова технологічна картка</div>
 <div class="card">
     <form method="post" action="/recipes/card">
         <div class="form-row" style="margin-bottom: 12px;">
             <div class="form-group" style="flex:2;">
-                <label>Product (from GoPOS)</label>
+                <label>Продукт (з GoPOS)</label>
                 <input name="product_name" list="products" class="form-control" required>
                 <datalist id="products">
                     {% for p in products %}<option value="{{ p['product_name'] }}">{% endfor %}
                 </datalist>
             </div>
             <div class="form-group" style="flex:1;">
-                <label>Category</label>
+                <label>Категорія</label>
                 <input name="category" list="categories" class="form-control">
                 <datalist id="categories">
                     {% for c in categories %}<option value="{{ c['category'] }}">{% endfor %}
                 </datalist>
             </div>
             <div class="form-group" style="flex:1;">
-                <label>Portion size</label>
-                <input name="portion_weight" class="form-control" placeholder="~250 g">
+                <label>Розмір порції</label>
+                <input name="portion_weight" class="form-control" placeholder="~250 г">
             </div>
         </div>
         <div class="form-group" style="margin-bottom: 12px;">
-            <label>Preparation</label>
+            <label>Приготування</label>
             <textarea name="description" class="form-control" rows="3" style="resize:vertical;"></textarea>
         </div>
-        <button class="btn btn-primary" type="submit">Create card</button>
+        <button class="btn btn-primary" type="submit">Створити картку</button>
     </form>
 </div>
 

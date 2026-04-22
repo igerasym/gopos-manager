@@ -2,34 +2,34 @@
 {% block content %}
 
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <h2 style="margin:0;">Users</h2>
-    <span class="text-muted" style="font-size:.85em;">{{ users|length }} users</span>
+    <h2 style="margin:0;">Користувачі</h2>
+    <span class="text-muted" style="font-size:.85em;">{{ users|length }} користувачів</span>
 </div>
 
 <div class="card" style="margin-bottom:16px;">
-    <div class="card-header"><div class="card-title">Add User</div></div>
+    <div class="card-header"><div class="card-title">Додати користувача</div></div>
     <form class="form-row" method="post" action="/users/add">
         <div class="form-group" style="flex:1;">
-            <label>Username</label>
+            <label>Логін</label>
             <input name="username" class="form-control" required>
         </div>
         <div class="form-group" style="flex:1;">
-            <label>Display Name</label>
+            <label>Імʼя</label>
             <input name="display_name" class="form-control">
         </div>
         <div class="form-group" style="flex:1;">
-            <label>Password</label>
+            <label>Пароль</label>
             <input name="password" type="password" class="form-control" required>
         </div>
         <div class="form-group" style="flex:0 0 120px;">
-            <label>Role</label>
+            <label>Роль</label>
             <select name="role" class="form-control">
                 <option value="admin">Admin</option>
                 <option value="chef">Chef</option>
                 <option value="barista" selected>Barista</option>
             </select>
         </div>
-        <button class="btn btn-primary btn-sm" type="submit">+ Add</button>
+        <button class="btn btn-primary btn-sm" type="submit">+ Додати</button>
     </form>
 </div>
 
@@ -37,10 +37,10 @@
     <table>
         <thead>
             <tr>
-                <th>Username</th>
-                <th>Display Name</th>
-                <th>Role</th>
-                <th style="width:200px;">Change Password</th>
+                <th>Логін</th>
+                <th>Імʼя</th>
+                <th>Роль</th>
+                <th style="width:200px;">Змінити пароль</th>
                 <th style="width:60px;"></th>
             </tr>
         </thead>
@@ -60,13 +60,13 @@
                 </td>
                 <td>
                     <form method="post" action="/users/password/{{ u['id'] }}" style="display:flex; gap:4px;">
-                        <input name="password" type="password" placeholder="new password" style="padding:4px 8px; border:1px solid #e2e8f0; border-radius:4px; font-size:.85em; flex:1;">
-                        <button class="btn btn-primary btn-sm" type="submit" style="padding:4px 8px; font-size:.75em;">Set</button>
+                        <input name="password" type="password" placeholder="новий пароль" style="padding:4px 8px; border:1px solid #e2e8f0; border-radius:4px; font-size:.85em; flex:1;">
+                        <button class="btn btn-primary btn-sm" type="submit" style="padding:4px 8px; font-size:.75em;">Зберегти</button>
                     </form>
                 </td>
                 <td class="text-right">
                     {% if u['username'] != 'admin' %}
-                    <form method="post" action="/users/delete/{{ u['id'] }}" style="display:inline;" onsubmit="return confirm('Delete {{ u['username'] }}?');">
+                    <form method="post" action="/users/delete/{{ u['id'] }}" style="display:inline;" onsubmit="return confirm('Видалити {{ u['username'] }}?');">
                         <button class="btn btn-outline btn-sm" type="submit" style="padding:2px 6px; font-size:.7em; color:var(--red);">✕</button>
                     </form>
                     {% endif %}
@@ -78,10 +78,10 @@
 </div>
 
 <div class="card" style="margin-top:16px;">
-    <div class="card-header"><div class="card-title">Role Permissions</div></div>
+    <div class="card-header"><div class="card-title">Права ролей</div></div>
     <table>
         <thead>
-            <tr><th>Role</th><th>Dashboard</th><th>Inventory</th><th>Recipes</th><th>Users</th><th>Sync</th></tr>
+            <tr><th>Роль</th><th>Дашборд</th><th>Склад</th><th>Рецепти</th><th>Користувачі</th><th>Синхронізація</th></tr>
         </thead>
         <tbody>
             <tr>

@@ -2,15 +2,15 @@
 {% block content %}
 
 <div style="margin-bottom: 20px;">
-    <h2 style="margin:0;">Invoice Preview — {{ filename }}</h2>
-    <span class="text-muted" style="font-size:.85em;">Review parsed items before adding to inventory</span>
+    <h2 style="margin:0;">Перегляд накладної — {{ filename }}</h2>
+    <span class="text-muted" style="font-size:.85em;">Перевірте розпізнані позиції перед додаванням на склад</span>
 </div>
 
 {% if not result.success %}
 <div class="alert" style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca;">
-    ⚠️ Parsing failed: {{ result.error }}
+    ⚠️ Помилка розпізнавання: {{ result.error }}
 </div>
-<a href="/inventory/upload" class="btn btn-outline">← Try again</a>
+<a href="/inventory/upload" class="btn btn-outline">← Спробувати ще раз</a>
 {% else %}
 
 <form method="post" action="/inventory/upload/confirm">
@@ -20,9 +20,9 @@
     <div class="card" style="margin-bottom:16px; padding:14px 20px;">
         <div class="form-row">
             <div class="form-group" style="flex:1;">
-                <label>Supplier</label>
+                <label>Постачальник</label>
                 <select name="supplier_id" class="form-control">
-                    <option value="">— Select —</option>
+                    <option value="">— Обрати —</option>
                     {% for s in suppliers %}<option value="{{ s['id'] }}">{{ s['name'] }}</option>{% endfor %}
                 </select>
             </div>
@@ -34,13 +34,13 @@
             <thead>
                 <tr>
                     <th style="width:30px;">✓</th>
-                    <th>Invoice Name</th>
-                    <th>→ Ingredient</th>
-                    <th class="text-right">Qty</th>
-                    <th>Unit</th>
-                    <th class="text-right">Total Brutto</th>
-                    <th class="text-right">Per Unit</th>
-                    <th>Status</th>
+                    <th>Назва в накладній</th>
+                    <th>→ Інгредієнт</th>
+                    <th class="text-right">Кількість</th>
+                    <th>Одиниця</th>
+                    <th class="text-right">Сума брутто</th>
+                    <th class="text-right">За одиницю</th>
+                    <th>Статус</th>
                 </tr>
             </thead>
             <tbody>
@@ -81,9 +81,9 @@
                     </td>
                     <td>
                         {% if item.is_new %}
-                        <span class="badge badge-orange">New</span>
+                        <span class="badge badge-orange">Новий</span>
                         {% else %}
-                        <span class="badge badge-green">Matched</span>
+                        <span class="badge badge-green">Знайдено</span>
                         {% endif %}
                     </td>
                 </tr>
@@ -93,8 +93,8 @@
     </div>
 
     <div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end;">
-        <a href="/inventory/upload" class="btn btn-outline">← Cancel</a>
-        <button type="submit" class="btn btn-primary">✓ Confirm & Add to Inventory</button>
+        <a href="/inventory/upload" class="btn btn-outline">← Скасувати</a>
+        <button type="submit" class="btn btn-primary">✓ Підтвердити та додати на склад</button>
     </div>
 </form>
 {% endif %}

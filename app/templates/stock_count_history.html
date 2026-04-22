@@ -2,8 +2,8 @@
 {% block content %}
 
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <h2 style="margin:0;">Stock Count History</h2>
-    <a href="/inventory/count" class="btn btn-primary btn-sm">+ New Count</a>
+    <h2 style="margin:0;">Історія інвентаризацій</h2>
+    <a href="/inventory/count" class="btn btn-primary btn-sm">+ Нова інвентаризація</a>
 </div>
 
 {% if counts %}
@@ -11,11 +11,11 @@
     <table>
         <thead>
             <tr>
-                <th>Date</th>
-                <th>By</th>
-                <th>Note</th>
-                <th class="text-right">Items</th>
-                <th class="text-right">Shortages</th>
+                <th>Дата</th>
+                <th>Хто</th>
+                <th>Примітка</th>
+                <th class="text-right">Позицій</th>
+                <th class="text-right">Нестачі</th>
                 <th></th>
             </tr>
         </thead>
@@ -34,7 +34,7 @@
                     {% endif %}
                 </td>
                 <td class="text-right">
-                    <a href="/inventory/count/{{ c['id'] }}" class="btn btn-outline btn-sm">View</a>
+                    <a href="/inventory/count/{{ c['id'] }}" class="btn btn-outline btn-sm">Переглянути</a>
                 </td>
             </tr>
             {% endfor %}
@@ -43,7 +43,7 @@
 </div>
 {% else %}
 <div class="card" style="text-align:center; padding:40px; color:var(--text-secondary);">
-    No stock counts yet. Start your first inventory count.
+    Інвентаризацій ще немає. Розпочніть першу інвентаризацію.
 </div>
 {% endif %}
 

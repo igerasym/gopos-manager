@@ -15,45 +15,45 @@ form:focus-within .save-btn { opacity: 1; }
 
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
     <div>
-        <h2 style="margin:0;">Stock Count — {{ count['date'] }} {{ count['time'] or '' }}</h2>
+        <h2 style="margin:0;">Інвентаризація — {{ count['date'] }} {{ count['time'] or '' }}</h2>
         <span class="text-muted" style="font-size:.85em;">
-            by {{ count['display_name'] or count['username'] or 'Unknown' }}
+            {{ count['display_name'] or count['username'] or 'Невідомо' }}
             {% if count['note'] %} · {{ count['note'] }}{% endif %}
         </span>
     </div>
-    <a href="/inventory/history" class="btn btn-outline btn-sm">← History</a>
+    <a href="/inventory/history" class="btn btn-outline btn-sm">← Історія</a>
 </div>
 
 <div class="grid-3" style="margin-bottom: 16px;">
     <div class="card kpi">
-        <div class="kpi-label">Items Counted</div>
+        <div class="kpi-label">Підраховано позицій</div>
         <div class="kpi-value">{{ items|length }}</div>
     </div>
     <div class="card kpi">
-        <div class="kpi-label">Shortages</div>
+        <div class="kpi-label">Нестачі</div>
         <div class="kpi-value" style="color:var(--red);">{{ items|selectattr('difference', 'lt', 0)|list|length }}</div>
     </div>
     <div class="card kpi">
-        <div class="kpi-label">Waste Value</div>
+        <div class="kpi-label">Вартість втрат</div>
         <div class="kpi-value" style="color:var(--red);">{{ '{:.2f}'.format(total_diff_value) }} zł</div>
-        <div class="kpi-change neutral">estimated loss</div>
+        <div class="kpi-change neutral">орієнтовні втрати</div>
     </div>
 </div>
 
 <div class="card">
     <div class="card-header">
-        <div class="card-title">Counted Items</div>
-        <div class="card-subtitle">Click quantity to edit</div>
+        <div class="card-title">Підраховані позиції</div>
+        <div class="card-subtitle">Натисніть на кількість для редагування</div>
     </div>
     <table>
         <thead>
             <tr>
-                <th>Ingredient</th>
-                <th>Unit</th>
-                <th class="text-right">Expected</th>
-                <th class="text-right">Actual</th>
-                <th class="text-right">Difference</th>
-                <th>Status</th>
+                <th>Інгредієнт</th>
+                <th>Одиниця</th>
+                <th class="text-right">Очікувана</th>
+                <th class="text-right">Фактична</th>
+                <th class="text-right">Різниця</th>
+                <th>Статус</th>
             </tr>
         </thead>
         <tbody>
@@ -74,11 +74,11 @@ form:focus-within .save-btn { opacity: 1; }
                 </td>
                 <td>
                     {% if i['difference'] < -0.01 %}
-                    <span class="badge badge-red">Shortage</span>
+                    <span class="badge badge-red">Нестача</span>
                     {% elif i['difference'] > 0.01 %}
-                    <span class="badge badge-green">Surplus</span>
+                    <span class="badge badge-green">Надлишок</span>
                     {% else %}
-                    <span class="badge" style="background:#f1f5f9; color:#64748b;">Match</span>
+                    <span class="badge" style="background:#f1f5f9; color:#64748b;">Збіг</span>
                     {% endif %}
                 </td>
             </tr>
@@ -89,22 +89,22 @@ form:focus-within .save-btn { opacity: 1; }
 
 <!-- Add missing item -->
 <div class="card" style="margin-top: 16px;">
-    <div class="card-header"><div class="card-title">Add Item to Count</div></div>
+    <div class="card-header"><div class="card-title">Додати позицію до підрахунку</div></div>
     <form class="form-row" method="post" action="/inventory/count/{{ count['id'] }}/add">
         <div class="form-group" style="flex:2;">
-            <label>Ingredient</label>
+            <label>Інгредієнт</label>
             <select name="ingredient_id" class="form-control" required>
-                <option value="">— Select —</option>
+                <option value="">— Обрати —</option>
                 {% for i in all_ingredients %}
                 <option value="{{ i['id'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>
                 {% endfor %}
             </select>
         </div>
         <div class="form-group" style="flex:0 0 100px;">
-            <label>Actual Qty</label>
+            <label>Фактична к-сть</label>
             <input name="actual" type="number" step="0.01" class="form-control" required>
         </div>
-        <button class="btn btn-primary btn-sm" type="submit">+ Add</button>
+        <button class="btn btn-primary btn-sm" type="submit">+ Додати</button>
     </form>
 </div>
 

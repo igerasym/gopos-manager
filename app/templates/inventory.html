@@ -20,20 +20,20 @@
 {% block content %}
 
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <h2 style="margin:0;">Inventory</h2>
-    <span class="text-muted" style="font-size:.85em;">{{ items|length }} ingredients</span>
+    <h2 style="margin:0;">Склад</h2>
+    <span class="text-muted" style="font-size:.85em;">{{ items|length }} інгредієнтів</span>
 </div>
 
 <div class="grid-2" style="margin-bottom: 16px;">
     <div class="card">
-        <div class="card-header"><div class="card-title">Add Ingredient</div></div>
+        <div class="card-header"><div class="card-title">Додати інгредієнт</div></div>
         <form class="form-row" method="post" action="/inventory/add">
             <div class="form-group" style="flex:2;">
-                <label>Name</label>
+                <label>Назва</label>
                 <input name="name" class="form-control" required>
             </div>
             <div class="form-group" style="flex:0 0 70px;">
-                <label>Unit</label>
+                <label>Од.</label>
                 <select name="unit" class="form-control">
                     {% for u in ['g', 'kg', 'ml', 'L', 'szt', 'pcs'] %}
                     <option value="{{ u }}">{{ u }}</option>
@@ -41,70 +41,70 @@
                 </select>
             </div>
             <div class="form-group" style="flex:0 0 80px;">
-                <label>Qty</label>
+                <label>К-сть</label>
                 <input name="quantity" type="number" step="0.1" value="0" class="form-control">
             </div>
             <div class="form-group" style="flex:0 0 80px;">
-                <label>Min alert</label>
+                <label>Мін. запас</label>
                 <input name="min_quantity" type="number" step="0.1" value="0" class="form-control">
             </div>
-            <button class="btn btn-primary btn-sm" type="submit">+ Add</button>
+            <button class="btn btn-primary btn-sm" type="submit">+ Додати</button>
         </form>
     </div>
     <div class="card">
-        <div class="card-header"><div class="card-title">Add Delivery</div></div>
+        <div class="card-header"><div class="card-title">Додати поставку</div></div>
         <form class="form-row" method="post" action="/inventory/delivery">
             <div class="form-group" style="flex:2;">
-                <label>Ingredient</label>
+                <label>Інгредієнт</label>
                 <select name="ingredient_id" class="form-control" required id="delivery-ingredient">
                     {% for i in items %}<option value="{{ i['id'] }}" data-unit="{{ i['unit'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>{% endfor %}
                 </select>
             </div>
             <div class="form-group" style="flex:0 0 100px;">
-                <label>Qty (<span id="delivery-unit">{{ items[0]['unit'] if items else '' }}</span>)</label>
+                <label>К-сть (<span id="delivery-unit">{{ items[0]['unit'] if items else '' }}</span>)</label>
                 <input name="quantity" type="number" step="0.01" class="form-control" required>
             </div>
             <div class="form-group" style="flex:0 0 100px;">
-                <label>Price zł (total)</label>
+                <label>Ціна zł</label>
                 <input name="price" type="number" step="0.01" value="0" class="form-control">
             </div>
             <div class="form-group" style="flex:1;">
-                <label>Supplier</label>
+                <label>Постачальник</label>
                 <select name="supplier_id" class="form-control">
                     <option value="">—</option>
                     {% for s in suppliers %}<option value="{{ s['id'] }}">{{ s['name'] }}</option>{% endfor %}
                 </select>
             </div>
             <div class="form-group" style="flex:1;">
-                <label>Note</label>
+                <label>Примітка</label>
                 <input name="note" class="form-control">
             </div>
-            <button class="btn btn-success btn-sm" type="submit">📦 Deliver</button>
+            <button class="btn btn-success btn-sm" type="submit">📦 Додати</button>
         </form>
     </div>
 </div>
 
 <div class="card">
     <div class="card-header">
-        <div class="card-title">Current Stock</div>
+        <div class="card-title">Поточний запас</div>
         <div style="display:flex; gap:6px;">
-            <a href="/inventory" class="btn btn-sm {{ 'btn-primary' if not active_supplier else 'btn-outline' }}">All</a>
+            <a href="/inventory" class="btn btn-sm {{ 'btn-primary' if not active_supplier else 'btn-outline' }}">Всі</a>
             {% for s in suppliers %}
             <a href="/inventory?supplier={{ s['name'] }}" class="btn btn-sm {{ 'btn-primary' if active_supplier == s['name'] else 'btn-outline' }}">{{ s['name'] }}</a>
             {% endfor %}
         </div>
     </div>
-    <input type="text" class="stock-search" id="stock-search" placeholder="Search ingredients...">
+    <input type="text" class="stock-search" id="stock-search" placeholder="Пошук інгредієнтів...">
     <table id="stock-table">
         <thead>
             <tr>
-                <th style="width:25%;">Name</th>
-                <th class="text-right" style="width:10%;">Stock</th>
-                <th style="width:6%;">Unit</th>
-                <th class="text-right" style="width:10%;">Price/unit</th>
-                <th class="text-right" style="width:9%;">Min Alert</th>
-                <th style="width:18%;">Supplier</th>
-                <th style="width:6%;">Status</th>
+                <th style="width:25%;">Назва</th>
+                <th class="text-right" style="width:10%;">Запас</th>
+                <th style="width:6%;">Од.</th>
+                <th class="text-right" style="width:10%;">Ціна/од.</th>
+                <th class="text-right" style="width:9%;">Мін.</th>
+                <th style="width:18%;">Постачальник</th>
+                <th style="width:6%;">Статус</th>
                 <th style="width:5%;"></th>
             </tr>
         </thead>
@@ -158,14 +158,14 @@
                 </td>
                 <td>
                     {% if i['quantity'] <= i['min_quantity'] %}
-                    <span class="badge badge-red">Low</span>
+                    <span class="badge badge-red">Мало</span>
                     {% else %}
-                    <span class="badge badge-green">OK</span>
+                    <span class="badge badge-green">ОК</span>
                     {% endif %}
                 </td>
                 <td class="text-right">
                     <form method="post" action="/ingredients/delete/{{ i['id'] }}" style="display:inline;"
-                          onsubmit="return confirm('Delete {{ i['name'] }}?');">
+                          onsubmit="return confirm('Видалити {{ i[\"name\"] }}?');">
                         <button class="btn btn-outline btn-sm" type="submit" style="padding:2px 6px; font-size:.7em; color:var(--red);">✕</button>
                     </form>
                 </td>

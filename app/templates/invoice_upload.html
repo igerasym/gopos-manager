@@ -2,20 +2,20 @@
 {% block content %}
 
 <div style="margin-bottom: 20px;">
-    <h2 style="margin:0;">Upload Invoice</h2>
-    <span class="text-muted" style="font-size:.85em;">Upload a supplier PDF invoice — AI will extract items automatically</span>
+    <h2 style="margin:0;">Завантаження накладної</h2>
+    <span class="text-muted" style="font-size:.85em;">Завантажте PDF-накладну постачальника — AI автоматично витягне позиції</span>
 </div>
 
 <div class="card" style="text-align:center; padding:40px;">
     <form method="post" action="/inventory/upload" enctype="multipart/form-data" id="upload-form">
         <div style="border:2px dashed var(--border); border-radius:12px; padding:40px; margin-bottom:16px; cursor:pointer;" id="drop-zone" onclick="document.getElementById('file-input').click();">
             <div style="font-size:2em; margin-bottom:8px;">📄</div>
-            <div style="font-weight:600; margin-bottom:4px;">Drop PDF here or click to browse</div>
-            <div class="text-muted" style="font-size:.85em;">Supports Makro, Bakers House, and other invoices</div>
+            <div style="font-weight:600; margin-bottom:4px;">Перетягніть PDF сюди або натисніть для вибору</div>
+            <div class="text-muted" style="font-size:.85em;">Підтримує Makro, Bakers House та інші накладні</div>
             <div id="file-name" style="margin-top:12px; font-weight:600; color:var(--accent); display:none;"></div>
         </div>
         <input type="file" name="file" id="file-input" accept=".pdf" required style="display:none;">
-        <button type="submit" class="btn btn-primary" id="upload-btn" disabled>🔍 Parse Invoice</button>
+        <button type="submit" class="btn btn-primary" id="upload-btn" disabled>🔍 Розпізнати накладну</button>
     </form>
 </div>
 
@@ -47,7 +47,7 @@ zone.addEventListener('drop', e => {
 
 document.getElementById('upload-form').addEventListener('submit', function() {
     btn.disabled = true;
-    btn.textContent = '⏳ Parsing with AI...';
+    btn.textContent = '⏳ AI розпізнає...';
 });
 </script>
 {% endblock %}

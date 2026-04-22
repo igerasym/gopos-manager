@@ -90,7 +90,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # Redirect non-admin from dashboard to inventory
             if path == '/':
                 return RedirectResponse('/inventory', status_code=302)
-            return HTMLResponse('<h2>Access denied</h2><p>Your role does not have access to this page.</p><a href="/inventory">← Back</a>', status_code=403)
+            return HTMLResponse('<h2>Доступ заборонено</h2><p>Ваша роль не має доступу до цієї сторінки.</p><a href="/inventory">← Назад</a>', status_code=403)
 
         request.state.user = user
         return await call_next(request)
@@ -115,7 +115,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
     db.close()
 
     if not user or not verify_password(password, user['password_hash']):
-        return templates.TemplateResponse(request, 'login.html', context={'error': 'Invalid username or password'})
+        return templates.TemplateResponse(request, 'login.html', context={'error': 'Невірний логін або пароль'})
 
     response = RedirectResponse('/', status_code=302)
     response.set_cookie('session', sign_cookie(username), httponly=True, max_age=86400 * 30)
@@ -149,13 +149,13 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
     last_30 = (now - timedelta(days=29)).strftime('%Y-%m-%d')
 
     presets = [
-        ('Today', today, today),
-        ('Yesterday', yesterday, yesterday),
-        ('Last 7 days', last_7, today),
-        ('This week', week_start, today),
-        ('Last 30 days', last_30, today),
-        ('This month', month_start, today),
-        ('This year', year_start, today),
+        ('Сьогодні', today, today),
+        ('Вчора', yesterday, yesterday),
+        ('Останні 7 днів', last_7, today),
+        ('Цей тиждень', week_start, today),
+        ('Останні 30 днів', last_30, today),
+        ('Цей місяць', month_start, today),
+        ('Цей рік', year_start, today),
     ]
     # Mark active preset
     active_preset = None

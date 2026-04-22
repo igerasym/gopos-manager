@@ -14,32 +14,32 @@
 
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
     <div>
-        <h2 style="margin:0;">Stock Count</h2>
-        <span class="text-muted" style="font-size:.85em;">Count actual quantities on hand</span>
+        <h2 style="margin:0;">Інвентаризація</h2>
+        <span class="text-muted" style="font-size:.85em;">Підрахуйте фактичні залишки на складі</span>
     </div>
-    <a href="/inventory/history" class="btn btn-outline btn-sm">📋 History</a>
+    <a href="/inventory/history" class="btn btn-outline btn-sm">📋 Історія</a>
 </div>
 
 <form method="post" action="/inventory/count">
     <div class="card" style="margin-bottom: 16px; padding: 14px 20px;">
         <div class="form-row">
             <div class="form-group" style="flex:1;">
-                <label>Note (optional)</label>
-                <input name="note" class="form-control" placeholder="e.g. Weekly count, Sunday evening">
+                <label>Примітка (необовʼязково)</label>
+                <input name="note" class="form-control" placeholder="напр. Щотижневий підрахунок, неділя ввечері">
             </div>
         </div>
     </div>
 
     <div class="card">
-        <input type="text" id="count-search" placeholder="Search ingredients..."
+        <input type="text" id="count-search" placeholder="Пошук інгредієнтів..."
                style="width:100%; padding:8px 12px; border:1px solid var(--border); border-radius:8px; font-size:.9em; margin-bottom:12px;">
         <table id="count-table">
             <thead>
                 <tr>
-                    <th>Ingredient</th>
-                    <th>Unit</th>
-                    <th class="text-right">System Qty</th>
-                    <th class="text-right">Actual Qty</th>
+                    <th>Інгредієнт</th>
+                    <th>Одиниця</th>
+                    <th class="text-right">Системна к-сть</th>
+                    <th class="text-right">Фактична к-сть</th>
                 </tr>
             </thead>
             <tbody>
@@ -59,9 +59,9 @@
     </div>
 
     <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
-        <a href="/inventory" class="btn btn-outline">Cancel</a>
-        <button type="submit" class="btn btn-primary" onclick="return confirm('Save stock count? This will update all quantities.');">
-            ✓ Save Stock Count
+        <a href="/inventory" class="btn btn-outline">Скасувати</a>
+        <button type="submit" class="btn btn-primary" onclick="return confirm('Зберегти інвентаризацію? Це оновить усі залишки.');">
+            ✓ Зберегти інвентаризацію
         </button>
     </div>
 </form>

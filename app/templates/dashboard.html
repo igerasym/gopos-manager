@@ -13,48 +13,48 @@
     </div>
     <form class="form-row" method="get" action="/">
         <div class="form-group">
-            <label>From</label>
+            <label>Від</label>
             <input type="date" class="form-control" name="date_from" value="{{ date_from }}">
         </div>
         <div class="form-group">
-            <label>To</label>
+            <label>До</label>
             <input type="date" class="form-control" name="date_to" value="{{ date_to }}">
         </div>
-        <button class="btn btn-primary btn-sm" type="submit">Apply</button>
+        <button class="btn btn-primary btn-sm" type="submit">Застосувати</button>
     </form>
 </div>
 
 <!-- KPI row -->
 <div class="grid-4" style="margin-bottom: 16px;">
     <div class="card kpi">
-        <div class="kpi-label">Revenue <span class="info-tip" data-tip="Total gross sales from GoPOS for the selected period, including VAT.">ⓘ</span></div>
+        <div class="kpi-label">Виручка <span class="info-tip" data-tip="Загальний валовий продаж з GoPOS за обраний період, включаючи ПДВ.">ⓘ</span></div>
         <div class="kpi-value">{{ '{:,.0f}'.format(totals['revenue']) }} zł</div>
         {% if prev_totals['revenue'] > 0 %}
             {% set change = ((totals['revenue'] - prev_totals['revenue']) / prev_totals['revenue'] * 100) %}
             <div class="kpi-change {{ 'up' if change >= 0 else 'down' }}">
-                {{ '{:+.1f}'.format(change) }}% vs prev period
+                {{ '{:+.1f}'.format(change) }}% vs попередній період
             </div>
         {% else %}
-            <div class="kpi-change neutral">no prev data</div>
+            <div class="kpi-change neutral">немає попередніх даних</div>
         {% endif %}
     </div>
     <div class="card kpi">
-        <div class="kpi-label">COGS <span class="info-tip" data-tip="Cost of Goods Sold — total ingredient cost for all items sold, calculated from recipe cards and supplier prices (brutto).">ⓘ</span></div>
+        <div class="kpi-label">Собівартість (COGS) <span class="info-tip" data-tip="Cost of Goods Sold — загальна вартість інгредієнтів для всіх проданих позицій, розрахована з техкарток та цін постачальників (брутто).">ⓘ</span></div>
         <div class="kpi-value">{{ '{:,.0f}'.format(total_cogs) }} zł</div>
         <div class="kpi-change neutral">food cost</div>
     </div>
     <div class="card kpi">
-        <div class="kpi-label">Gross Profit <span class="info-tip" data-tip="Revenue minus COGS. What's left after paying for ingredients. Does not include rent, salaries, or other overhead.">ⓘ</span></div>
+        <div class="kpi-label">Валовий прибуток <span class="info-tip" data-tip="Виручка мінус собівартість. Що залишається після оплати інгредієнтів. Не включає оренду, зарплати та інші витрати.">ⓘ</span></div>
         <div class="kpi-value">{{ '{:,.0f}'.format(gross_profit) }} zł</div>
         <div class="kpi-change {{ 'up' if gross_margin >= 60 else 'down' if gross_margin < 50 else 'neutral' }}">
-            {{ '{:.1f}'.format(gross_margin) }}% margin
+            {{ '{:.1f}'.format(gross_margin) }}% маржа
         </div>
     </div>
     <div class="card kpi">
-        <div class="kpi-label">Food Cost % <span class="info-tip" data-tip="COGS ÷ Revenue × 100. Target: under 30% is healthy, 30–40% needs attention, over 40% is high.">ⓘ</span></div>
+        <div class="kpi-label">Food Cost % <span class="info-tip" data-tip="COGS ÷ Виручка × 100. Ціль: до 30% — норма, 30–40% — потребує уваги, понад 40% — високий.">ⓘ</span></div>
         <div class="kpi-value">{{ '{:.1f}'.format(avg_food_cost) }}%</div>
         <div class="kpi-change {{ 'up' if avg_food_cost <= 30 else 'down' if avg_food_cost > 40 else 'neutral' }}">
-            {{ 'healthy' if avg_food_cost <= 30 else 'high' if avg_food_cost > 40 else 'watch' }}
+            {{ 'норма' if avg_food_cost <= 30 else 'високий' if avg_food_cost > 40 else 'увага' }}
         </div>
     </div>
 </div>
@@ -62,38 +62,38 @@
 <!-- P&L Summary -->
 <div class="card" style="margin-bottom: 16px;">
     <div class="card-header">
-        <div class="card-title">P&L Summary</div>
+        <div class="card-title">P&L Звіт</div>
         <div class="card-subtitle">{{ date_from }}{% if date_from != date_to %} → {{ date_to }}{% endif %}</div>
     </div>
     <table>
         <tbody>
             <tr>
-                <td style="font-weight:600;">Revenue (gross) <span class="info-tip" data-tip="Total sales including VAT, before any deductions.">ⓘ</span></td>
+                <td style="font-weight:600;">Виручка (валова) <span class="info-tip" data-tip="Загальний продаж включаючи ПДВ, до будь-яких вирахувань.">ⓘ</span></td>
                 <td class="text-right" style="font-weight:600;">{{ '{:,.2f}'.format(totals['revenue']) }} zł</td>
                 <td class="text-right text-muted">100%</td>
             </tr>
             <tr>
-                <td class="text-muted" style="padding-left:24px;">Discounts <span class="info-tip" data-tip="Total discounts given to customers (staff meals, promos, loyalty).">ⓘ</span></td>
+                <td class="text-muted" style="padding-left:24px;">Знижки <span class="info-tip" data-tip="Загальні знижки для клієнтів (обіди персоналу, акції, лояльність).">ⓘ</span></td>
                 <td class="text-right text-muted">-{{ '{:,.2f}'.format(totals['discounts']) }} zł</td>
                 <td class="text-right text-muted">{{ '{:.1f}'.format(totals['discounts'] / totals['revenue'] * 100) if totals['revenue'] > 0 else 0 }}%</td>
             </tr>
             <tr>
-                <td>Net Revenue <span class="info-tip" data-tip="Revenue after VAT deduction. What you actually earn before costs.">ⓘ</span></td>
+                <td>Чиста виручка <span class="info-tip" data-tip="Виручка після вирахування ПДВ. Що ви фактично заробляєте до витрат.">ⓘ</span></td>
                 <td class="text-right">{{ '{:,.2f}'.format(totals['net_revenue']) }} zł</td>
                 <td class="text-right text-muted">{{ '{:.1f}'.format(totals['net_revenue'] / totals['revenue'] * 100) if totals['revenue'] > 0 else 0 }}%</td>
             </tr>
             <tr style="border-top: 2px solid var(--border);">
-                <td style="color:var(--red);">Cost of Goods Sold <span class="info-tip" data-tip="Sum of ingredient costs for all sold items. Based on recipe cards × quantities sold. Only products with recipes are included.">ⓘ</span></td>
+                <td style="color:var(--red);">Собівартість (COGS) <span class="info-tip" data-tip="Сума вартості інгредієнтів для всіх проданих позицій. На основі техкарток × кількість продажів. Тільки продукти з рецептами.">ⓘ</span></td>
                 <td class="text-right" style="color:var(--red);">-{{ '{:,.2f}'.format(total_cogs) }} zł</td>
                 <td class="text-right text-muted">{{ '{:.1f}'.format(avg_food_cost) }}%</td>
             </tr>
             <tr style="border-top: 2px solid var(--border);">
-                <td style="font-weight:700; font-size:1.05em;">Gross Profit <span class="info-tip" data-tip="Revenue − COGS. Your margin before rent, salaries, utilities, and other operating expenses.">ⓘ</span></td>
+                <td style="font-weight:700; font-size:1.05em;">Валовий прибуток <span class="info-tip" data-tip="Виручка − Собівартість. Ваша маржа до оренди, зарплат, комунальних та інших операційних витрат.">ⓘ</span></td>
                 <td class="text-right" style="font-weight:700; font-size:1.05em; color:var(--green);">{{ '{:,.2f}'.format(gross_profit) }} zł</td>
                 <td class="text-right" style="font-weight:600; color:var(--green);">{{ '{:.1f}'.format(gross_margin) }}%</td>
             </tr>
             <tr>
-                <td class="text-muted">Items sold</td>
+                <td class="text-muted">Продано позицій</td>
                 <td class="text-right text-muted">{{ totals['items']|int }}</td>
                 <td></td>
             </tr>
@@ -104,23 +104,23 @@
 <!-- ABC Analysis -->
 <div class="card" style="margin-bottom: 16px;">
     <div class="card-header">
-        <div class="card-title">ABC Analysis <span class="info-tip" data-tip="Products ranked by revenue. A = top items making 80% of revenue (stars), B = next 15% (steady), C = bottom 5% (consider removing or repricing).">ⓘ</span></div>
-        <div class="card-subtitle">A = 80% revenue, B = next 15%, C = last 5%</div>
+        <div class="card-title">ABC Аналіз <span class="info-tip" data-tip="Продукти ранжовані за виручкою. A = топ-позиції, що дають 80% виручки (зірки), B = наступні 15% (стабільні), C = останні 5% (розгляньте видалення або зміну ціни).">ⓘ</span></div>
+        <div class="card-subtitle">A = 80% виручки, B = наступні 15%, C = останні 5%</div>
     </div>
     <div class="grid-3">
         <div style="text-align:center; padding:12px;">
             <div style="font-size:2em; font-weight:700; color:var(--green);">{{ abc_counts['A'] }}</div>
-            <div style="font-size:.8em; font-weight:600; color:var(--text-secondary);">A products</div>
+            <div style="font-size:.8em; font-weight:600; color:var(--text-secondary);">A продуктів</div>
             <div style="font-size:.85em;">{{ '{:,.0f}'.format(abc_revenue['A']) }} zł</div>
         </div>
         <div style="text-align:center; padding:12px;">
             <div style="font-size:2em; font-weight:700; color:var(--orange);">{{ abc_counts['B'] }}</div>
-            <div style="font-size:.8em; font-weight:600; color:var(--text-secondary);">B products</div>
+            <div style="font-size:.8em; font-weight:600; color:var(--text-secondary);">B продуктів</div>
             <div style="font-size:.85em;">{{ '{:,.0f}'.format(abc_revenue['B']) }} zł</div>
         </div>
         <div style="text-align:center; padding:12px;">
             <div style="font-size:2em; font-weight:700; color:var(--red);">{{ abc_counts['C'] }}</div>
-            <div style="font-size:.8em; font-weight:600; color:var(--text-secondary);">C products</div>
+            <div style="font-size:.8em; font-weight:600; color:var(--text-secondary);">C продуктів</div>
             <div style="font-size:.85em;">{{ '{:,.0f}'.format(abc_revenue['C']) }} zł</div>
         </div>
     </div>
@@ -128,7 +128,7 @@
 
 {% if low_stock %}
 <div class="alert alert-warning">
-    ⚠️ <strong>Low stock:</strong>
+    ⚠️ <strong>Низький запас:</strong>
     {% for item in low_stock %}
         {{ item['name'] }} ({{ item['quantity']|round(1) }} {{ item['unit'] }}){% if not loop.last %}, {% endif %}
     {% endfor %}
@@ -139,7 +139,7 @@
 <div class="grid-2">
     <div class="card">
         <div class="card-header">
-            <div class="card-title">Top Products by Revenue</div>
+            <div class="card-title">Топ продукти за виручкою</div>
         </div>
         <div class="bar-chart">
             {% set max_rev = top_products[0]['rev'] if top_products else 1 %}
@@ -148,7 +148,7 @@
                 <div class="bar-label" title="{{ p['product_name'] }}">{{ p['product_name'] }}</div>
                 <div class="bar-track">
                     <div class="bar-fill" style="width: {{ (p['rev'] / max_rev * 100)|round }}%; min-width: 40px;">
-                        <span>{{ p['qty']|int }} pcs</span>
+                        <span>{{ p['qty']|int }} шт</span>
                     </div>
                 </div>
                 <div class="bar-value">{{ '{:,.0f}'.format(p['rev']) }} zł</div>
@@ -158,7 +158,7 @@
     </div>
     <div class="card">
         <div class="card-header">
-            <div class="card-title">Top Products by Quantity</div>
+            <div class="card-title">Топ продукти за кількістю</div>
         </div>
         <div class="bar-chart">
             {% set max_qty = top_by_qty[0]['qty'] if top_by_qty else 1 %}
@@ -170,7 +170,7 @@
                         <span>{{ '{:,.0f}'.format(p['rev']) }} zł</span>
                     </div>
                 </div>
-                <div class="bar-value">{{ p['qty']|int }} pcs</div>
+                <div class="bar-value">{{ p['qty']|int }} шт</div>
             </div>
             {% endfor %}
         </div>
@@ -181,7 +181,7 @@
 {% if daily|length > 1 %}
 <div class="card">
     <div class="card-header">
-        <div class="card-title">Daily Revenue Trend</div>
+        <div class="card-title">Денний тренд виручки</div>
     </div>
     <div style="display: flex; align-items: flex-end; gap: 4px; height: 120px; padding-top: 8px;">
         {% set max_daily = daily|map(attribute='revenue')|max %}
@@ -200,22 +200,22 @@
 <div class="card">
     <div class="card-header">
         <div>
-            <div class="card-title">All Products</div>
-            <div class="card-subtitle">{{ sales|length }} products · {{ date_from }}{% if date_from != date_to %} → {{ date_to }}{% endif %}</div>
+            <div class="card-title">Всі продукти</div>
+            <div class="card-subtitle">{{ sales|length }} продуктів · {{ date_from }}{% if date_from != date_to %} → {{ date_to }}{% endif %}</div>
         </div>
     </div>
     {% if sales %}
     <table id="products-table">
         <thead>
             <tr>
-                <th class="sortable" data-col="0" data-type="str" style="width:30px;">ABC <span class="info-tip" data-tip="A = top 80% revenue, B = next 15%, C = bottom 5%.">ⓘ</span></th>
-                <th class="sortable" data-col="1" data-type="str">Product</th>
-                <th class="sortable text-right" data-col="2" data-type="num">Qty</th>
-                <th class="sortable text-right" data-col="3" data-type="num">Revenue</th>
-                <th class="sortable text-right" data-col="4" data-type="num">Unit Cost <span class="info-tip" data-tip="Ingredient cost per 1 portion, from recipe card. '—' means no recipe yet.">ⓘ</span></th>
-                <th class="sortable text-right" data-col="5" data-type="num">COGS <span class="info-tip" data-tip="Unit Cost × Qty sold. Total ingredient spend for this product.">ⓘ</span></th>
-                <th class="sortable text-right" data-col="6" data-type="num">Profit <span class="info-tip" data-tip="Revenue − COGS for this product.">ⓘ</span></th>
-                <th class="sortable text-right" data-col="7" data-type="num">Food % <span class="info-tip" data-tip="COGS ÷ Revenue × 100. Green ≤30%, orange 30–40%, red >40%.">ⓘ</span></th>
+                <th class="sortable" data-col="0" data-type="str" style="width:30px;">ABC <span class="info-tip" data-tip="A = топ 80% виручки, B = наступні 15%, C = останні 5%.">ⓘ</span></th>
+                <th class="sortable" data-col="1" data-type="str">Продукт</th>
+                <th class="sortable text-right" data-col="2" data-type="num">К-сть</th>
+                <th class="sortable text-right" data-col="3" data-type="num">Виручка</th>
+                <th class="sortable text-right" data-col="4" data-type="num">Вартість од. <span class="info-tip" data-tip="Вартість інгредієнтів на 1 порцію з техкартки. '—' означає, що рецепту ще немає.">ⓘ</span></th>
+                <th class="sortable text-right" data-col="5" data-type="num">COGS <span class="info-tip" data-tip="Вартість од. × К-сть продажів. Загальні витрати на інгредієнти для цього продукту.">ⓘ</span></th>
+                <th class="sortable text-right" data-col="6" data-type="num">Прибуток <span class="info-tip" data-tip="Виручка − COGS для цього продукту.">ⓘ</span></th>
+                <th class="sortable text-right" data-col="7" data-type="num">Food % <span class="info-tip" data-tip="COGS ÷ Виручка × 100. Зелений ≤30%, помаранчевий 30–40%, червоний >40%.">ⓘ</span></th>
             </tr>
         </thead>
         <tbody>
@@ -249,7 +249,7 @@
     </table>
     {% else %}
     <p style="padding: 20px 0; text-align: center; color: var(--text-secondary);">
-        No sales data for this period. Click <strong>Sync GoPOS</strong> to import.
+        Немає даних про продажі за цей період. Натисніть <strong>Sync GoPOS</strong> для імпорту.
     </p>
     {% endif %}
 </div>

@@ -158,25 +158,25 @@
         <span class="brand">☕ The Frame</span>
         <div class="nav-links">
             {% if request.state.user and request.state.user.role == 'admin' %}
-            <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
+            <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Дашборд</a>
             {% endif %}
-            <a href="/inventory" class="{% if request.url.path == '/inventory' %}active{% endif %}">Inventory</a>
-            <a href="/inventory/upload" class="{% if '/inventory/upload' in request.url.path %}active{% endif %}">Upload Invoice</a>
-            <a href="/inventory/history" class="{% if '/inventory/count' in request.url.path or '/inventory/history' in request.url.path %}active{% endif %}">Stock Count</a>
-            <a href="/recipes" class="{% if '/recipes' in request.url.path %}active{% endif %}">Recipes</a>
+            <a href="/inventory" class="{% if request.url.path == '/inventory' %}active{% endif %}">Склад</a>
+            <a href="/inventory/upload" class="{% if '/inventory/upload' in request.url.path %}active{% endif %}">Завантажити фактуру</a>
+            <a href="/inventory/history" class="{% if '/inventory/count' in request.url.path or '/inventory/history' in request.url.path %}active{% endif %}">Інвентаризація</a>
+            <a href="/recipes" class="{% if '/recipes' in request.url.path %}active{% endif %}">Рецепти</a>
             {% if request.state.user and request.state.user.role == 'admin' %}
-            <a href="/users" class="{% if '/users' in request.url.path %}active{% endif %}">Users</a>
+            <a href="/users" class="{% if '/users' in request.url.path %}active{% endif %}">Користувачі</a>
             {% endif %}
         </div>
         <div class="nav-right">
             <span id="sync-status" style="font-size:.8em; margin-right:8px;"></span>
             {% if request.state.user and request.state.user.role == 'admin' %}
             <form action="/sync" method="post">
-                <button class="btn btn-success btn-sm" type="submit" id="sync-btn">🔄 Sync GoPOS</button>
+                <button class="btn btn-success btn-sm" type="submit" id="sync-btn">🔄 Синк GoPOS</button>
             </form>
             {% endif %}
             <span style="color:rgba(255,255,255,.6); font-size:.8em; margin-left:8px;">{{ request.state.user.display_name or request.state.user.username }}</span>
-            <a href="/logout" class="btn btn-outline btn-sm" style="color:rgba(255,255,255,.7); border-color:rgba(255,255,255,.2); padding:4px 10px; font-size:.75em;">Logout</a>
+            <a href="/logout" class="btn btn-outline btn-sm" style="color:rgba(255,255,255,.7); border-color:rgba(255,255,255,.2); padding:4px 10px; font-size:.75em;">Вийти</a>
         </div>
     </nav>
     <div class="container">
