@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="margin-bottom: 20px;">
+    <h2 style="margin:0;">Invoice Preview — {{ filename }}</h2>
+    <span class="text-muted" style="font-size:.85em;">Review parsed items before adding to inventory</span>
+</div>
+
+{% if not result.success %}
+<div class="alert" style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca;">
+    ⚠️ Parsing failed: {{ result.error }}
+</div>
+<a href="/inventory/upload" class="btn btn-outline">← Try again</a>
+{% else %}
+
+<form method="post" action="/inventory/upload/confirm">
+    <input type="hidden" name="item_count" value="{{ result.items|length }}">
+    <input type="hidden" name="invoice_note" value="{{ filename }}">
+
+    <div class="card" style="margin-bottom:16px; padding:14px 20px;">
+        <div class="form-row">
+            <div class="form-group" style="flex:1;">
+                <label>Supplier</label>
+                <select name="supplier_id" class="form-control">
+                    <option value="">— Select —</option>
+                    {% for s in suppliers %}<option value="{{ s['id'] }}">{{ s['name'] }}</option>{% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:30px;">✓</th>
+                    <th>Invoice Name</th>
+                    <th>→ Ingredient</th>
+                    <th class="text-right">Qty</th>
+                    <th>Unit</th>
+                    <th class="text-right">Total Brutto</th>
+                    <th class="text-right">Per Unit</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in result.items %}
+                <tr>
+                    <td>
+                        <input type="checkbox" name="skip_{{ loop.index0 }}" value="1"
+                               style="width:16px; height:16px;"
+                               onchange="this.closest('tr').style.opacity = this.checked ? '0.3' : '1'">
+                    </td>
+                    <td style="font-size:.85em;" title="{{ item.invoice_name }}">
+                        {{ item.invoice_name[:40] }}
+                    </td>
+                    <td>
+                        <input type="hidden" name="ingredient_id_{{ loop.index0 }}" value="{{ item.ingredient_id or '' }}">
+                        <input type="text" name="ingredient_name_{{ loop.index0 }}" value="{{ item.ingredient_name }}"
+                               style="padding:4px 6px; border:1px solid var(--border); border-radius:4px; font-size:.85em; width:100%;">
+                        <input type="hidden" name="is_new_{{ loop.index0 }}" value="{{ 'true' if item.is_new else 'false' }}">
+                    </td>
+                    <td class="text-right">
+                        <input type="number" name="quantity_{{ loop.index0 }}" value="{{ item.quantity }}" step="0.01"
+                               style="width:70px; padding:4px 6px; border:1px solid var(--border); border-radius:4px; font-size:.85em; text-align:right;">
+                    </td>
+                    <td>
+                        <select name="unit_{{ loop.index0 }}" style="padding:4px; border:1px solid var(--border); border-radius:4px; font-size:.85em;">
+                            {% for u in ['szt', 'g', 'kg', 'ml', 'L', 'pcs'] %}
+                            <option value="{{ u }}" {{ 'selected' if item.unit == u }}>{{ u }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td class="text-right">
+                        <input type="number" name="price_brutto_{{ loop.index0 }}" value="{{ '%.2f'|format(item.price_brutto) }}" step="0.01"
+                               style="width:80px; padding:4px 6px; border:1px solid var(--border); border-radius:4px; font-size:.85em; text-align:right;">
+                    </td>
+                    <td class="text-right">
+                        <input type="number" name="price_per_unit_{{ loop.index0 }}" value="{{ '%.3f'|format(item.price_per_unit_brutto) }}" step="0.001"
+                               style="width:80px; padding:4px 6px; border:1px solid var(--border); border-radius:4px; font-size:.85em; text-align:right;">
+                    </td>
+                    <td>
+                        {% if item.is_new %}
+                        <span class="badge badge-orange">New</span>
+                        {% else %}
+                        <span class="badge badge-green">Matched</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end;">
+        <a href="/inventory/upload" class="btn btn-outline">← Cancel</a>
+        <button type="submit" class="btn btn-primary">✓ Confirm & Add to Inventory</button>
+    </div>
+</form>
+{% endif %}
+
+{% endblock %}

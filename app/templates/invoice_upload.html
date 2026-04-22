@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="margin-bottom: 20px;">
+    <h2 style="margin:0;">Upload Invoice</h2>
+    <span class="text-muted" style="font-size:.85em;">Upload a supplier PDF invoice — AI will extract items automatically</span>
+</div>
+
+<div class="card" style="text-align:center; padding:40px;">
+    <form method="post" action="/inventory/upload" enctype="multipart/form-data" id="upload-form">
+        <div style="border:2px dashed var(--border); border-radius:12px; padding:40px; margin-bottom:16px; cursor:pointer;" id="drop-zone" onclick="document.getElementById('file-input').click();">
+            <div style="font-size:2em; margin-bottom:8px;">📄</div>
+            <div style="font-weight:600; margin-bottom:4px;">Drop PDF here or click to browse</div>
+            <div class="text-muted" style="font-size:.85em;">Supports Makro, Bakers House, and other invoices</div>
+            <div id="file-name" style="margin-top:12px; font-weight:600; color:var(--accent); display:none;"></div>
+        </div>
+        <input type="file" name="file" id="file-input" accept=".pdf" required style="display:none;">
+        <button type="submit" class="btn btn-primary" id="upload-btn" disabled>🔍 Parse Invoice</button>
+    </form>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const input = document.getElementById('file-input');
+const nameEl = document.getElementById('file-name');
+const btn = document.getElementById('upload-btn');
+const zone = document.getElementById('drop-zone');
+
+input.addEventListener('change', function() {
+    if (this.files.length) {
+        nameEl.textContent = this.files[0].name;
+        nameEl.style.display = 'block';
+        btn.disabled = false;
+    }
+});
+
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor = 'var(--accent)'; });
+zone.addEventListener('dragleave', () => { zone.style.borderColor = 'var(--border)'; });
+zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.style.borderColor = 'var(--border)';
+    input.files = e.dataTransfer.files;
+    input.dispatchEvent(new Event('change'));
+});
+
+document.getElementById('upload-form').addEventListener('submit', function() {
+    btn.disabled = true;
+    btn.textContent = '⏳ Parsing with AI...';
+});
+</script>
+{% endblock %}

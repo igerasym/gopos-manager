@@ -160,6 +160,7 @@
             <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
             {% endif %}
             <a href="/inventory" class="{% if request.url.path == '/inventory' %}active{% endif %}">Inventory</a>
+            <a href="/inventory/upload" class="{% if '/inventory/upload' in request.url.path %}active{% endif %}">Upload Invoice</a>
             <a href="/inventory/history" class="{% if '/inventory/count' in request.url.path or '/inventory/history' in request.url.path %}active{% endif %}">Stock Count</a>
             <a href="/recipes" class="{% if '/recipes' in request.url.path %}active{% endif %}">Recipes</a>
             {% if request.state.user and request.state.user.role == 'admin' %}
