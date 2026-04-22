@@ -85,11 +85,13 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - Side dishes: Becon, Salmon, Avocado, Egg, Asparagus, Bread, Bread and butter
 
 ## What's Next (backlog)
-- Auto-parse PDF invoices (upload → extract items → add to inventory)
-- Telegram bot — daily report after sync
-- Waste tracking / write-offs
+- Auto-parse PDF invoices with LLM (Bedrock/Anthropic) — upload PDF → AI extracts items → maps to ingredients → preview → confirm
+- Ingredient mapping table (invoice name → system ingredient)
+- Waste tracking with reasons (spoiled, staff meal, error)
 - Stock forecast — predict needs based on avg sales
 - Order generator — auto-create supplier order from low stock + forecast
 - Print tech cards as PDF for kitchen
-- Recipe versioning
-- Multi-location support
+- Shift checklists (open/close)
+- Quick waste log (broken bottle, spoiled item)
+- Shift notes between staff
+- Deploy to dedicated EC2 t3.micro (without Playwright, CSV upload instead)
