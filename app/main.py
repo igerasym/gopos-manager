@@ -522,6 +522,27 @@ async def delete_sub_recipe_item(sub_id: int, item_id: int):
     return RedirectResponse('/recipes/sub', status_code=303)
 
 
+@app.post('/recipes/sub/{sub_id}/update/{item_id}')
+async def update_sub_recipe_item(sub_id: int, item_id: int, amount: float = Form(...)):
+    db = get_db()
+    db.execute('UPDATE sub_recipe_items SET amount = ? WHERE id = ?', (amount, item_id))
+    _recalc_sub_recipe_cost(db, sub_id)
+    db.commit()
+    db.close()
+    return RedirectResponse('/recipes/sub', status_code=303)
+
+
+@app.post('/recipes/sub/{sub_id}/edit')
+async def edit_sub_recipe(sub_id: int, yield_amount: float = Form(...), description: str = Form('')):
+    db = get_db()
+    db.execute('UPDATE sub_recipes SET yield_amount = ?, description = ? WHERE id = ?',
+        (yield_amount, description, sub_id))
+    _recalc_sub_recipe_cost(db, sub_id)
+    db.commit()
+    db.close()
+    return RedirectResponse('/recipes/sub', status_code=303)
+
+
 def _recalc_sub_recipe_cost(db, sub_id):
     """Recalculate unit_price for a sub-recipe ingredient."""
     sr = db.execute('SELECT ingredient_id, yield_amount FROM sub_recipes WHERE id = ?', (sub_id,)).fetchone()

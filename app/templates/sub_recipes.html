@@ -63,11 +63,15 @@
                     <tr>
                         <td>{{ item['ingredient'] }}</td>
                         <td class="text-right">
-                            {% if item['unit'] in ['kg', 'L'] %}
-                            {{ '{:.0f}'.format(item['amount'] * 1000) }}
-                            {% else %}
-                            {{ item['amount'] }}
-                            {% endif %}
+                            <form method="post" action="/recipes/sub/{{ s['id'] }}/update/{{ item['id'] }}" style="display:inline-flex; align-items:center; gap:3px;">
+                                <input type="hidden" name="amount" id="raw_{{ item['id'] }}">
+                                <input type="number" value="{% if item['unit'] in ['kg', 'L'] %}{{ '{:.0f}'.format(item['amount'] * 1000) }}{% else %}{{ item['amount'] }}{% endif %}" step="0.1"
+                                       style="width:70px; padding:3px 6px; border:1px solid transparent; border-radius:4px; font-size:.85em; text-align:right; background:transparent;"
+                                       onchange="document.getElementById('raw_{{ item['id'] }}').value = this.value / {{ 1000 if item['unit'] in ['kg','L'] else 1 }};"
+                                       onfocus="this.style.borderColor='var(--accent)'; this.style.background='#fff';"
+                                       onblur="this.style.borderColor='transparent'; this.style.background='transparent';">
+                                <button class="btn btn-primary" type="submit" style="padding:2px 6px; font-size:.7em; opacity:0;" onfocus="this.style.opacity=1" onmouseover="this.style.opacity=1">✓</button>
+                            </form>
                         </td>
                         <td class="text-muted">
                             {{ 'g' if item['unit'] == 'kg' else 'ml' if item['unit'] == 'L' else item['unit'] }}
@@ -115,6 +119,20 @@
             <strong>Приготування:</strong><br>{{ s['description'] }}
         </div>
         {% endif %}
+
+        <div style="padding:10px 20px; border-top:1px solid var(--border); background:#f8fafc;">
+            <form class="form-row" method="post" action="/recipes/sub/{{ s['id'] }}/edit" style="width:100%;">
+                <div class="form-group" style="flex:0 0 100px;">
+                    <label>Вихід</label>
+                    <input name="yield_amount" type="number" step="0.1" value="{{ s['yield_amount'] }}" class="form-control" style="font-size:.85em;">
+                </div>
+                <div class="form-group" style="flex:1;">
+                    <label>Приготування</label>
+                    <input name="description" value="{{ s['description'] or '' }}" class="form-control" style="font-size:.85em;">
+                </div>
+                <button class="btn btn-outline btn-sm" type="submit">Зберегти</button>
+            </form>
+        </div>
 
         <div class="sub-card-actions">
             <form class="form-row" method="post" action="/recipes/sub/{{ s['id'] }}/add" style="width:100%;">
