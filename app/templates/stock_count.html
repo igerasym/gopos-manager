@@ -2,12 +2,16 @@
 
 {% block extra_style %}
 .count-input {
-    width: 90px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
-    font-size: .9em; text-align: right; transition: border-color .15s;
+    width: 90px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 1em; text-align: right; transition: border-color .15s;
 }
 .count-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(67,97,238,.1); }
-.count-row td { vertical-align: middle; }
-.current-qty { font-size: .8em; color: var(--text-secondary); }
+.count-row td { vertical-align: middle; padding: 8px; }
+.current-qty { font-size: .85em; color: var(--text-secondary); }
+@media (max-width: 768px) {
+    .count-input { width: 80px; font-size: 1.1em; padding: 10px; }
+    .count-row td { padding: 6px 4px; }
+}
 {% endblock %}
 
 {% block content %}

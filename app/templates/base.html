@@ -148,6 +148,42 @@
             .grid-2, .grid-3 { grid-template-columns: 1fr; }
             .form-row { flex-direction: column; }
             .bar-label { width: 100px; }
+
+            /* Mobile nav */
+            nav { flex-wrap: wrap; height: auto; padding: 10px 16px; gap: 8px; }
+            nav .brand { font-size: 1em; margin-right: auto; }
+            nav .nav-links { width: 100%; order: 3; display: none; flex-direction: column; gap: 2px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.1); }
+            nav .nav-links.open { display: flex; }
+            nav .nav-links a { padding: 8px 12px; border-radius: 6px; }
+            nav .nav-right { order: 2; gap: 4px; }
+            nav .nav-right span { display: none; }
+            .hamburger { display: block; order: 1; background: none; border: none; color: #fff; font-size: 1.4em; cursor: pointer; padding: 4px 8px; }
+
+            /* Mobile container */
+            .container { padding: 12px 10px; }
+            .card { padding: 14px; }
+
+            /* Mobile tables */
+            table { font-size: .8em; }
+            th, td { padding: 6px 8px; }
+
+            /* Mobile KPI */
+            .kpi .kpi-value { font-size: 1.3em; }
+            .kpi .kpi-label { font-size: .7em; }
+
+            /* Hide less important columns on mobile */
+            .hide-mobile { display: none; }
+
+            /* Mobile stock count inputs */
+            .count-input { width: 70px; font-size: 1em; padding: 8px; }
+
+            /* Mobile inline edit */
+            .inline-edit input[type="number"] { width: 60px; }
+            .inline-edit input[type="text"] { min-width: 80px; }
+        }
+
+        @media (min-width: 769px) {
+            .hamburger { display: none; }
         }
 
         {% block extra_style %}{% endblock %}
@@ -156,6 +192,7 @@
 <body>
     <nav>
         <span class="brand">☕ The Frame</span>
+        <button class="hamburger" onclick="document.querySelector('.nav-links').classList.toggle('open')">☰</button>
         <div class="nav-links">
             {% if request.state.user and request.state.user.role == 'admin' %}
             <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Дашборд</a>

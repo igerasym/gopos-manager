@@ -112,9 +112,9 @@
                 <th style="width:25%;">Назва</th>
                 <th class="text-right" style="width:10%;">Запас</th>
                 <th style="width:6%;">Од.</th>
-                <th class="text-right" style="width:10%;">Ціна/од.</th>
-                <th class="text-right" style="width:9%;">Мін.</th>
-                <th style="width:18%;">Постачальник</th>
+                <th class="text-right hide-mobile" style="width:10%;">Ціна/од.</th>
+                <th class="text-right hide-mobile" style="width:9%;">Мін.</th>
+                <th class="hide-mobile" style="width:18%;">Постачальник</th>
                 <th style="width:6%;">Статус</th>
                 <th style="width:5%;"></th>
             </tr>
@@ -144,19 +144,19 @@
                         <button class="btn btn-primary save-btn" type="submit">✓</button>
                     </form>
                 </td>
-                <td class="text-right">
+                <td class="text-right hide-mobile">
                     <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
                         <input type="number" name="unit_price" value="{{ i['unit_price'] or 0 }}" step="0.001">
                         <button class="btn btn-primary save-btn" type="submit">✓</button>
                     </form>
                 </td>
-                <td class="text-right">
+                <td class="text-right hide-mobile">
                     <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
                         <input type="number" name="min_quantity" value="{{ i['min_quantity'] }}" step="0.1">
                         <button class="btn btn-primary save-btn" type="submit">✓</button>
                     </form>
                 </td>
-                <td>
+                <td class="hide-mobile">
                     <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
                         <select name="supplier_id" onchange="this.form.submit()" style="font-size:.8em; padding:3px 4px; border:1px solid transparent; border-radius:4px; background:transparent; cursor:pointer; min-width:115px;">
                             <option value="">—</option>
