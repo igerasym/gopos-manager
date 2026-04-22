@@ -16,7 +16,7 @@ load_dotenv(Path(__file__).parent.parent / '.env')
 log = logging.getLogger(__name__)
 
 GOPOS_URL = os.getenv('GOPOS_URL', 'https://app.gopos.io')
-VENUE_ID = os.getenv('GOPOS_VENUE_ID', '9388')
+VENUE_ID = os.getenv('GOPOS_VENUE_ID', '')
 EMAIL = os.getenv('GOPOS_EMAIL', '')
 PASSWORD = os.getenv('GOPOS_PASSWORD', '')
 

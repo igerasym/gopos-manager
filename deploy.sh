@@ -52,7 +52,7 @@ if [ ! -f .env ]; then
     cat > .env << 'EOF'
 GOPOS_EMAIL=your-email@example.com
 GOPOS_PASSWORD=your-password-here
-GOPOS_VENUE_ID=9388
+GOPOS_VENUE_ID=your-venue-id
 GOPOS_URL=https://app.gopos.io
 SESSION_SECRET=$(openssl rand -hex 32)
 EOF

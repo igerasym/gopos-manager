@@ -18,7 +18,7 @@ Edit `.env` with your GoPOS credentials:
 ```
 GOPOS_EMAIL=your-email@example.com
 GOPOS_PASSWORD=your-password
-GOPOS_VENUE_ID=9388
+GOPOS_VENUE_ID=your-venue-id
 ```
 
 ### 2. Run with Docker (recommended for Pi)

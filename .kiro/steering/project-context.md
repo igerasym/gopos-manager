@@ -17,7 +17,7 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - No JS frameworks — vanilla JS only, CSS-only charts
 
 ## GoPos Integration
-- POS system: app.gopos.io, venue ID 9388
+- POS system: app.gopos.io
 - `gopos_sync.py` logs in via Playwright, sets date filter via base64-encoded URL param, downloads CSV, imports to DB
 - Date filter format: `_\xc3\xa7date_range|bt=DATE_FROM%2006%3A00%3A00\xc2\xa5DATE_TO%2005%3A00%3A00` (base64, raw bytes)
 - GoPos "business day" = 06:00 → next day 05:00
