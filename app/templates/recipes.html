@@ -95,19 +95,13 @@
                             <td>{{ r['ingredient'] }}</td>
                             <td class="text-right">
                                 <form method="post" action="/recipes/update/{{ r['id'] }}" class="inline-edit">
-                                    <input type="number" name="amount" value="{{ r['amount'] }}" step="0.01">
+                                    <input type="number" name="amount" value="{{ r['amount'] }}" step="0.0001" style="display:none;">
+                                    <input type="number" value="{{ r['display_amount'] }}" step="0.1"
+                                           onchange="this.previousElementSibling.value = this.value / {{ 1000 if r['unit'] in ['kg','L'] else 1 }}; this.previousElementSibling.form.submit();">
                                     <button class="btn btn-primary save-btn" type="submit">✓</button>
                                 </form>
                             </td>
-                            <td>
-                                <form method="post" action="/ingredients/update/{{ r['ingredient_id'] if r['ingredient_id'] is defined else '' }}" class="inline-edit">
-                                    <select name="unit">
-                                        {% for u in ['g', 'kg', 'ml', 'L', 'szt', 'pcs'] %}
-                                        <option value="{{ u }}" {{ 'selected' if r['unit'] == u }}>{{ u }}</option>
-                                        {% endfor %}
-                                    </select>
-                                    <button class="btn btn-primary save-btn" type="submit">✓</button>
-                                </form>
+                            <td class="text-muted" style="font-size:.85em;">{{ r['display_unit'] }}</td>
                             </td>
                             <td class="text-right text-muted" style="font-size:.8em;">
                                 {% if r['unit_price'] > 0 %}{{ '{:.2f}'.format(r['unit_price']) }}{% else %}—{% endif %}

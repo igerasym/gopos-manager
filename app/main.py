@@ -640,8 +640,19 @@ async def recipes_page(request: Request):
     recipe_map = {}
     cost_map = {}
     for r in all_recipes:
-        recipe_map.setdefault(r['product_name'], []).append(r)
-        cost_map[r['product_name']] = cost_map.get(r['product_name'], 0) + (r['cost'] or 0)
+        row = dict(r)
+        # Display amounts in g/ml for recipes (more readable than kg/L)
+        if row['unit'] == 'kg':
+            row['display_amount'] = round(row['amount'] * 1000, 1)
+            row['display_unit'] = 'g'
+        elif row['unit'] == 'L':
+            row['display_amount'] = round(row['amount'] * 1000, 1)
+            row['display_unit'] = 'ml'
+        else:
+            row['display_amount'] = row['amount']
+            row['display_unit'] = row['unit']
+        recipe_map.setdefault(row['product_name'], []).append(row)
+        cost_map[row['product_name']] = cost_map.get(row['product_name'], 0) + (row['cost'] or 0)
 
     orphan_products = sorted(set(recipe_map.keys()) - {c['product_name'] for c in cards})
 
