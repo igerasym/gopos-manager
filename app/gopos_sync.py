@@ -66,6 +66,11 @@ async def download_csv(page, date_from: str, date_to: str) -> str:
 
     # Click CSV export button (icon-only button inside .export-dropdown)
     export_btn = page.locator('.export-dropdown button.dropdown-toggle')
+    if await export_btn.count() == 0:
+        await page.screenshot(path=Path(__file__).parent.parent / 'data' / 'debug_sync.png', full_page=True)
+        buttons = await page.locator('button').all_text_contents()
+        log.error(f'Export button not found. URL: {page.url}. Buttons: {buttons[:10]}')
+        raise Exception(f'Export button not found on page')
     await export_btn.click()
     await page.wait_for_timeout(2000)
 
