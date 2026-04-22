@@ -57,7 +57,7 @@ Return ONLY valid JSON array, no markdown, no explanation:
     try:
         client = boto3.client('bedrock-runtime', region_name='us-west-2')
         resp = client.invoke_model(
-            modelId='anthropic.claude-3-haiku-20240307-v1:0',
+            modelId='anthropic.claude-3-5-haiku-20241022-v1:0',
             contentType='application/json',
             accept='application/json',
             body=json.dumps({
