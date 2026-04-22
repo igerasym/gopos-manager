@@ -46,29 +46,6 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(scheduled_sync, CronTrigger(hour=23, minute=0))
     scheduler.start()
 
-    # Set up Telegram polling in separate thread
-    import threading
-    def telegram_poll_thread():
-        import json, time
-        from urllib.request import urlopen
-        from app.telegram_bot import handle_command, API
-        offset = 0
-        while True:
-            try:
-                resp = urlopen(f'{API}/getUpdates?offset={offset}&timeout=10', timeout=15)
-                data = json.loads(resp.read())
-                for update in data.get('result', []):
-                    offset = update['update_id'] + 1
-                    msg = update.get('message', {})
-                    text = msg.get('text', '')
-                    chat_id = str(msg.get('chat', {}).get('id', ''))
-                    if text.startswith('/'):
-                        handle_command(text, chat_id)
-            except Exception:
-                time.sleep(5)
-
-    threading.Thread(target=telegram_poll_thread, daemon=True).start()
-
     yield
 
     scheduler.shutdown()
