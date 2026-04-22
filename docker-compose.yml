@@ -7,6 +7,5 @@ services:
       - ./data:/app/data
       - ./.env:/app/.env:ro
     restart: unless-stopped
-    mem_limit: 512m
     environment:
       - SESSION_SECRET=${SESSION_SECRET:-change-me-in-production}
