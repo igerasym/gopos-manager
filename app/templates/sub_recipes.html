@@ -63,14 +63,14 @@
                     <tr>
                         <td>{{ item['ingredient'] }}</td>
                         <td class="text-right">
-                            <form method="post" action="/recipes/sub/{{ s['id'] }}/update/{{ item['id'] }}" style="display:inline-flex; align-items:center; gap:3px;">
+                            <form method="post" action="/recipes/sub/{{ s['id'] }}/update/{{ item['id'] }}" style="display:inline-flex; align-items:center; gap:3px;" class="inline-edit-form">
                                 <input type="hidden" name="amount" id="raw_{{ item['id'] }}">
                                 <input type="number" value="{% if item['unit'] in ['kg', 'L'] %}{{ '{:.0f}'.format(item['amount'] * 1000) }}{% else %}{{ item['amount'] }}{% endif %}" step="0.1"
                                        style="width:70px; padding:3px 6px; border:1px solid transparent; border-radius:4px; font-size:.85em; text-align:right; background:transparent;"
                                        onchange="document.getElementById('raw_{{ item['id'] }}').value = this.value / {{ 1000 if item['unit'] in ['kg','L'] else 1 }};"
-                                       onfocus="this.style.borderColor='var(--accent)'; this.style.background='#fff';"
-                                       onblur="this.style.borderColor='transparent'; this.style.background='transparent';">
-                                <button class="btn btn-primary" type="submit" style="padding:2px 6px; font-size:.7em; opacity:0;" onfocus="this.style.opacity=1" onmouseover="this.style.opacity=1">✓</button>
+                                       onfocus="this.style.borderColor='var(--accent)'; this.style.background='#fff'; this.nextElementSibling.style.opacity=1;"
+                                       onblur="this.style.borderColor='transparent'; this.style.background='transparent'; setTimeout(()=>{this.nextElementSibling.style.opacity=0},200);">
+                                <button class="btn btn-primary" type="submit" style="padding:2px 6px; font-size:.7em; opacity:0;">✓</button>
                             </form>
                         </td>
                         <td class="text-muted">
