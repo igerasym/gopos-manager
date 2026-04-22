@@ -26,12 +26,21 @@ def init_db():
             UNIQUE(date, product_name)
         );
 
+        CREATE TABLE IF NOT EXISTS suppliers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            contact TEXT DEFAULT '',
+            note TEXT DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS ingredients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
             unit TEXT NOT NULL DEFAULT 'g',
             quantity REAL DEFAULT 0,
-            min_quantity REAL DEFAULT 0
+            min_quantity REAL DEFAULT 0,
+            unit_price REAL DEFAULT 0,
+            supplier_id INTEGER REFERENCES suppliers(id)
         );
 
         CREATE TABLE IF NOT EXISTS recipes (
@@ -63,13 +72,6 @@ def init_db():
             date TEXT NOT NULL,
             ingredient_id INTEGER NOT NULL REFERENCES ingredients(id),
             amount REAL NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS suppliers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            contact TEXT DEFAULT '',
-            note TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS users (

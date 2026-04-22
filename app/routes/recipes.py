@@ -6,6 +6,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
+from app.services.recipes import get_recipe_map_with_costs, get_selling_prices
+from app.services.units import from_display
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 
@@ -21,40 +23,9 @@ async def recipes_page(request: Request):
         FROM recipe_cards rc ORDER BY rc.category, rc.product_name
     ''').fetchall()
 
-    all_recipes = db.execute('''
-        SELECT r.id, r.product_name, r.ingredient_id, i.name as ingredient,
-               r.amount, i.unit, COALESCE(i.unit_price, 0) as unit_price,
-               r.amount * COALESCE(i.unit_price, 0) as cost
-        FROM recipes r JOIN ingredients i ON r.ingredient_id = i.id
-        ORDER BY r.product_name, i.name
-    ''').fetchall()
-
-    recipe_map = {}
-    cost_map = {}
-    for r in all_recipes:
-        row = dict(r)
-        # Display amounts in g/ml for recipes (more readable than kg/L)
-        if row['unit'] == 'kg':
-            row['display_amount'] = round(row['amount'] * 1000, 1)
-            row['display_unit'] = 'g'
-        elif row['unit'] == 'L':
-            row['display_amount'] = round(row['amount'] * 1000, 1)
-            row['display_unit'] = 'ml'
-        else:
-            row['display_amount'] = row['amount']
-            row['display_unit'] = row['unit']
-        recipe_map.setdefault(row['product_name'], []).append(row)
-        cost_map[row['product_name']] = cost_map.get(row['product_name'], 0) + (row['cost'] or 0)
-
+    recipe_map, cost_map = get_recipe_map_with_costs()
     orphan_products = sorted(set(recipe_map.keys()) - {c['product_name'] for c in cards})
-
-    # Average selling price per product (without discounts = real menu price)
-    avg_prices = db.execute('''
-        SELECT product_name, SUM(total_money + discount) / SUM(quantity) as avg_price
-        FROM sales WHERE quantity > 0
-        GROUP BY product_name
-    ''').fetchall()
-    price_map = {r['product_name']: r['avg_price'] for r in avg_prices}
+    price_map = get_selling_prices()
 
     ingredients = db.execute('SELECT id, name, unit FROM ingredients ORDER BY name').fetchall()
     products = db.execute('SELECT DISTINCT product_name FROM sales ORDER BY product_name').fetchall()
@@ -118,11 +89,7 @@ async def update_recipe(request: Request, recipe_id: int):
     if 'display_amount' in form:
         display_amount = float(form.get('display_amount', 0))
         base_unit = form.get('base_unit', '')
-        # Convert display (g/ml) back to storage (kg/L)
-        if base_unit in ('kg', 'L'):
-            amount = display_amount / 1000
-        else:
-            amount = display_amount
+        amount = from_display(display_amount, base_unit)
     else:
         amount = float(form.get('amount', 0))
 

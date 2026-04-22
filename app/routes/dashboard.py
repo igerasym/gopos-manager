@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
+from app.services.recipes import get_cost_lookup
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 
@@ -110,13 +111,7 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
     ''').fetchall()
 
     # ── Food Cost & P&L ──
-    # Get cost per product from recipes
-    recipe_costs = db.execute('''
-        SELECT r.product_name, SUM(r.amount * COALESCE(i.unit_price, 0)) as unit_cost
-        FROM recipes r JOIN ingredients i ON r.ingredient_id = i.id
-        GROUP BY r.product_name
-    ''').fetchall()
-    cost_lookup = {r['product_name']: r['unit_cost'] for r in recipe_costs}
+    cost_lookup = get_cost_lookup()
 
     # Build sales with food cost
     sales_with_cost = []

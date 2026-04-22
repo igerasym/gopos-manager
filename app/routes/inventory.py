@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
+from app.services.inventory import get_all_ingredients, get_suppliers, get_ingredient_deps
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 
@@ -14,27 +15,8 @@ router = APIRouter()
 
 @router.get('/inventory', response_class=HTMLResponse)
 async def inventory_page(request: Request, supplier: str = ''):
-    db = get_db()
-    if supplier:
-        items = db.execute('''
-            SELECT i.*, s.name as supplier_name,
-                   CASE WHEN sr.id IS NOT NULL THEN 1 ELSE 0 END as is_sub_recipe
-            FROM ingredients i
-            LEFT JOIN suppliers s ON i.supplier_id = s.id
-            LEFT JOIN sub_recipes sr ON sr.ingredient_id = i.id
-            WHERE s.name = ? ORDER BY is_sub_recipe, i.name
-        ''', (supplier,)).fetchall()
-    else:
-        items = db.execute('''
-            SELECT i.*, s.name as supplier_name,
-                   CASE WHEN sr.id IS NOT NULL THEN 1 ELSE 0 END as is_sub_recipe
-            FROM ingredients i
-            LEFT JOIN suppliers s ON i.supplier_id = s.id
-            LEFT JOIN sub_recipes sr ON sr.ingredient_id = i.id
-            ORDER BY is_sub_recipe, i.name
-        ''').fetchall()
-    suppliers = db.execute('SELECT id, name FROM suppliers ORDER BY name').fetchall()
-    db.close()
+    items = get_all_ingredients(supplier)
+    suppliers = get_suppliers()
     return templates.TemplateResponse(request, 'inventory.html', context={
         'items': items, 'suppliers': suppliers, 'active_supplier': supplier,
     })
@@ -143,21 +125,5 @@ async def delete_ingredient(ingredient_id: int):
 
 
 @router.get('/api/ingredient/{ingredient_id}/deps')
-async def ingredient_deps(ingredient_id: int):
-    db = get_db()
-    ing = db.execute('SELECT name FROM ingredients WHERE id = ?', (ingredient_id,)).fetchone()
-    recipes = db.execute(
-        'SELECT DISTINCT product_name FROM recipes WHERE ingredient_id = ?', (ingredient_id,)
-    ).fetchall()
-    subs = db.execute('''
-        SELECT i.name FROM sub_recipe_items sri
-        JOIN sub_recipes sr ON sri.sub_recipe_id = sr.id
-        JOIN ingredients i ON sr.ingredient_id = i.id
-        WHERE sri.ingredient_id = ?
-    ''', (ingredient_id,)).fetchall()
-    db.close()
-    return JSONResponse({
-        'name': ing['name'] if ing else '',
-        'recipes': [r['product_name'] for r in recipes],
-        'sub_recipes': [s['name'] for s in subs],
-    })
+async def ingredient_deps_api(ingredient_id: int):
+    return JSONResponse(get_ingredient_deps(ingredient_id))

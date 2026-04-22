@@ -6,25 +6,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
+from app.services.recipes import recalc_sub_recipe_cost
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 
 router = APIRouter()
 
 
-def _recalc_sub_recipe_cost(db, sub_id):
-    """Recalculate unit_price for a sub-recipe ingredient."""
-    sr = db.execute('SELECT ingredient_id, yield_amount FROM sub_recipes WHERE id = ?', (sub_id,)).fetchone()
-    if not sr:
-        return
-    total_cost = db.execute('''
-        SELECT COALESCE(SUM(sri.amount * COALESCE(i.unit_price, 0)), 0) as cost
-        FROM sub_recipe_items sri JOIN ingredients i ON sri.ingredient_id = i.id
-        WHERE sri.sub_recipe_id = ?
-    ''', (sub_id,)).fetchone()['cost']
 
-    cost_per_unit = total_cost / sr['yield_amount'] if sr['yield_amount'] > 0 else 0
-    db.execute('UPDATE ingredients SET unit_price = ? WHERE id = ?', (round(cost_per_unit, 4), sr['ingredient_id']))
 
 
 @router.get('/recipes/sub', response_class=HTMLResponse)
@@ -88,7 +77,7 @@ async def add_sub_recipe_item(
         (sub_id, ingredient_id, amount)
     )
     # Recalculate cost per unit
-    _recalc_sub_recipe_cost(db, sub_id)
+    recalc_sub_recipe_cost(db, sub_id)
     db.commit()
     db.close()
     return RedirectResponse('/recipes/sub', status_code=303)
@@ -98,7 +87,7 @@ async def add_sub_recipe_item(
 async def delete_sub_recipe_item(sub_id: int, item_id: int):
     db = get_db()
     db.execute('DELETE FROM sub_recipe_items WHERE id = ?', (item_id,))
-    _recalc_sub_recipe_cost(db, sub_id)
+    recalc_sub_recipe_cost(db, sub_id)
     db.commit()
     db.close()
     return RedirectResponse('/recipes/sub', status_code=303)
@@ -108,7 +97,7 @@ async def delete_sub_recipe_item(sub_id: int, item_id: int):
 async def update_sub_recipe_item(sub_id: int, item_id: int, amount: float = Form(...)):
     db = get_db()
     db.execute('UPDATE sub_recipe_items SET amount = ? WHERE id = ?', (amount, item_id))
-    _recalc_sub_recipe_cost(db, sub_id)
+    recalc_sub_recipe_cost(db, sub_id)
     db.commit()
     db.close()
     return RedirectResponse('/recipes/sub', status_code=303)
@@ -119,7 +108,7 @@ async def edit_sub_recipe(sub_id: int, yield_amount: float = Form(...), descript
     db = get_db()
     db.execute('UPDATE sub_recipes SET yield_amount = ?, description = ? WHERE id = ?',
         (yield_amount, description, sub_id))
-    _recalc_sub_recipe_cost(db, sub_id)
+    recalc_sub_recipe_cost(db, sub_id)
     db.commit()
     db.close()
     return RedirectResponse('/recipes/sub', status_code=303)
