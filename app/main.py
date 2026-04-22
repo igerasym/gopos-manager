@@ -27,14 +27,21 @@ async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler()
 
     async def scheduled_sync():
-        from app.gopos_sync import sync_today
-        await sync_today()
-        # Send daily report to Telegram
-        try:
-            from app.telegram_bot import daily_report
-            daily_report()
-        except Exception:
-            pass
+        import threading
+        def run():
+            import asyncio as aio
+            loop = aio.new_event_loop()
+            aio.set_event_loop(loop)
+            try:
+                from app.gopos_sync import sync_today
+                loop.run_until_complete(sync_today())
+                from app.telegram_bot import daily_report
+                daily_report()
+            except Exception:
+                pass
+            finally:
+                loop.close()
+        threading.Thread(target=run, daemon=True).start()
 
     scheduler.add_job(scheduled_sync, CronTrigger(hour=23, minute=0))
     scheduler.start()
@@ -826,15 +833,27 @@ async def delete_user(user_id: int):
 async def trigger_sync(
     date_from: str = Form(''), date_to: str = Form(''),
 ):
-    from app.gopos_sync import sync_today, sync_range
-    if date_from and date_to:
-        asyncio.create_task(sync_range(date_from, date_to))
-    elif date_from:
-        from app.gopos_sync import sync_date
-        asyncio.create_task(sync_date(date_from))
-    else:
-        asyncio.create_task(sync_today())
-    return RedirectResponse('/', status_code=303)
+    import threading
+
+    def run_sync():
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            if date_from and date_to:
+                from app.gopos_sync import sync_range
+                loop.run_until_complete(sync_range(date_from, date_to))
+            elif date_from:
+                from app.gopos_sync import sync_date
+                loop.run_until_complete(sync_date(date_from))
+            else:
+                from app.gopos_sync import sync_today
+                loop.run_until_complete(sync_today())
+        finally:
+            loop.close()
+
+    threading.Thread(target=run_sync, daemon=True).start()
+    return JSONResponse({'status': 'started'})
 
 
 @app.get('/api/sync-status')
