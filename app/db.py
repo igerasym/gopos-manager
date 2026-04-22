@@ -80,6 +80,21 @@ def init_db():
             display_name TEXT DEFAULT ''
         );
 
+        CREATE TABLE IF NOT EXISTS sub_recipes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ingredient_id INTEGER NOT NULL UNIQUE REFERENCES ingredients(id),
+            yield_amount REAL NOT NULL DEFAULT 1,
+            yield_unit TEXT NOT NULL DEFAULT 'kg',
+            description TEXT DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS sub_recipe_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sub_recipe_id INTEGER NOT NULL REFERENCES sub_recipes(id),
+            ingredient_id INTEGER NOT NULL REFERENCES ingredients(id),
+            amount REAL NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS stock_counts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,

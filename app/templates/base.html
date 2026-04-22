@@ -200,7 +200,8 @@
             <a href="/inventory" class="{% if request.url.path == '/inventory' %}active{% endif %}">Склад</a>
             <a href="/inventory/upload" class="{% if '/inventory/upload' in request.url.path %}active{% endif %}">Завантажити фактуру</a>
             <a href="/inventory/history" class="{% if '/inventory/count' in request.url.path or '/inventory/history' in request.url.path %}active{% endif %}">Інвентаризація</a>
-            <a href="/recipes" class="{% if '/recipes' in request.url.path %}active{% endif %}">Рецепти</a>
+            <a href="/recipes" class="{% if request.url.path == '/recipes' %}active{% endif %}">Рецепти</a>
+            <a href="/recipes/sub" class="{% if '/recipes/sub' in request.url.path %}active{% endif %}">Напівфабрикати</a>
             {% if request.state.user and request.state.user.role == 'admin' %}
             <a href="/users" class="{% if '/users' in request.url.path %}active{% endif %}">Користувачі</a>
             {% endif %}

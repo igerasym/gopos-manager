@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block extra_style %}
+.sub-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; }
+.sub-card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; cursor: pointer; user-select: none; }
+.sub-card-header:hover { background: #f8fafc; }
+.sub-card-header h3 { font-size: .95em; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 8px; }
+.sub-card-header h3::before { content: '▸'; font-size: .8em; color: var(--text-secondary); transition: transform .2s; }
+.sub-card.open .sub-card-header h3::before { transform: rotate(90deg); }
+.sub-card-body { display: none; border-top: 1px solid var(--border); }
+.sub-card.open .sub-card-body { display: block; }
+.sub-card-body table { margin: 0; }
+.sub-card-desc { padding: 10px 20px; background: #fafbfc; border-top: 1px solid var(--border); font-size: .82em; color: var(--text-secondary); white-space: pre-line; }
+.sub-card-actions { padding: 10px 20px; border-top: 1px solid var(--border); background: #fafbfc; }
+{% endblock %}
+
+{% block content %}
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin:0;">Напівфабрикати</h2>
+        <span class="text-muted" style="font-size:.85em;">Соуси, заготовки, оброблені продукти</span>
+    </div>
+    <a href="/recipes" class="btn btn-outline btn-sm">← Рецепти</a>
+</div>
+
+{% for s in subs %}
+{% set items = sub_items.get(s['id'], []) %}
+{% set total_cost = items|map(attribute='cost')|sum %}
+<div class="sub-card" id="sub-{{ s['id'] }}">
+    <div class="sub-card-header" onclick="this.parentElement.classList.toggle('open')">
+        <h3>
+            {{ s['name'] }}
+            <span style="font-size:.75em; color:var(--text-secondary); font-weight:400;">
+                вихід: {{ s['yield_amount'] }} {{ s['yield_unit'] }} · {{ items|length }} інгредієнтів
+            </span>
+        </h3>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <span class="badge" style="background:#ede9fe; color:#5b21b6;">
+                {{ '{:.2f}'.format(s['unit_price'] or 0) }} zł/{{ s['unit'] }}
+            </span>
+            <span class="badge badge-green">
+                Всього: {{ '{:.2f}'.format(total_cost) }} zł
+            </span>
+        </div>
+    </div>
+    <div class="sub-card-body">
+        {% if items %}
+        <div style="padding: 12px 20px;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Інгредієнт</th>
+                        <th class="text-right">Кількість</th>
+                        <th>Од.</th>
+                        <th class="text-right">Ціна/од.</th>
+                        <th class="text-right">Вартість</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr>
+                        <td>{{ item['ingredient'] }}</td>
+                        <td class="text-right">
+                            {% if item['unit'] in ['kg', 'L'] %}
+                            {{ '{:.0f}'.format(item['amount'] * 1000) }}
+                            {% else %}
+                            {{ item['amount'] }}
+                            {% endif %}
+                        </td>
+                        <td class="text-muted">
+                            {{ 'g' if item['unit'] == 'kg' else 'ml' if item['unit'] == 'L' else item['unit'] }}
+                        </td>
+                        <td class="text-right text-muted" style="font-size:.8em;">
+                            {% if item['unit_price'] %}{{ '{:.2f}'.format(item['unit_price']) }}{% else %}—{% endif %}
+                        </td>
+                        <td class="text-right" style="font-weight:500;">
+                            {{ '{:.2f}'.format(item['cost']) }} zł
+                        </td>
+                        <td class="text-right">
+                            <form method="post" action="/recipes/sub/{{ s['id'] }}/delete/{{ item['id'] }}" style="display:inline;">
+                                <button class="btn btn-outline btn-sm" type="submit" style="padding:2px 6px; font-size:.7em;">✕</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr style="border-top: 2px solid var(--border);">
+                        <td colspan="4" class="text-right" style="font-weight:600; font-size:.85em;">
+                            Вартість {{ s['yield_amount'] }} {{ s['yield_unit'] }}:
+                        </td>
+                        <td class="text-right" style="font-weight:700; color:var(--accent);">
+                            {{ '{:.2f}'.format(total_cost) }} zł
+                        </td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td colspan="4" class="text-right text-muted" style="font-size:.85em;">
+                            Ціна за 1 {{ s['unit'] }}:
+                        </td>
+                        <td class="text-right" style="font-weight:600;">
+                            {{ '{:.2f}'.format(s['unit_price'] or 0) }} zł
+                        </td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if s['description'] %}
+        <div class="sub-card-desc">
+            <strong>Приготування:</strong><br>{{ s['description'] }}
+        </div>
+        {% endif %}
+
+        <div class="sub-card-actions">
+            <form class="form-row" method="post" action="/recipes/sub/{{ s['id'] }}/add" style="width:100%;">
+                <div class="form-group" style="flex:2;">
+                    <label>Додати інгредієнт</label>
+                    <select name="ingredient_id" class="form-control" required style="font-size:.85em;">
+                        <option value="">—</option>
+                        {% for i in ingredients %}<option value="{{ i['id'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="flex:0 0 80px;">
+                    <label>Кількість</label>
+                    <input name="amount" type="number" step="0.001" class="form-control" required style="font-size:.85em;">
+                </div>
+                <button class="btn btn-primary btn-sm" type="submit">+</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<div style="margin-top:24px;">
+    <div style="font-size:.75em; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:var(--text-secondary); margin-bottom:10px; padding-bottom:6px; border-bottom:2px solid var(--border);">
+        Новий напівфабрикат
+    </div>
+    <div class="card">
+        <form method="post" action="/recipes/sub/create">
+            <div class="form-row" style="margin-bottom:12px;">
+                <div class="form-group" style="flex:2;">
+                    <label>Назва</label>
+                    <input name="name" class="form-control" required placeholder="напр. Соус шакшука">
+                </div>
+                <div class="form-group" style="flex:0 0 80px;">
+                    <label>Вихід</label>
+                    <input name="yield_amount" type="number" step="0.1" value="1" class="form-control" required>
+                </div>
+                <div class="form-group" style="flex:0 0 70px;">
+                    <label>Од.</label>
+                    <select name="unit" class="form-control">
+                        <option value="kg">kg</option>
+                        <option value="L">L</option>
+                        <option value="szt">szt</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label>Приготування</label>
+                <textarea name="description" class="form-control" rows="2" style="resize:vertical;"></textarea>
+            </div>
+            <button class="btn btn-primary" type="submit">Створити напівфабрикат</button>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
