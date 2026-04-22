@@ -69,11 +69,30 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - Add ingredient inline per card
 - New recipe card form with product name (datalist from GoPos), category, portion size, preparation text
 
-### Sync
-- POST /sync — triggers async sync (today by default, or date range)
-- GET /api/sync-status — polling endpoint for sync status
-- Navbar shows sync status: ⏳ Syncing... → ✓ Done / ✗ Error
-- Button disabled during sync
+### Invoice Upload (/inventory/upload) — admin only
+- Drag & drop PDF upload
+- AI parsing via AWS Bedrock Claude 3.5 Haiku
+- Preview page: edit ingredient names, quantities, prices, skip items
+- Confirm → creates deliveries + updates stock + creates new ingredients
+- Supplier selection on confirm
+
+### Telegram Bot
+- Daily report after 23:00 sync: revenue, top 5, low stock
+- Commands: /today, /stock, /help
+- Polling-based (no webhook needed)
+
+### Stock Count (/inventory/count)
+- New count form: all ingredients with system qty, enter actual
+- Editable detail view: change quantities, add missing items
+- History with date, time, user, shortage count
+- KPIs: items counted, shortages, waste value (zł)
+
+## Auth & Roles
+- Cookie-based auth with signed sessions (HMAC)
+- Roles: admin (full access), chef (inventory + recipes), barista (inventory + recipes)
+- Dashboard, Users, Sync, Upload Invoice — admin only
+- Default user: admin/admin
+- Users page: add/delete users, change role/password
 
 ## Suppliers
 - Makro Cash and Carry (main supplier, weekly deliveries)
