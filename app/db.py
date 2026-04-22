@@ -80,6 +80,24 @@ def init_db():
             display_name TEXT DEFAULT ''
         );
 
+        CREATE TABLE IF NOT EXISTS stock_counts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            time TEXT DEFAULT '',
+            user_id INTEGER REFERENCES users(id),
+            note TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS stock_count_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stock_count_id INTEGER NOT NULL REFERENCES stock_counts(id),
+            ingredient_id INTEGER NOT NULL REFERENCES ingredients(id),
+            expected REAL DEFAULT 0,
+            actual REAL DEFAULT 0,
+            difference REAL DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS sync_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             started_at TEXT NOT NULL,

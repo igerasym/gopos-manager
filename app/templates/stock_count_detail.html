@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block extra_style %}
+.diff-positive { color: var(--green); font-weight: 600; }
+.diff-negative { color: var(--red); font-weight: 600; }
+.diff-zero { color: var(--text-secondary); }
+.edit-qty { width: 80px; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; font-size: .85em; text-align: right; background: transparent; transition: all .15s; }
+.edit-qty:hover { border-color: var(--border); background: #fff; }
+.edit-qty:focus { border-color: var(--accent); background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(67,97,238,.1); }
+.save-btn { opacity: 0; transition: opacity .15s; }
+form:focus-within .save-btn { opacity: 1; }
+{% endblock %}
+
+{% block content %}
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin:0;">Stock Count — {{ count['date'] }} {{ count['time'] or '' }}</h2>
+        <span class="text-muted" style="font-size:.85em;">
+            by {{ count['display_name'] or count['username'] or 'Unknown' }}
+            {% if count['note'] %} · {{ count['note'] }}{% endif %}
+        </span>
+    </div>
+    <a href="/inventory/history" class="btn btn-outline btn-sm">← History</a>
+</div>
+
+<div class="grid-3" style="margin-bottom: 16px;">
+    <div class="card kpi">
+        <div class="kpi-label">Items Counted</div>
+        <div class="kpi-value">{{ items|length }}</div>
+    </div>
+    <div class="card kpi">
+        <div class="kpi-label">Shortages</div>
+        <div class="kpi-value" style="color:var(--red);">{{ items|selectattr('difference', 'lt', 0)|list|length }}</div>
+    </div>
+    <div class="card kpi">
+        <div class="kpi-label">Waste Value</div>
+        <div class="kpi-value" style="color:var(--red);">{{ '{:.2f}'.format(total_diff_value) }} zł</div>
+        <div class="kpi-change neutral">estimated loss</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">Counted Items</div>
+        <div class="card-subtitle">Click quantity to edit</div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Ingredient</th>
+                <th>Unit</th>
+                <th class="text-right">Expected</th>
+                <th class="text-right">Actual</th>
+                <th class="text-right">Difference</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for i in items %}
+            <tr>
+                <td>{{ i['name'] }}</td>
+                <td class="text-muted">{{ i['unit'] }}</td>
+                <td class="text-right text-muted">{{ '{:.1f}'.format(i['expected']) }}</td>
+                <td class="text-right">
+                    <form method="post" action="/inventory/count/{{ count['id'] }}/update" style="display:inline-flex; align-items:center; gap:3px;">
+                        <input type="hidden" name="item_id" value="{{ i['id'] }}">
+                        <input type="number" name="actual" value="{{ i['actual'] }}" step="0.01" class="edit-qty">
+                        <button class="btn btn-primary save-btn" type="submit" style="padding:2px 6px; font-size:.7em;">✓</button>
+                    </form>
+                </td>
+                <td class="text-right {{ 'diff-positive' if i['difference'] > 0.01 else 'diff-negative' if i['difference'] < -0.01 else 'diff-zero' }}">
+                    {{ '{:+.1f}'.format(i['difference']) }}
+                </td>
+                <td>
+                    {% if i['difference'] < -0.01 %}
+                    <span class="badge badge-red">Shortage</span>
+                    {% elif i['difference'] > 0.01 %}
+                    <span class="badge badge-green">Surplus</span>
+                    {% else %}
+                    <span class="badge" style="background:#f1f5f9; color:#64748b;">Match</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Add missing item -->
+<div class="card" style="margin-top: 16px;">
+    <div class="card-header"><div class="card-title">Add Item to Count</div></div>
+    <form class="form-row" method="post" action="/inventory/count/{{ count['id'] }}/add">
+        <div class="form-group" style="flex:2;">
+            <label>Ingredient</label>
+            <select name="ingredient_id" class="form-control" required>
+                <option value="">— Select —</option>
+                {% for i in all_ingredients %}
+                <option value="{{ i['id'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="flex:0 0 100px;">
+            <label>Actual Qty</label>
+            <input name="actual" type="number" step="0.01" class="form-control" required>
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">+ Add</button>
+    </form>
+</div>
+
+{% endblock %}

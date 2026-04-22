@@ -83,7 +83,9 @@ async def download_csv(page, date_from: str, date_to: str) -> str:
     dest = Path(__file__).parent.parent / 'data' / download.suggested_filename
     await download.save_as(dest)
     log.info(f'Downloaded CSV: {dest}')
-    return dest.read_text(encoding='utf-8-sig')
+    csv_text = dest.read_text(encoding='utf-8-sig')
+    dest.unlink(missing_ok=True)
+    return csv_text
 
 
 def import_csv_to_db(csv_text: str, date: str):

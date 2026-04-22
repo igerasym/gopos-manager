@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block extra_style %}
+.count-input {
+    width: 90px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: .9em; text-align: right; transition: border-color .15s;
+}
+.count-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(67,97,238,.1); }
+.count-row td { vertical-align: middle; }
+.current-qty { font-size: .8em; color: var(--text-secondary); }
+{% endblock %}
+
+{% block content %}
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin:0;">Stock Count</h2>
+        <span class="text-muted" style="font-size:.85em;">Count actual quantities on hand</span>
+    </div>
+    <a href="/inventory/history" class="btn btn-outline btn-sm">📋 History</a>
+</div>
+
+<form method="post" action="/inventory/count">
+    <div class="card" style="margin-bottom: 16px; padding: 14px 20px;">
+        <div class="form-row">
+            <div class="form-group" style="flex:1;">
+                <label>Note (optional)</label>
+                <input name="note" class="form-control" placeholder="e.g. Weekly count, Sunday evening">
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <input type="text" id="count-search" placeholder="Search ingredients..."
+               style="width:100%; padding:8px 12px; border:1px solid var(--border); border-radius:8px; font-size:.9em; margin-bottom:12px;">
+        <table id="count-table">
+            <thead>
+                <tr>
+                    <th>Ingredient</th>
+                    <th>Unit</th>
+                    <th class="text-right">System Qty</th>
+                    <th class="text-right">Actual Qty</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in items %}
+                <tr class="count-row">
+                    <td>{{ i['name'] }}</td>
+                    <td class="text-muted">{{ i['unit'] }}</td>
+                    <td class="text-right current-qty">{{ '{:.1f}'.format(i['quantity']) }}</td>
+                    <td class="text-right">
+                        <input type="number" name="qty_{{ i['id'] }}" class="count-input"
+                               step="0.01" placeholder="{{ '{:.1f}'.format(i['quantity']) }}">
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+        <a href="/inventory" class="btn btn-outline">Cancel</a>
+        <button type="submit" class="btn btn-primary" onclick="return confirm('Save stock count? This will update all quantities.');">
+            ✓ Save Stock Count
+        </button>
+    </div>
+</form>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('count-search').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('#count-table tbody tr').forEach(tr => {
+        const name = tr.children[0].textContent.toLowerCase();
+        tr.style.display = name.includes(q) ? '' : 'none';
+    });
+});
+</script>
+{% endblock %}
