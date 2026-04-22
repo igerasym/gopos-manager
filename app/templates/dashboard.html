@@ -27,7 +27,7 @@
 <!-- KPI row -->
 <div class="grid-4" style="margin-bottom: 16px;">
     <div class="card kpi">
-        <div class="kpi-label">Revenue</div>
+        <div class="kpi-label">Revenue <span class="info-tip" data-tip="Total gross sales from GoPOS for the selected period, including VAT.">ⓘ</span></div>
         <div class="kpi-value">{{ '{:,.0f}'.format(totals['revenue']) }} zł</div>
         {% if prev_totals['revenue'] > 0 %}
             {% set change = ((totals['revenue'] - prev_totals['revenue']) / prev_totals['revenue'] * 100) %}
@@ -39,19 +39,19 @@
         {% endif %}
     </div>
     <div class="card kpi">
-        <div class="kpi-label">COGS</div>
+        <div class="kpi-label">COGS <span class="info-tip" data-tip="Cost of Goods Sold — total ingredient cost for all items sold, calculated from recipe cards and supplier prices (brutto).">ⓘ</span></div>
         <div class="kpi-value">{{ '{:,.0f}'.format(total_cogs) }} zł</div>
         <div class="kpi-change neutral">food cost</div>
     </div>
     <div class="card kpi">
-        <div class="kpi-label">Gross Profit</div>
+        <div class="kpi-label">Gross Profit <span class="info-tip" data-tip="Revenue minus COGS. What's left after paying for ingredients. Does not include rent, salaries, or other overhead.">ⓘ</span></div>
         <div class="kpi-value">{{ '{:,.0f}'.format(gross_profit) }} zł</div>
         <div class="kpi-change {{ 'up' if gross_margin >= 60 else 'down' if gross_margin < 50 else 'neutral' }}">
             {{ '{:.1f}'.format(gross_margin) }}% margin
         </div>
     </div>
     <div class="card kpi">
-        <div class="kpi-label">Food Cost %</div>
+        <div class="kpi-label">Food Cost % <span class="info-tip" data-tip="COGS ÷ Revenue × 100. Target: under 30% is healthy, 30–40% needs attention, over 40% is high.">ⓘ</span></div>
         <div class="kpi-value">{{ '{:.1f}'.format(avg_food_cost) }}%</div>
         <div class="kpi-change {{ 'up' if avg_food_cost <= 30 else 'down' if avg_food_cost > 40 else 'neutral' }}">
             {{ 'healthy' if avg_food_cost <= 30 else 'high' if avg_food_cost > 40 else 'watch' }}
@@ -68,27 +68,27 @@
     <table>
         <tbody>
             <tr>
-                <td style="font-weight:600;">Revenue (gross)</td>
+                <td style="font-weight:600;">Revenue (gross) <span class="info-tip" data-tip="Total sales including VAT, before any deductions.">ⓘ</span></td>
                 <td class="text-right" style="font-weight:600;">{{ '{:,.2f}'.format(totals['revenue']) }} zł</td>
                 <td class="text-right text-muted">100%</td>
             </tr>
             <tr>
-                <td class="text-muted" style="padding-left:24px;">Discounts</td>
+                <td class="text-muted" style="padding-left:24px;">Discounts <span class="info-tip" data-tip="Total discounts given to customers (staff meals, promos, loyalty).">ⓘ</span></td>
                 <td class="text-right text-muted">-{{ '{:,.2f}'.format(totals['discounts']) }} zł</td>
                 <td class="text-right text-muted">{{ '{:.1f}'.format(totals['discounts'] / totals['revenue'] * 100) if totals['revenue'] > 0 else 0 }}%</td>
             </tr>
             <tr>
-                <td>Net Revenue</td>
+                <td>Net Revenue <span class="info-tip" data-tip="Revenue after VAT deduction. What you actually earn before costs.">ⓘ</span></td>
                 <td class="text-right">{{ '{:,.2f}'.format(totals['net_revenue']) }} zł</td>
                 <td class="text-right text-muted">{{ '{:.1f}'.format(totals['net_revenue'] / totals['revenue'] * 100) if totals['revenue'] > 0 else 0 }}%</td>
             </tr>
             <tr style="border-top: 2px solid var(--border);">
-                <td style="color:var(--red);">Cost of Goods Sold</td>
+                <td style="color:var(--red);">Cost of Goods Sold <span class="info-tip" data-tip="Sum of ingredient costs for all sold items. Based on recipe cards × quantities sold. Only products with recipes are included.">ⓘ</span></td>
                 <td class="text-right" style="color:var(--red);">-{{ '{:,.2f}'.format(total_cogs) }} zł</td>
                 <td class="text-right text-muted">{{ '{:.1f}'.format(avg_food_cost) }}%</td>
             </tr>
             <tr style="border-top: 2px solid var(--border);">
-                <td style="font-weight:700; font-size:1.05em;">Gross Profit</td>
+                <td style="font-weight:700; font-size:1.05em;">Gross Profit <span class="info-tip" data-tip="Revenue − COGS. Your margin before rent, salaries, utilities, and other operating expenses.">ⓘ</span></td>
                 <td class="text-right" style="font-weight:700; font-size:1.05em; color:var(--green);">{{ '{:,.2f}'.format(gross_profit) }} zł</td>
                 <td class="text-right" style="font-weight:600; color:var(--green);">{{ '{:.1f}'.format(gross_margin) }}%</td>
             </tr>
@@ -104,7 +104,7 @@
 <!-- ABC Analysis -->
 <div class="card" style="margin-bottom: 16px;">
     <div class="card-header">
-        <div class="card-title">ABC Analysis</div>
+        <div class="card-title">ABC Analysis <span class="info-tip" data-tip="Products ranked by revenue. A = top items making 80% of revenue (stars), B = next 15% (steady), C = bottom 5% (consider removing or repricing).">ⓘ</span></div>
         <div class="card-subtitle">A = 80% revenue, B = next 15%, C = last 5%</div>
     </div>
     <div class="grid-3">
@@ -208,14 +208,14 @@
     <table id="products-table">
         <thead>
             <tr>
-                <th class="sortable" data-col="0" data-type="str" style="width:30px;">ABC</th>
+                <th class="sortable" data-col="0" data-type="str" style="width:30px;">ABC <span class="info-tip" data-tip="A = top 80% revenue, B = next 15%, C = bottom 5%.">ⓘ</span></th>
                 <th class="sortable" data-col="1" data-type="str">Product</th>
                 <th class="sortable text-right" data-col="2" data-type="num">Qty</th>
                 <th class="sortable text-right" data-col="3" data-type="num">Revenue</th>
-                <th class="sortable text-right" data-col="4" data-type="num">Unit Cost</th>
-                <th class="sortable text-right" data-col="5" data-type="num">COGS</th>
-                <th class="sortable text-right" data-col="6" data-type="num">Profit</th>
-                <th class="sortable text-right" data-col="7" data-type="num">Food %</th>
+                <th class="sortable text-right" data-col="4" data-type="num">Unit Cost <span class="info-tip" data-tip="Ingredient cost per 1 portion, from recipe card. '—' means no recipe yet.">ⓘ</span></th>
+                <th class="sortable text-right" data-col="5" data-type="num">COGS <span class="info-tip" data-tip="Unit Cost × Qty sold. Total ingredient spend for this product.">ⓘ</span></th>
+                <th class="sortable text-right" data-col="6" data-type="num">Profit <span class="info-tip" data-tip="Revenue − COGS for this product.">ⓘ</span></th>
+                <th class="sortable text-right" data-col="7" data-type="num">Food % <span class="info-tip" data-tip="COGS ÷ Revenue × 100. Green ≤30%, orange 30–40%, red >40%.">ⓘ</span></th>
             </tr>
         </thead>
         <tbody>

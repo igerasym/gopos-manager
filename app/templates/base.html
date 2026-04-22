@@ -121,6 +121,26 @@
         .badge-red { background: var(--red-bg); color: #991b1b; }
         .badge-orange { background: var(--orange-bg); color: #92400e; }
 
+        /* Tooltip */
+        .info-tip {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 15px; height: 15px; font-size: .65em; font-weight: 700;
+            color: var(--text-secondary); cursor: help; position: relative;
+            vertical-align: middle; margin-left: 2px;
+        }
+        .info-tip:hover::after {
+            content: attr(data-tip);
+            position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+            background: var(--nav); color: #fff; padding: 8px 12px; border-radius: 8px;
+            font-size: 11px; font-weight: 400; line-height: 1.4; white-space: normal;
+            width: 240px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,.15);
+            text-transform: none; letter-spacing: 0;
+        }
+        .info-tip:hover::before {
+            content: ''; position: absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%);
+            border: 5px solid transparent; border-top-color: var(--nav); z-index: 200;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .grid-4, .grid-5 { grid-template-columns: repeat(2, 1fr); }
