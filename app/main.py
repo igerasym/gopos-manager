@@ -46,15 +46,16 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(scheduled_sync, CronTrigger(hour=23, minute=0))
     scheduler.start()
 
-    # Set up Telegram webhook polling
-    async def poll_telegram():
-        import json
+    # Set up Telegram polling in separate thread
+    import threading
+    def telegram_poll_thread():
+        import json, time
         from urllib.request import urlopen
         from app.telegram_bot import handle_command, API
         offset = 0
         while True:
             try:
-                resp = urlopen(f'{API}/getUpdates?offset={offset}&timeout=5', timeout=10)
+                resp = urlopen(f'{API}/getUpdates?offset={offset}&timeout=10', timeout=15)
                 data = json.loads(resp.read())
                 for update in data.get('result', []):
                     offset = update['update_id'] + 1
@@ -64,10 +65,9 @@ async def lifespan(app: FastAPI):
                     if text.startswith('/'):
                         handle_command(text, chat_id)
             except Exception:
-                pass
-            await asyncio.sleep(3)
+                time.sleep(5)
 
-    asyncio.create_task(poll_telegram())
+    threading.Thread(target=telegram_poll_thread, daemon=True).start()
 
     yield
 

@@ -2,6 +2,7 @@
 import hashlib
 import hmac
 import os
+import time
 from functools import wraps
 
 from fastapi import Request, HTTPException
@@ -10,6 +11,10 @@ from fastapi.responses import RedirectResponse
 from app.db import get_db
 
 SECRET = os.getenv('SESSION_SECRET', 'the-frame-cafe-secret-2026')
+
+# Simple user cache (username -> (user_dict, timestamp))
+_user_cache = {}
+_CACHE_TTL = 300  # 5 minutes
 
 # Roles and their allowed paths
 ROLE_ACCESS = {
@@ -54,13 +59,24 @@ def get_current_user(request: Request) -> dict | None:
     username = verify_cookie(cookie) if cookie else None
     if not username:
         return None
+
+    # Check cache
+    now = time.time()
+    if username in _user_cache:
+        user, ts = _user_cache[username]
+        if now - ts < _CACHE_TTL:
+            return user
+
     db = get_db()
     user = db.execute(
         'SELECT id, username, role, display_name FROM users WHERE username = ?',
         (username,)
     ).fetchone()
     db.close()
-    return dict(user) if user else None
+    result = dict(user) if user else None
+    if result:
+        _user_cache[username] = (result, now)
+    return result
 
 
 def can_access(user: dict, path: str) -> bool:
