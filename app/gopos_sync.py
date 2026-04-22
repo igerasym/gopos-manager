@@ -28,7 +28,7 @@ async def login(page):
     await page.fill('input[type="password"], input[name="password"]', PASSWORD)
     await page.click('button[type="submit"]')
     # Wait for redirect after login (may land on / or /VENUE_ID/...)
-    await page.wait_for_load_state('networkidle', timeout=20000)
+    await page.wait_for_load_state('networkidle', timeout=60000)
     log.info(f'Logged in to GoPOS, current URL: {page.url}')
 
 
@@ -62,12 +62,12 @@ async def download_csv(page, date_from: str, date_to: str) -> str:
     # Set date range via the date picker if available
     # The filter is encoded in the URL; we navigate with the right params
     # Wait for the table/data to load
-    await page.wait_for_timeout(3000)
+    await page.wait_for_timeout(8000)
 
     # Click CSV export button (icon-only button inside .export-dropdown)
     export_btn = page.locator('.export-dropdown button.dropdown-toggle')
     await export_btn.click()
-    await page.wait_for_timeout(1000)
+    await page.wait_for_timeout(2000)
 
     # Look for CSV option in the dropdown menu
     async with page.expect_download() as dl_info:
@@ -216,6 +216,7 @@ async def sync_date(date_str: str):
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
+            page.set_default_timeout(60000)
             try:
                 await login(page)
                 csv_text = await download_csv(page, date_from, date_to)
@@ -247,6 +248,7 @@ async def sync_range(date_from: str, date_to: str):
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
+            page.set_default_timeout(60000)
             try:
                 await login(page)
                 current = start
