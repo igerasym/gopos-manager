@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
                 loop.close()
         threading.Thread(target=run, daemon=True).start()
 
-    scheduler.add_job(scheduled_sync, CronTrigger(hour=23, minute=0))
+    scheduler.add_job(scheduled_sync, CronTrigger(hour=21, minute=0))  # 21:00 UTC = 23:00 CEST
     scheduler.start()
 
     yield
