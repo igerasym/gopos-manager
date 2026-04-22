@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>☕ Cafe Manager</title>
+    <title>The Frame Manager</title>
     <style>
         :root {
             --bg: #f0f2f5;
@@ -134,17 +134,26 @@
 </head>
 <body>
     <nav>
-        <span class="brand">☕ Cafe Manager</span>
+        <span class="brand">☕ The Frame</span>
         <div class="nav-links">
+            {% if request.state.user and request.state.user.role == 'admin' %}
             <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
+            {% endif %}
             <a href="/inventory" class="{% if '/inventory' in request.url.path %}active{% endif %}">Inventory</a>
             <a href="/recipes" class="{% if '/recipes' in request.url.path %}active{% endif %}">Recipes</a>
+            {% if request.state.user and request.state.user.role == 'admin' %}
+            <a href="/users" class="{% if '/users' in request.url.path %}active{% endif %}">Users</a>
+            {% endif %}
         </div>
         <div class="nav-right">
             <span id="sync-status" style="font-size:.8em; margin-right:8px;"></span>
+            {% if request.state.user and request.state.user.role == 'admin' %}
             <form action="/sync" method="post">
                 <button class="btn btn-success btn-sm" type="submit" id="sync-btn">🔄 Sync GoPOS</button>
             </form>
+            {% endif %}
+            <span style="color:rgba(255,255,255,.6); font-size:.8em; margin-left:8px;">{{ request.state.user.display_name or request.state.user.username }}</span>
+            <a href="/logout" class="btn btn-outline btn-sm" style="color:rgba(255,255,255,.7); border-color:rgba(255,255,255,.2); padding:4px 10px; font-size:.75em;">Logout</a>
         </div>
     </nav>
     <div class="container">

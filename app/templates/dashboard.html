@@ -39,28 +39,90 @@
         {% endif %}
     </div>
     <div class="card kpi">
-        <div class="kpi-label">Net Revenue</div>
-        <div class="kpi-value">{{ '{:,.0f}'.format(totals['net_revenue']) }} zł</div>
-        <div class="kpi-change neutral">excl. VAT</div>
+        <div class="kpi-label">COGS</div>
+        <div class="kpi-value">{{ '{:,.0f}'.format(total_cogs) }} zł</div>
+        <div class="kpi-change neutral">food cost</div>
     </div>
     <div class="card kpi">
-        <div class="kpi-label">Items Sold</div>
-        <div class="kpi-value">{{ totals['items']|int }}</div>
-        {% if prev_totals['items'] > 0 %}
-            {% set change = ((totals['items'] - prev_totals['items']) / prev_totals['items'] * 100) %}
-            <div class="kpi-change {{ 'up' if change >= 0 else 'down' }}">
-                {{ '{:+.1f}'.format(change) }}% vs prev period
-            </div>
-        {% else %}
-            <div class="kpi-change neutral">no prev data</div>
-        {% endif %}
+        <div class="kpi-label">Gross Profit</div>
+        <div class="kpi-value">{{ '{:,.0f}'.format(gross_profit) }} zł</div>
+        <div class="kpi-change {{ 'up' if gross_margin >= 60 else 'down' if gross_margin < 50 else 'neutral' }}">
+            {{ '{:.1f}'.format(gross_margin) }}% margin
+        </div>
     </div>
     <div class="card kpi">
-        <div class="kpi-label">Discounts</div>
-        <div class="kpi-value">{{ '{:,.0f}'.format(totals['discounts']) }} zł</div>
-        {% if totals['revenue'] > 0 %}
-        <div class="kpi-change neutral">{{ '{:.1f}'.format(totals['discounts'] / totals['revenue'] * 100) }}% of revenue</div>
-        {% endif %}
+        <div class="kpi-label">Food Cost %</div>
+        <div class="kpi-value">{{ '{:.1f}'.format(avg_food_cost) }}%</div>
+        <div class="kpi-change {{ 'up' if avg_food_cost <= 30 else 'down' if avg_food_cost > 40 else 'neutral' }}">
+            {{ 'healthy' if avg_food_cost <= 30 else 'high' if avg_food_cost > 40 else 'watch' }}
+        </div>
+    </div>
+</div>
+
+<!-- P&L Summary -->
+<div class="card" style="margin-bottom: 16px;">
+    <div class="card-header">
+        <div class="card-title">P&L Summary</div>
+        <div class="card-subtitle">{{ date_from }}{% if date_from != date_to %} → {{ date_to }}{% endif %}</div>
+    </div>
+    <table>
+        <tbody>
+            <tr>
+                <td style="font-weight:600;">Revenue (gross)</td>
+                <td class="text-right" style="font-weight:600;">{{ '{:,.2f}'.format(totals['revenue']) }} zł</td>
+                <td class="text-right text-muted">100%</td>
+            </tr>
+            <tr>
+                <td class="text-muted" style="padding-left:24px;">Discounts</td>
+                <td class="text-right text-muted">-{{ '{:,.2f}'.format(totals['discounts']) }} zł</td>
+                <td class="text-right text-muted">{{ '{:.1f}'.format(totals['discounts'] / totals['revenue'] * 100) if totals['revenue'] > 0 else 0 }}%</td>
+            </tr>
+            <tr>
+                <td>Net Revenue</td>
+                <td class="text-right">{{ '{:,.2f}'.format(totals['net_revenue']) }} zł</td>
+                <td class="text-right text-muted">{{ '{:.1f}'.format(totals['net_revenue'] / totals['revenue'] * 100) if totals['revenue'] > 0 else 0 }}%</td>
+            </tr>
+            <tr style="border-top: 2px solid var(--border);">
+                <td style="color:var(--red);">Cost of Goods Sold</td>
+                <td class="text-right" style="color:var(--red);">-{{ '{:,.2f}'.format(total_cogs) }} zł</td>
+                <td class="text-right text-muted">{{ '{:.1f}'.format(avg_food_cost) }}%</td>
+            </tr>
+            <tr style="border-top: 2px solid var(--border);">
+                <td style="font-weight:700; font-size:1.05em;">Gross Profit</td>
+                <td class="text-right" style="font-weight:700; font-size:1.05em; color:var(--green);">{{ '{:,.2f}'.format(gross_profit) }} zł</td>
+                <td class="text-right" style="font-weight:600; color:var(--green);">{{ '{:.1f}'.format(gross_margin) }}%</td>
+            </tr>
+            <tr>
+                <td class="text-muted">Items sold</td>
+                <td class="text-right text-muted">{{ totals['items']|int }}</td>
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- ABC Analysis -->
+<div class="card" style="margin-bottom: 16px;">
+    <div class="card-header">
+        <div class="card-title">ABC Analysis</div>
+        <div class="card-subtitle">A = 80% revenue, B = next 15%, C = last 5%</div>
+    </div>
+    <div class="grid-3">
+        <div style="text-align:center; padding:12px;">
+            <div style="font-size:2em; font-weight:700; color:var(--green);">{{ abc_counts['A'] }}</div>
+            <div style="font-size:.8em; font-weight:600; color:var(--text-secondary);">A products</div>
+            <div style="font-size:.85em;">{{ '{:,.0f}'.format(abc_revenue['A']) }} zł</div>
+        </div>
+        <div style="text-align:center; padding:12px;">
+            <div style="font-size:2em; font-weight:700; color:var(--orange);">{{ abc_counts['B'] }}</div>
+            <div style="font-size:.8em; font-weight:600; color:var(--text-secondary);">B products</div>
+            <div style="font-size:.85em;">{{ '{:,.0f}'.format(abc_revenue['B']) }} zł</div>
+        </div>
+        <div style="text-align:center; padding:12px;">
+            <div style="font-size:2em; font-weight:700; color:var(--red);">{{ abc_counts['C'] }}</div>
+            <div style="font-size:.8em; font-weight:600; color:var(--text-secondary);">C products</div>
+            <div style="font-size:.85em;">{{ '{:,.0f}'.format(abc_revenue['C']) }} zł</div>
+        </div>
     </div>
 </div>
 
@@ -75,13 +137,9 @@
 
 <!-- Charts row -->
 <div class="grid-2">
-    <!-- Top by Revenue -->
     <div class="card">
         <div class="card-header">
-            <div>
-                <div class="card-title">Top Products by Revenue</div>
-                <div class="card-subtitle">{{ date_from }}{% if date_from != date_to %} → {{ date_to }}{% endif %}</div>
-            </div>
+            <div class="card-title">Top Products by Revenue</div>
         </div>
         <div class="bar-chart">
             {% set max_rev = top_products[0]['rev'] if top_products else 1 %}
@@ -98,14 +156,9 @@
             {% endfor %}
         </div>
     </div>
-
-    <!-- Top by Quantity -->
     <div class="card">
         <div class="card-header">
-            <div>
-                <div class="card-title">Top Products by Quantity</div>
-                <div class="card-subtitle">most popular items</div>
-            </div>
+            <div class="card-title">Top Products by Quantity</div>
         </div>
         <div class="bar-chart">
             {% set max_qty = top_by_qty[0]['qty'] if top_by_qty else 1 %}
@@ -124,14 +177,11 @@
     </div>
 </div>
 
-<!-- Daily trend (if multi-day) -->
+<!-- Daily trend -->
 {% if daily|length > 1 %}
 <div class="card">
     <div class="card-header">
-        <div>
-            <div class="card-title">Daily Revenue Trend</div>
-            <div class="card-subtitle">{{ date_from }} → {{ date_to }}</div>
-        </div>
+        <div class="card-title">Daily Revenue Trend</div>
     </div>
     <div style="display: flex; align-items: flex-end; gap: 4px; height: 120px; padding-top: 8px;">
         {% set max_daily = daily|map(attribute='revenue')|max %}
@@ -146,7 +196,7 @@
 </div>
 {% endif %}
 
-<!-- Full sales table -->
+<!-- Full sales table with food cost -->
 <div class="card">
     <div class="card-header">
         <div>
@@ -158,36 +208,40 @@
     <table id="products-table">
         <thead>
             <tr>
-                <th class="sortable" data-col="0" data-type="num">#</th>
+                <th class="sortable" data-col="0" data-type="str" style="width:30px;">ABC</th>
                 <th class="sortable" data-col="1" data-type="str">Product</th>
                 <th class="sortable text-right" data-col="2" data-type="num">Qty</th>
                 <th class="sortable text-right" data-col="3" data-type="num">Revenue</th>
-                <th class="sortable text-right" data-col="4" data-type="num">Net</th>
-                <th class="sortable text-right" data-col="5" data-type="num">Discount</th>
+                <th class="sortable text-right" data-col="4" data-type="num">Unit Cost</th>
+                <th class="sortable text-right" data-col="5" data-type="num">COGS</th>
                 <th class="sortable text-right" data-col="6" data-type="num">Profit</th>
-                <th class="sortable text-right" data-col="7" data-type="num">Share</th>
+                <th class="sortable text-right" data-col="7" data-type="num">Food %</th>
             </tr>
         </thead>
         <tbody>
             {% for s in sales %}
             <tr>
-                <td class="text-muted" data-val="{{ loop.index }}">{{ loop.index }}</td>
+                <td data-val="{{ s['abc'] }}">
+                    <span class="badge {{ 'badge-green' if s['abc'] == 'A' else 'badge-orange' if s['abc'] == 'B' else 'badge-red' }}">{{ s['abc'] }}</span>
+                </td>
                 <td data-val="{{ s['product_name'] }}">{{ s['product_name'] }}</td>
                 <td class="text-right" data-val="{{ s['quantity'] }}">{{ s['quantity']|int }}</td>
                 <td class="text-right" data-val="{{ s['total_money'] }}">{{ '{:,.2f}'.format(s['total_money']) }} zł</td>
-                <td class="text-right text-muted" data-val="{{ s['net_total'] }}">{{ '{:,.2f}'.format(s['net_total']) }} zł</td>
-                <td class="text-right" data-val="{{ s['discount'] }}">
-                    {% if s['discount'] > 0 %}
-                    <span class="badge badge-orange">-{{ '{:,.0f}'.format(s['discount']) }}</span>
-                    {% else %}
-                    <span class="text-muted">—</span>
-                    {% endif %}
+                <td class="text-right text-muted" data-val="{{ s['unit_cost'] }}" style="font-size:.85em;">
+                    {% if s['has_recipe'] %}{{ '{:.2f}'.format(s['unit_cost']) }}{% else %}<span style="opacity:.4;">—</span>{% endif %}
                 </td>
-                <td class="text-right" data-val="{{ s['net_profit'] }}">{{ '{:,.2f}'.format(s['net_profit']) }} zł</td>
-                <td class="text-right text-muted" data-val="{{ (s['total_money'] / totals['revenue'] * 100) if totals['revenue'] > 0 else 0 }}">
-                    {% if totals['revenue'] > 0 %}
-                    {{ '{:.1f}'.format(s['total_money'] / totals['revenue'] * 100) }}%
-                    {% endif %}
+                <td class="text-right" data-val="{{ s['line_cost'] }}">
+                    {% if s['has_recipe'] %}{{ '{:,.2f}'.format(s['line_cost']) }} zł{% else %}<span class="text-muted" style="opacity:.4;">—</span>{% endif %}
+                </td>
+                <td class="text-right" data-val="{{ s['total_money'] - s['line_cost'] }}" style="font-weight:500; color:var(--green);">
+                    {% if s['has_recipe'] %}{{ '{:,.2f}'.format(s['total_money'] - s['line_cost']) }} zł{% else %}—{% endif %}
+                </td>
+                <td class="text-right" data-val="{{ s['food_cost_pct'] }}">
+                    {% if s['has_recipe'] %}
+                    <span style="font-weight:600; color:{{ 'var(--green)' if s['food_cost_pct'] <= 30 else 'var(--red)' if s['food_cost_pct'] > 40 else 'var(--orange)' }};">
+                        {{ '{:.1f}'.format(s['food_cost_pct']) }}%
+                    </span>
+                    {% else %}<span class="text-muted" style="opacity:.4;">—</span>{% endif %}
                 </td>
             </tr>
             {% endfor %}

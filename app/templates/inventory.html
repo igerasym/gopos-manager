@@ -1,58 +1,195 @@
 {% extends "base.html" %}
+
+{% block extra_style %}
+.inline-edit { display: inline-flex; align-items: center; gap: 3px; }
+.inline-edit input, .inline-edit select {
+    padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; font-size: .85em;
+    background: transparent; transition: all .15s;
+}
+.inline-edit input:hover, .inline-edit select:hover { border-color: var(--border); background: #fff; }
+.inline-edit input:focus, .inline-edit select:focus { border-color: var(--accent); background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(67,97,238,.1); }
+.inline-edit .save-btn { opacity: 0; transition: opacity .15s; padding: 2px 6px; font-size: .7em; }
+.inline-edit:focus-within .save-btn { opacity: 1; }
+.inline-edit input[type="number"] { width: 80px; text-align: right; }
+.inline-edit input[type="text"] { width: 100%; min-width: 120px; }
+.inline-edit select { width: 60px; }
+.stock-search { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; width: 100%; font-size: .9em; margin-bottom: 12px; }
+.stock-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(67,97,238,.1); }
+{% endblock %}
+
 {% block content %}
-<h2>Inventory</h2>
 
-<div class="card">
-    <h2>Add Ingredient</h2>
-    <form class="inline" method="post" action="/inventory/add">
-        <div><label>Name</label><br><input name="name" required></div>
-        <div><label>Unit</label><br>
-            <select name="unit">
-                <option value="g">g</option>
-                <option value="ml">ml</option>
-                <option value="pcs">pcs</option>
-                <option value="kg">kg</option>
-                <option value="l">l</option>
-            </select>
-        </div>
-        <div><label>Quantity</label><br><input name="quantity" type="number" step="0.1" value="0"></div>
-        <div><label>Min alert</label><br><input name="min_quantity" type="number" step="0.1" value="0"></div>
-        <button class="btn" type="submit">+ Add</button>
-    </form>
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <h2 style="margin:0;">Inventory</h2>
+    <span class="text-muted" style="font-size:.85em;">{{ items|length }} ingredients</span>
+</div>
+
+<div class="grid-2" style="margin-bottom: 16px;">
+    <div class="card">
+        <div class="card-header"><div class="card-title">Add Ingredient</div></div>
+        <form class="form-row" method="post" action="/inventory/add">
+            <div class="form-group" style="flex:2;">
+                <label>Name</label>
+                <input name="name" class="form-control" required>
+            </div>
+            <div class="form-group" style="flex:0 0 70px;">
+                <label>Unit</label>
+                <select name="unit" class="form-control">
+                    {% for u in ['g', 'kg', 'ml', 'L', 'szt', 'pcs'] %}
+                    <option value="{{ u }}">{{ u }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="flex:0 0 80px;">
+                <label>Qty</label>
+                <input name="quantity" type="number" step="0.1" value="0" class="form-control">
+            </div>
+            <div class="form-group" style="flex:0 0 80px;">
+                <label>Min alert</label>
+                <input name="min_quantity" type="number" step="0.1" value="0" class="form-control">
+            </div>
+            <button class="btn btn-primary btn-sm" type="submit">+ Add</button>
+        </form>
+    </div>
+    <div class="card">
+        <div class="card-header"><div class="card-title">Add Delivery</div></div>
+        <form class="form-row" method="post" action="/inventory/delivery">
+            <div class="form-group" style="flex:2;">
+                <label>Ingredient</label>
+                <select name="ingredient_id" class="form-control" required id="delivery-ingredient">
+                    {% for i in items %}<option value="{{ i['id'] }}" data-unit="{{ i['unit'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="flex:0 0 100px;">
+                <label>Qty (<span id="delivery-unit">{{ items[0]['unit'] if items else '' }}</span>)</label>
+                <input name="quantity" type="number" step="0.01" class="form-control" required>
+            </div>
+            <div class="form-group" style="flex:0 0 100px;">
+                <label>Price zł (total)</label>
+                <input name="price" type="number" step="0.01" value="0" class="form-control">
+            </div>
+            <div class="form-group" style="flex:1;">
+                <label>Supplier</label>
+                <select name="supplier_id" class="form-control">
+                    <option value="">—</option>
+                    {% for s in suppliers %}<option value="{{ s['id'] }}">{{ s['name'] }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="flex:1;">
+                <label>Note</label>
+                <input name="note" class="form-control">
+            </div>
+            <button class="btn btn-success btn-sm" type="submit">📦 Deliver</button>
+        </form>
+    </div>
 </div>
 
 <div class="card">
-    <h2>Add Delivery</h2>
-    <form class="inline" method="post" action="/inventory/delivery">
-        <div><label>Ingredient</label><br>
-            <select name="ingredient_id" required>
-                {% for i in items %}<option value="{{ i['id'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>{% endfor %}
-            </select>
+    <div class="card-header">
+        <div class="card-title">Current Stock</div>
+        <div style="display:flex; gap:6px;">
+            <a href="/inventory" class="btn btn-sm {{ 'btn-primary' if not active_supplier else 'btn-outline' }}">All</a>
+            {% for s in suppliers %}
+            <a href="/inventory?supplier={{ s['name'] }}" class="btn btn-sm {{ 'btn-primary' if active_supplier == s['name'] else 'btn-outline' }}">{{ s['name'] }}</a>
+            {% endfor %}
         </div>
-        <div><label>Quantity</label><br><input name="quantity" type="number" step="0.1" required></div>
-        <div><label>Price (zł)</label><br><input name="price" type="number" step="0.01" value="0"></div>
-        <div><label>Note</label><br><input name="note"></div>
-        <button class="btn btn-success" type="submit">📦 Add Delivery</button>
-    </form>
-</div>
-
-<div class="card">
-    <h2>Current Stock</h2>
-    <table>
+    </div>
+    <input type="text" class="stock-search" id="stock-search" placeholder="Search ingredients...">
+    <table id="stock-table">
         <thead>
-            <tr><th>Ingredient</th><th>Stock</th><th>Unit</th><th>Min Alert</th><th>Status</th></tr>
+            <tr>
+                <th style="width:25%;">Name</th>
+                <th class="text-right" style="width:10%;">Stock</th>
+                <th style="width:6%;">Unit</th>
+                <th class="text-right" style="width:10%;">Price/unit</th>
+                <th class="text-right" style="width:9%;">Min Alert</th>
+                <th style="width:18%;">Supplier</th>
+                <th style="width:6%;">Status</th>
+                <th style="width:5%;"></th>
+            </tr>
         </thead>
         <tbody>
             {% for i in items %}
             <tr>
-                <td>{{ i['name'] }}</td>
-                <td>{{ i['quantity'] }}</td>
-                <td>{{ i['unit'] }}</td>
-                <td>{{ i['min_quantity'] }}</td>
-                <td>{% if i['quantity'] <= i['min_quantity'] %}🔴 Low{% else %}🟢 OK{% endif %}</td>
+                <td>
+                    <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
+                        <input type="text" name="name" value="{{ i['name'] }}">
+                        <button class="btn btn-primary save-btn" type="submit">✓</button>
+                    </form>
+                </td>
+                <td class="text-right">
+                    <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
+                        <input type="number" name="quantity" value="{{ i['quantity'] }}" step="0.01">
+                        <button class="btn btn-primary save-btn" type="submit">✓</button>
+                    </form>
+                </td>
+                <td>
+                    <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
+                        <select name="unit">
+                            {% for u in ['g', 'kg', 'ml', 'L', 'szt', 'pcs'] %}
+                            <option value="{{ u }}" {{ 'selected' if i['unit'] == u }}>{{ u }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-primary save-btn" type="submit">✓</button>
+                    </form>
+                </td>
+                <td class="text-right">
+                    <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
+                        <input type="number" name="unit_price" value="{{ i['unit_price'] or 0 }}" step="0.001">
+                        <button class="btn btn-primary save-btn" type="submit">✓</button>
+                    </form>
+                </td>
+                <td class="text-right">
+                    <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
+                        <input type="number" name="min_quantity" value="{{ i['min_quantity'] }}" step="0.1">
+                        <button class="btn btn-primary save-btn" type="submit">✓</button>
+                    </form>
+                </td>
+                <td>
+                    <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
+                        <select name="supplier_id" onchange="this.form.submit()" style="font-size:.8em; padding:3px 4px; border:1px solid transparent; border-radius:4px; background:transparent; cursor:pointer; min-width:115px;">
+                            <option value="">—</option>
+                            {% for s in suppliers %}
+                            <option value="{{ s['id'] }}" {{ 'selected' if i['supplier_id'] == s['id'] }}>{{ s['name'] }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="hidden" name="redirect" value="/inventory{{ '?supplier=' + active_supplier if active_supplier else '' }}">
+                    </form>
+                </td>
+                <td>
+                    {% if i['quantity'] <= i['min_quantity'] %}
+                    <span class="badge badge-red">Low</span>
+                    {% else %}
+                    <span class="badge badge-green">OK</span>
+                    {% endif %}
+                </td>
+                <td class="text-right">
+                    <form method="post" action="/ingredients/delete/{{ i['id'] }}" style="display:inline;"
+                          onsubmit="return confirm('Delete {{ i['name'] }}?');">
+                        <button class="btn btn-outline btn-sm" type="submit" style="padding:2px 6px; font-size:.7em; color:var(--red);">✕</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('stock-search').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('#stock-table tbody tr').forEach(tr => {
+        const nameInput = tr.querySelector('td:first-child input[type="text"]');
+        const name = nameInput ? nameInput.value.toLowerCase() : tr.children[0].textContent.toLowerCase();
+        tr.style.display = name.includes(q) ? '' : 'none';
+    });
+});
+document.getElementById('delivery-ingredient').addEventListener('change', function() {
+    const unit = this.selectedOptions[0].dataset.unit;
+    document.getElementById('delivery-unit').textContent = unit;
+});
+</script>
 {% endblock %}

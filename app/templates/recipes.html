@@ -1,47 +1,241 @@
 {% extends "base.html" %}
-{% block content %}
-<h2>Recipes</h2>
 
+{% block extra_style %}
+.tech-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    margin-bottom: 12px; overflow: hidden;
+}
+.tech-card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; cursor: pointer; user-select: none; transition: background .1s;
+}
+.tech-card-header:hover { background: #f8fafc; }
+.tech-card-header h3 { font-size: .95em; font-weight: 600; color: var(--text); margin: 0; display: flex; align-items: center; gap: 8px; }
+.tech-card-header h3::before { content: '▸'; font-size: .8em; color: var(--text-secondary); transition: transform .2s; display: inline-block; }
+.tech-card.open .tech-card-header h3::before { transform: rotate(90deg); }
+.tech-card-meta { display: flex; gap: 8px; align-items: center; }
+.tech-card-meta .badge { font-size: .7em; }
+.tech-card-body { display: none; border-top: 1px solid var(--border); }
+.tech-card.open .tech-card-body { display: block; }
+.tech-card-ingredients { padding: 12px 20px; }
+.tech-card-ingredients table { margin-bottom: 0; }
+.tech-card-ingredients table th { font-size: .7em; }
+.tech-card-desc {
+    padding: 12px 20px; border-top: 1px solid var(--border); background: #fafbfc;
+    font-size: .82em; color: var(--text-secondary); white-space: pre-line; line-height: 1.5;
+}
+.tech-card-actions { padding: 10px 20px; border-top: 1px solid var(--border); background: #fafbfc; }
+.section-title {
+    font-size: .75em; font-weight: 700; text-transform: uppercase; letter-spacing: .8px;
+    color: var(--text-secondary); margin: 28px 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--border);
+}
+.inline-edit { display: inline-flex; align-items: center; gap: 4px; }
+.inline-edit input, .inline-edit select {
+    padding: 3px 6px; border: 1px solid transparent; border-radius: 4px; font-size: .85em;
+    background: transparent; width: auto; transition: all .15s;
+}
+.inline-edit input:hover, .inline-edit select:hover { border-color: var(--border); background: #fff; }
+.inline-edit input:focus, .inline-edit select:focus { border-color: var(--accent); background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(67,97,238,.1); }
+.inline-edit input[type="number"] { width: 70px; text-align: right; }
+.inline-edit select { width: 60px; }
+.inline-edit .save-btn { opacity: 0; transition: opacity .15s; padding: 2px 6px; font-size: .75em; }
+.inline-edit:focus-within .save-btn { opacity: 1; }
+.ingredient-count { font-size: .75em; color: var(--text-secondary); font-weight: 400; }
+{% endblock %}
+
+{% block content %}
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <h2 style="margin:0;">Recipe Cards</h2>
+    <span class="text-muted" style="font-size:.85em;">{{ cards|length }} recipes</span>
+</div>
+
+{% set current_cat = namespace(value='') %}
+{% for card in cards %}
+    {% if card['category'] != current_cat.value %}
+        {% set current_cat.value = card['category'] %}
+        <div class="section-title">{{ card['category'] or 'Uncategorized' }}</div>
+    {% endif %}
+
+    {% set ingredients_list = recipe_map.get(card['product_name'], []) %}
+    <div class="tech-card" id="card-{{ loop.index }}">
+        <div class="tech-card-header" onclick="this.parentElement.classList.toggle('open')">
+            <h3>
+                {{ card['product_name'] }}
+                <span class="ingredient-count">{{ ingredients_list|length }} ingredients</span>
+            </h3>
+            <div class="tech-card-meta">
+                {% set cost = cost_map.get(card['product_name'], 0) %}
+                {% if cost > 0 %}
+                <span class="badge" style="background:#ede9fe; color:#5b21b6;">Cost: {{ '{:.2f}'.format(cost) }} zł</span>
+                {% endif %}
+                {% if card['portion_weight'] %}
+                <span class="badge badge-green">{{ card['portion_weight'] }}</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="tech-card-body">
+            {% if ingredients_list %}
+            <div class="tech-card-ingredients">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ingredient</th>
+                            <th class="text-right" style="width:100px;">Amount</th>
+                            <th style="width:60px;">Unit</th>
+                            <th class="text-right" style="width:80px;">Price/unit</th>
+                            <th class="text-right" style="width:80px;">Cost</th>
+                            <th style="width:50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in ingredients_list %}
+                        <tr>
+                            <td>{{ r['ingredient'] }}</td>
+                            <td class="text-right">
+                                <form method="post" action="/recipes/update/{{ r['id'] }}" class="inline-edit">
+                                    <input type="number" name="amount" value="{{ r['amount'] }}" step="0.01">
+                                    <button class="btn btn-primary save-btn" type="submit">✓</button>
+                                </form>
+                            </td>
+                            <td>
+                                <form method="post" action="/ingredients/update/{{ r['ingredient_id'] if r['ingredient_id'] is defined else '' }}" class="inline-edit">
+                                    <select name="unit">
+                                        {% for u in ['g', 'kg', 'ml', 'L', 'szt', 'pcs'] %}
+                                        <option value="{{ u }}" {{ 'selected' if r['unit'] == u }}>{{ u }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button class="btn btn-primary save-btn" type="submit">✓</button>
+                                </form>
+                            </td>
+                            <td class="text-right text-muted" style="font-size:.8em;">
+                                {% if r['unit_price'] > 0 %}{{ '{:.2f}'.format(r['unit_price']) }}{% else %}—{% endif %}
+                            </td>
+                            <td class="text-right" style="font-size:.85em; font-weight:500;">
+                                {% if r['cost'] > 0 %}{{ '{:.2f}'.format(r['cost']) }} zł{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td class="text-right">
+                                <form method="post" action="/recipes/delete/{{ r['id'] }}" style="display:inline;">
+                                    <button class="btn btn-outline btn-sm" type="submit" style="padding:2px 6px; font-size:.75em;">✕</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr style="border-top: 2px solid var(--border);">
+                            <td colspan="4" class="text-right" style="font-weight:600; font-size:.85em;">Total cost:</td>
+                            <td class="text-right" style="font-weight:700; font-size:.9em; color:var(--accent);">
+                                {{ '{:.2f}'.format(cost_map.get(card['product_name'], 0)) }} zł
+                            </td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            {% endif %}
+
+            {% if card['description'] %}
+            <div class="tech-card-desc">
+                <strong style="color:var(--text);">Preparation:</strong><br>
+                {{ card['description'] }}
+            </div>
+            {% endif %}
+
+            <div class="tech-card-actions">
+                <form class="form-row" method="post" action="/recipes/add" style="width:100%;">
+                    <input type="hidden" name="product_name" value="{{ card['product_name'] }}">
+                    <div class="form-group" style="flex:2;">
+                        <label>Add ingredient</label>
+                        <select name="ingredient_id" class="form-control" required style="font-size:.85em;">
+                            <option value="">—</option>
+                            {% for i in ingredients %}<option value="{{ i['id'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:0 0 80px;">
+                        <label>Amount</label>
+                        <input name="amount" type="number" step="0.01" class="form-control" required style="font-size:.85em;">
+                    </div>
+                    <button class="btn btn-primary btn-sm" type="submit">+</button>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endfor %}
+
+{% if orphan_products %}
+<div class="section-title">No recipe card</div>
+{% for pname in orphan_products %}
+<div class="tech-card" style="border-left: 3px solid var(--orange);">
+    <div class="tech-card-header" onclick="this.parentElement.classList.toggle('open')">
+        <h3>{{ pname }} <span class="ingredient-count">{{ recipe_map[pname]|length }} ingredients</span></h3>
+        <form method="post" action="/recipes/card" style="display:flex; gap:6px; align-items:end;" onclick="event.stopPropagation();">
+            <input type="hidden" name="product_name" value="{{ pname }}">
+            <input name="category" placeholder="Category" class="form-control" style="width:100px; font-size:.8em; padding:4px 8px;">
+            <input name="portion_weight" placeholder="Portion" class="form-control" style="width:80px; font-size:.8em; padding:4px 8px;">
+            <button class="btn btn-success btn-sm" type="submit" style="font-size:.75em;">Create</button>
+        </form>
+    </div>
+    <div class="tech-card-body">
+        <div class="tech-card-ingredients">
+            <table>
+                <thead><tr><th>Ingredient</th><th class="text-right" style="width:120px;">Amount</th><th style="width:80px;">Unit</th><th style="width:60px;"></th></tr></thead>
+                <tbody>
+                    {% for r in recipe_map[pname] %}
+                    <tr>
+                        <td>{{ r['ingredient'] }}</td>
+                        <td class="text-right">
+                            <form method="post" action="/recipes/update/{{ r['id'] }}" class="inline-edit">
+                                <input type="number" name="amount" value="{{ r['amount'] }}" step="0.01">
+                                <button class="btn btn-primary save-btn" type="submit">✓</button>
+                            </form>
+                        </td>
+                        <td class="text-muted">{{ r['unit'] }}</td>
+                        <td class="text-right">
+                            <form method="post" action="/recipes/delete/{{ r['id'] }}" style="display:inline;">
+                                <button class="btn btn-outline btn-sm" type="submit" style="padding:2px 6px; font-size:.75em;">✕</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<div class="section-title">New recipe card</div>
 <div class="card">
-    <h2>Add Recipe Entry</h2>
-    <form class="inline" method="post" action="/recipes/add">
-        <div><label>Product (from GoPOS)</label><br>
-            <input name="product_name" list="products" required>
-            <datalist id="products">
-                {% for p in products %}<option value="{{ p['product_name'] }}">{% endfor %}
-            </datalist>
+    <form method="post" action="/recipes/card">
+        <div class="form-row" style="margin-bottom: 12px;">
+            <div class="form-group" style="flex:2;">
+                <label>Product (from GoPOS)</label>
+                <input name="product_name" list="products" class="form-control" required>
+                <datalist id="products">
+                    {% for p in products %}<option value="{{ p['product_name'] }}">{% endfor %}
+                </datalist>
+            </div>
+            <div class="form-group" style="flex:1;">
+                <label>Category</label>
+                <input name="category" list="categories" class="form-control">
+                <datalist id="categories">
+                    {% for c in categories %}<option value="{{ c['category'] }}">{% endfor %}
+                </datalist>
+            </div>
+            <div class="form-group" style="flex:1;">
+                <label>Portion size</label>
+                <input name="portion_weight" class="form-control" placeholder="~250 g">
+            </div>
         </div>
-        <div><label>Ingredient</label><br>
-            <select name="ingredient_id" required>
-                {% for i in ingredients %}<option value="{{ i['id'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>{% endfor %}
-            </select>
+        <div class="form-group" style="margin-bottom: 12px;">
+            <label>Preparation</label>
+            <textarea name="description" class="form-control" rows="3" style="resize:vertical;"></textarea>
         </div>
-        <div><label>Amount per 1 serving</label><br><input name="amount" type="number" step="0.1" required></div>
-        <button class="btn" type="submit">+ Add</button>
+        <button class="btn btn-primary" type="submit">Create card</button>
     </form>
 </div>
 
-<div class="card">
-    <h2>Current Recipes</h2>
-    <table>
-        <thead>
-            <tr><th>Product</th><th>Ingredient</th><th>Amount</th><th>Unit</th><th></th></tr>
-        </thead>
-        <tbody>
-            {% for r in recipes %}
-            <tr>
-                <td>{{ r['product_name'] }}</td>
-                <td>{{ r['ingredient'] }}</td>
-                <td>{{ r['amount'] }}</td>
-                <td>{{ r['unit'] }}</td>
-                <td>
-                    <form method="post" action="/recipes/delete/{{ r['id'] }}" style="display:inline;">
-                        <button class="btn btn-danger" type="submit">✕</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
 {% endblock %}

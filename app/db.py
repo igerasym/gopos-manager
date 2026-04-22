@@ -42,6 +42,13 @@ def init_db():
             UNIQUE(product_name, ingredient_id)
         );
 
+        CREATE TABLE IF NOT EXISTS recipe_cards (
+            product_name TEXT PRIMARY KEY,
+            category TEXT DEFAULT '',
+            portion_weight TEXT DEFAULT '',
+            description TEXT DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS deliveries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT DEFAULT (date('now')),
@@ -56,6 +63,21 @@ def init_db():
             date TEXT NOT NULL,
             ingredient_id INTEGER NOT NULL REFERENCES ingredients(id),
             amount REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS suppliers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            contact TEXT DEFAULT '',
+            note TEXT DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'staff',
+            display_name TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS sync_log (
