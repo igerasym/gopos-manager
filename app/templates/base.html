@@ -190,21 +190,24 @@
         const btn = document.getElementById('sync-btn');
         if (!el) return;
         let polling = null;
+        let syncing = false;
 
         function check() {
             fetch('/api/sync-status').then(r => r.json()).then(d => {
                 if (d.status === 'running') {
-                    el.innerHTML = '<span style="color:#fbbf24;">⏳ Syncing...</span>';
+                    el.innerHTML = '<span style="color:#fbbf24;">⏳ Синхронізація...</span>';
                     btn.disabled = true;
                     btn.style.opacity = '.5';
-                    if (!polling) polling = setInterval(check, 2000);
-                } else if (d.status === 'done') {
+                    if (!polling) polling = setInterval(check, 3000);
+                } else if (d.status === 'done' && syncing) {
+                    syncing = false;
                     el.innerHTML = '<span style="color:#34d399;">✓ ' + d.message + '</span>';
                     btn.disabled = false;
                     btn.style.opacity = '1';
                     if (polling) { clearInterval(polling); polling = null; }
-                    setTimeout(() => { el.innerHTML = ''; }, 8000);
+                    window.location.reload();
                 } else if (d.status === 'error') {
+                    syncing = false;
                     el.innerHTML = '<span style="color:#f87171;">✗ ' + d.message.substring(0, 60) + '</span>';
                     btn.disabled = false;
                     btn.style.opacity = '1';
@@ -216,12 +219,15 @@
             }).catch(() => {});
         }
 
-        check();
-        document.querySelector('form[action="/sync"]').addEventListener('submit', function() {
-            el.innerHTML = '<span style="color:#fbbf24;">⏳ Starting sync...</span>';
+        document.querySelector('form[action="/sync"]').addEventListener('submit', function(e) {
+            e.preventDefault();
+            syncing = true;
+            el.innerHTML = '<span style="color:#fbbf24;">⏳ Запуск синку...</span>';
             btn.disabled = true;
             btn.style.opacity = '.5';
-            setTimeout(() => { polling = setInterval(check, 2000); }, 1000);
+            fetch('/sync', { method: 'POST', redirect: 'manual' }).then(() => {
+                polling = setInterval(check, 3000);
+            });
         });
     })();
     </script>
