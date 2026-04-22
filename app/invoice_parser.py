@@ -43,6 +43,12 @@ IMPORTANT:
 - Use BRUTTO prices (the "brutto" column from invoice, or calculate: netto × (1 + vat/100))
 - For items sold by weight (KG), price_per_unit is per kg
 - Match to existing ingredients by meaning, not exact name. E.g. "MC JAJA WOLNY WYBIEG L 20 SZT" = "Jaja L"
+- CONVERT package units to match existing ingredient units. Examples:
+  - "Pomidor cherry 2.5kg" (1 pack = 2500g) → match to "Pomidor cherry" (g), quantity = 2500, price_per_unit = pack_price / 2500
+  - "Masło 200g" (8 packs) → match to "Masło 200g" (szt), quantity = 8
+  - "Mleko UHT 1L" (12-pack) → quantity = 12 individual units
+  - "Łosoś filet" sold by KG → match to "Łosoś filet" (g), quantity = weight_kg × 1000, price_per_unit = price_per_kg / 1000
+- Always match the unit to what exists in the ingredient list
 - If multiple invoice lines map to same ingredient, combine them
 
 Existing ingredients:
