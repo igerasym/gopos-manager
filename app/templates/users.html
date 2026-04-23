@@ -66,8 +66,9 @@
                 </td>
                 <td class="text-right">
                     {% if u['username'] != 'admin' %}
-                    <form method="post" action="/users/delete/{{ u['id'] }}" style="display:inline;" onsubmit="return confirm('Видалити {{ u['username'] }}?');">
-                        <button class="btn btn-outline btn-sm" type="submit" style="padding:2px 6px; font-size:.7em; color:var(--red);">✕</button>
+                    <form method="post" action="/users/delete/{{ u['id'] }}" style="display:inline;">
+                        <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
+                                onclick="confirmDelete('/users/delete/{{ u['id'] }}', '{{ u['username'] }}')">✕</button>
                     </form>
                     {% endif %}
                 </td>

@@ -35,6 +35,12 @@
                 </td>
                 <td class="text-right">
                     <a href="/inventory/count/{{ c['id'] }}" class="btn btn-outline btn-sm">Переглянути</a>
+                    {% if request.state.user and request.state.user.role == 'admin' %}
+                    <form method="post" action="/inventory/count/{{ c['id'] }}/delete" style="display:inline; margin-left:4px;">
+                        <button type="button" class="btn btn-outline btn-sm" style="color:var(--red); padding:4px 8px;"
+                                onclick="confirmDelete('/inventory/count/{{ c['id'] }}/delete', 'Інвентаризація {{ c['date'] }} {{ c['time'] or '' }}')">✕</button>
+                    </form>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}

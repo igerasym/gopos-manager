@@ -1,39 +1,69 @@
-/* Delete confirmation modal */
-function openDeleteModal(ingredientId) {
-    const modal = document.getElementById('delete-modal');
+/* Universal confirmation modal */
+function openModal(options) {
+    const modal = document.getElementById('confirm-modal');
     const form = document.getElementById('modal-form');
-    const nameEl = document.getElementById('modal-name');
-    const depsEl = document.getElementById('modal-deps');
-    const warnEl = document.getElementById('modal-warning');
-
-    form.action = '/ingredients/delete/' + ingredientId;
-    nameEl.textContent = 'Завантаження...';
-    depsEl.style.display = 'none';
-    warnEl.style.display = 'none';
+    document.getElementById('modal-title').textContent = options.title || '⚠️ Підтвердження';
+    document.getElementById('modal-name').textContent = options.name || '';
+    const details = document.getElementById('modal-details');
+    const warning = document.getElementById('modal-warning');
+    const submitBtn = document.getElementById('modal-submit-btn');
+    details.style.display = 'none';
+    warning.style.display = 'none';
+    if (options.details) {
+        details.innerHTML = options.details;
+        details.style.display = 'block';
+    }
+    if (options.warning) {
+        warning.textContent = options.warning;
+        warning.style.display = 'block';
+    }
+    submitBtn.textContent = options.buttonText || 'Видалити';
+    form.action = options.action;
     modal.classList.add('open');
+}
 
+function closeModal() {
+    document.getElementById('confirm-modal').classList.remove('open');
+}
+
+document.getElementById('confirm-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+
+/* Delete ingredient modal (with dependency loading) */
+function openDeleteModal(ingredientId) {
+    openModal({
+        title: '⚠️ Видалити інгредієнт?',
+        name: 'Завантаження...',
+        action: '/ingredients/delete/' + ingredientId,
+    });
     fetch('/api/ingredient/' + ingredientId + '/deps')
         .then(r => r.json())
         .then(d => {
-            nameEl.textContent = d.name;
+            document.getElementById('modal-name').textContent = d.name;
             const all = [...d.recipes, ...d.sub_recipes.map(s => '🔧 ' + s)];
             if (all.length > 0) {
-                depsEl.innerHTML = '<strong>Використовується в:</strong><br>' + all.map(n => '<span>' + n + '</span>').join(' ');
-                depsEl.style.display = 'block';
-                warnEl.style.display = 'block';
+                document.getElementById('modal-details').innerHTML =
+                    '<strong>Використовується в:</strong><br>' + all.map(n => '<span>' + n + '</span>').join(' ');
+                document.getElementById('modal-details').style.display = 'block';
+                document.getElementById('modal-warning').textContent =
+                    'Цей інгредієнт буде видалений з усіх рецептів і напівфабрикатів!';
+                document.getElementById('modal-warning').style.display = 'block';
             }
         });
 }
 
-function closeDeleteModal() {
-    document.getElementById('delete-modal').classList.remove('open');
+/* Simple confirm modal for any delete action */
+function confirmDelete(action, name) {
+    openModal({
+        title: '⚠️ Видалити?',
+        name: name || '',
+        action: action,
+        buttonText: 'Видалити',
+    });
 }
 
-document.getElementById('delete-modal').addEventListener('click', function(e) {
-    if (e.target === this) closeDeleteModal();
-});
-
-/* Sync polling (admin only — checks for #sync-btn existence instead of Jinja2) */
+/* Sync polling (admin only) */
 if (document.getElementById('sync-btn')) {
     (function() {
         const el = document.getElementById('sync-status');
@@ -73,7 +103,6 @@ if (document.getElementById('sync-btn')) {
             }).catch(() => {});
         }
 
-        // Check last sync on page load
         check();
 
         document.querySelector('form[action="/sync"]').addEventListener('submit', function(e) {

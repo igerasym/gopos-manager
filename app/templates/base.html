@@ -38,19 +38,17 @@
         {% block content %}{% endblock %}
     </div>
 
-    <!-- Delete confirmation modal -->
-    <div class="modal-overlay" id="delete-modal">
+    <!-- Universal confirmation modal -->
+    <div class="modal-overlay" id="confirm-modal">
         <div class="modal">
-            <h3>⚠️ Видалити інгредієнт?</h3>
+            <h3 id="modal-title">⚠️ Підтвердження</h3>
             <p id="modal-name" style="font-weight:600; color:var(--text);"></p>
-            <div id="modal-deps" class="deps" style="display:none;"></div>
-            <p id="modal-warning" style="color:var(--red); font-size:.85em; display:none;">
-                Цей інгредієнт буде видалений з усіх рецептів і напівфабрикатів!
-            </p>
+            <div id="modal-details" class="deps" style="display:none;"></div>
+            <p id="modal-warning" style="color:var(--red); font-size:.85em; display:none;"></p>
             <div class="modal-actions">
-                <button class="btn btn-outline" onclick="closeDeleteModal()">Скасувати</button>
+                <button class="btn btn-outline" onclick="closeModal()">Скасувати</button>
                 <form id="modal-form" method="post" style="display:inline;">
-                    <button class="btn" style="background:var(--red); color:#fff;" type="submit">Видалити</button>
+                    <button class="btn" id="modal-submit-btn" style="background:var(--red); color:#fff;" type="submit">Видалити</button>
                 </form>
             </div>
         </div>

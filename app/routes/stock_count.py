@@ -184,3 +184,13 @@ async def stock_count_history(request: Request):
     return templates.TemplateResponse(request, 'stock_count_history.html', context={
         'counts': counts,
     })
+
+
+@router.post('/inventory/count/{count_id}/delete')
+async def delete_stock_count(count_id: int):
+    db = get_db()
+    db.execute('DELETE FROM stock_count_items WHERE stock_count_id = ?', (count_id,))
+    db.execute('DELETE FROM stock_counts WHERE id = ?', (count_id,))
+    db.commit()
+    db.close()
+    return RedirectResponse('/inventory/history', status_code=303)
