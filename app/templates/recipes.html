@@ -46,9 +46,10 @@
 {% block content %}
 
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <h2 style="margin:0;">Кухня</h2>
+    <h2 style="margin:0;">Тех карти</h2>
     <div style="display:flex; gap:6px;">
-        <a href="/recipes" class="btn btn-sm {{ 'btn-primary' if request.url.path == '/recipes' else 'btn-outline' }}">Рецепти</a>
+        <a href="/recipes" class="btn btn-sm {{ 'btn-primary' if request.url.path == '/recipes' else 'btn-outline' }}">Кухня</a>
+        <a href="/recipes/bar" class="btn btn-sm {{ 'btn-primary' if '/bar' in request.url.path else 'btn-outline' }}">Бар</a>
         <a href="/recipes/sub" class="btn btn-sm {{ 'btn-primary' if '/sub' in request.url.path else 'btn-outline' }}">Напівфабрикати</a>
     </div>
 </div>
@@ -233,6 +234,7 @@
                     <option value="Сніданки">
                     <option value="Основні страви">
                     <option value="Додатки">
+                    <option value="Бар">
                 </datalist>
             </div>
             <div class="form-group" style="flex:1;">

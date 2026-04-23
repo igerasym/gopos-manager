@@ -16,6 +16,15 @@ router = APIRouter()
 
 @router.get('/recipes', response_class=HTMLResponse)
 async def recipes_page(request: Request):
+    return await _render_recipes(request, 'recipes.html', exclude_categories=['Бар'])
+
+
+@router.get('/recipes/bar', response_class=HTMLResponse)
+async def bar_page(request: Request):
+    return await _render_recipes(request, 'recipes.html', only_categories=['Бар'])
+
+
+async def _render_recipes(request, template, exclude_categories=None, only_categories=None):
     db = get_db()
 
     cards = db.execute('''
@@ -23,15 +32,22 @@ async def recipes_page(request: Request):
         FROM recipe_cards rc ORDER BY rc.category, rc.product_name
     ''').fetchall()
 
+    # Filter by category
+    if only_categories:
+        cards = [c for c in cards if c['category'] in only_categories]
+    elif exclude_categories:
+        cards = [c for c in cards if c['category'] not in exclude_categories]
+
     recipe_map, cost_map = get_recipe_map_with_costs()
-    orphan_products = sorted(set(recipe_map.keys()) - {c['product_name'] for c in cards})
+    card_names = {c['product_name'] for c in cards}
+    orphan_products = sorted(set(recipe_map.keys()) - card_names) if not only_categories else []
     price_map = get_selling_prices()
 
     ingredients = db.execute('SELECT id, name, unit FROM ingredients ORDER BY name').fetchall()
     products = db.execute('SELECT DISTINCT product_name FROM sales ORDER BY product_name').fetchall()
     categories = db.execute('SELECT DISTINCT category FROM recipe_cards WHERE category != "" ORDER BY category').fetchall()
     db.close()
-    return templates.TemplateResponse(request, 'recipes.html', context={
+    return templates.TemplateResponse(request, template, context={
         'cards': cards, 'recipe_map': recipe_map, 'cost_map': cost_map,
         'price_map': price_map,
         'orphan_products': orphan_products,
