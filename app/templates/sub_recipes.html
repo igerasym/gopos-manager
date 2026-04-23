@@ -17,7 +17,7 @@
 {% block content %}
 
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <h2 style="margin:0;">Тех карти</h2>
+    <h2 style="margin:0;">Рецепти</h2>
     <div style="display:flex; gap:6px;">
         <a href="/recipes" class="btn btn-sm {{ 'btn-primary' if request.url.path == '/recipes' else 'btn-outline' }}">Кухня</a>
         <a href="/recipes/bar" class="btn btn-sm {{ 'btn-primary' if '/bar' in request.url.path else 'btn-outline' }}">Бар</a>
