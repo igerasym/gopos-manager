@@ -41,15 +41,29 @@ def get_selling_prices() -> dict:
 
 
 def get_cost_lookup() -> dict:
-    """Get unit cost per product from recipes."""
+    """Get unit cost per product from recipes + direct ingredient matches (resale items)."""
     db = get_db()
+    # From recipes
     recipe_costs = db.execute('''
         SELECT r.product_name, SUM(r.amount * COALESCE(i.unit_price, 0)) as unit_cost
         FROM recipes r JOIN ingredients i ON r.ingredient_id = i.id
         GROUP BY r.product_name
     ''').fetchall()
+    result = {r['product_name']: r['unit_cost'] for r in recipe_costs}
+
+    # Direct match: product name = ingredient name (resale items like ice cream, retail coffee)
+    direct = db.execute('''
+        SELECT i.name, COALESCE(i.unit_price, 0) as unit_cost
+        FROM ingredients i
+        JOIN (SELECT DISTINCT product_name FROM sales) s ON s.product_name = i.name
+        WHERE i.name NOT IN (SELECT DISTINCT product_name FROM recipes)
+    ''').fetchall()
+    for d in direct:
+        if d['name'] not in result:
+            result[d['name']] = d['unit_cost']
+
     db.close()
-    return {r['product_name']: r['unit_cost'] for r in recipe_costs}
+    return result
 
 
 def recalc_sub_recipe_cost(db, sub_id):

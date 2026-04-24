@@ -234,6 +234,12 @@ async def sync_date(date_str: str):
     except Exception as e:
         log.exception(f'Sync failed for {date_str}')
         _finish_sync_log(sync_id, 'error', str(e)[:200])
+        # Notify via Telegram
+        try:
+            from app.telegram_bot import send_message
+            send_message(f'❌ <b>Sync failed</b> for {date_str}\n\n{str(e)[:200]}')
+        except Exception:
+            pass
 
 
 async def sync_today():
@@ -271,6 +277,11 @@ async def sync_range(date_from: str, date_to: str):
     except Exception as e:
         log.exception(f'Range sync failed')
         _finish_sync_log(sync_id, 'error', str(e)[:200])
+        try:
+            from app.telegram_bot import send_message
+            send_message(f'❌ <b>Range sync failed</b> {date_from} → {date_to}\n\n{str(e)[:200]}')
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':

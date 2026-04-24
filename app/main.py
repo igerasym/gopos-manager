@@ -41,6 +41,39 @@ async def lifespan(app: FastAPI):
 
     scheduler.add_job(scheduled_sync, CronTrigger(hour=21, minute=0))
     scheduler.start()
+
+    # Check for missing days and sync them
+    import threading
+    def check_missing_days():
+        import time
+        time.sleep(30)  # wait for app to fully start
+        from datetime import datetime, timedelta
+        from app.db import get_db
+        db = get_db()
+        today = datetime.now().strftime('%Y-%m-%d')
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        row = db.execute('SELECT COUNT(*) as c FROM sales WHERE date = ?', (yesterday,)).fetchone()
+        db.close()
+        if row['c'] == 0:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                from app.gopos_sync import sync_date
+                from app.telegram_bot import send_message
+                send_message(f'⚠️ Дані за {yesterday} відсутні. Запускаю синк...')
+                loop.run_until_complete(sync_date(yesterday))
+                send_message(f'✅ Дані за {yesterday} синхронізовано.')
+            except Exception as e:
+                try:
+                    from app.telegram_bot import send_message
+                    send_message(f'❌ Не вдалось синкнути {yesterday}: {str(e)[:100]}')
+                except Exception:
+                    pass
+            finally:
+                loop.close()
+    threading.Thread(target=check_missing_days, daemon=True).start()
+
     yield
     scheduler.shutdown()
 
