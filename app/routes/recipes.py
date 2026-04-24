@@ -33,14 +33,16 @@ async def _render_recipes(request, template, exclude_categories=None, only_categ
     ''').fetchall()
 
     # Filter by category
+    all_cards = list(cards)  # unfiltered
     if only_categories:
         cards = [c for c in cards if c['category'] in only_categories]
     elif exclude_categories:
         cards = [c for c in cards if c['category'] not in exclude_categories]
 
     recipe_map, cost_map = get_recipe_map_with_costs()
-    card_names = {c['product_name'] for c in cards}
-    orphan_products = sorted(set(recipe_map.keys()) - card_names) if not only_categories else []
+    # Orphans = products with recipes but NO card at all (not just filtered out)
+    all_card_names = {c['product_name'] for c in all_cards}
+    orphan_products = sorted(set(recipe_map.keys()) - all_card_names) if not only_categories else []
     price_map = get_selling_prices()
 
     ingredients = db.execute('SELECT id, name, unit FROM ingredients ORDER BY name').fetchall()
