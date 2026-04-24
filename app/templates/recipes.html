@@ -69,6 +69,7 @@
                 <span class="ingredient-count">{{ ingredients_list|length }} інгредієнтів</span>
             </h3>
             <div class="tech-card-meta">
+                {% if request.state.user and request.state.user.role == 'admin' %}
                 {% set cost = cost_map.get(card['product_name'], 0) %}
                 {% set sell_price = price_map.get(card['product_name'], 0) %}
                 {% if cost > 0 %}
@@ -82,6 +83,7 @@
                 {% endif %}
                 {% if sell_price > 0 %}
                 <span class="badge" style="background:#f1f5f9; color:#64748b;">Продаж: {{ '{:.0f}'.format(sell_price) }} zł</span>
+                {% endif %}
                 {% endif %}
                 {% if card['portion_weight'] %}
                 <span class="badge badge-green">{{ card['portion_weight'] }}</span>
@@ -98,8 +100,10 @@
                             <th>Інгредієнт</th>
                             <th class="text-right" style="width:100px;">Кількість</th>
                             <th style="width:60px;">Одиниця</th>
+                            {% if request.state.user and request.state.user.role == 'admin' %}
                             <th class="text-right" style="width:80px;">Ціна/од.</th>
                             <th class="text-right" style="width:80px;">Вартість</th>
+                            {% endif %}
                             <th style="width:50px;"></th>
                         </tr>
                     </thead>
@@ -118,12 +122,14 @@
                             </td>
                             <td class="text-muted" style="font-size:.85em;">{{ r['display_unit'] }}</td>
                             </td>
+                            {% if request.state.user and request.state.user.role == 'admin' %}
                             <td class="text-right text-muted" style="font-size:.8em;">
                                 {% if r['unit_price'] > 0 %}{{ '{:.2f}'.format(r['unit_price']) }}{% else %}—{% endif %}
                             </td>
                             <td class="text-right" style="font-size:.85em; font-weight:500;">
                                 {% if r['cost'] > 0 %}{{ '{:.2f}'.format(r['cost']) }} zł{% else %}<span class="text-muted">—</span>{% endif %}
                             </td>
+                            {% endif %}
                             <td class="text-right">
                                 <form method="post" action="/recipes/delete/{{ r['id'] }}" style="display:inline;">
                                     <button class="btn btn-outline btn-sm" type="submit" style="padding:2px 6px; font-size:.75em;">✕</button>
@@ -132,6 +138,7 @@
                         </tr>
                         {% endfor %}
                     </tbody>
+                    {% if request.state.user and request.state.user.role == 'admin' %}
                     <tfoot>
                         <tr style="border-top: 2px solid var(--border);">
                             <td colspan="4" class="text-right" style="font-weight:600; font-size:.85em;">Загальна вартість:</td>
@@ -141,6 +148,7 @@
                             <td></td>
                         </tr>
                     </tfoot>
+                    {% endif %}
                 </table>
             </div>
             {% endif %}
