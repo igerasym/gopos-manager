@@ -21,32 +21,39 @@ async def expenses_page(request: Request, month: str = ''):
     current_month = month or datetime.now().strftime('%Y-%m')
     db = get_db()
 
-    # Auto-populate recurring expenses only if this month is completely empty
-    existing_count = db.execute(
-        'SELECT COUNT(*) as cnt FROM expenses WHERE month = ?',
-        (current_month,)
-    ).fetchone()['cnt']
+    # Auto-populate: add any recurring from previous month that are missing in current
+    prev = db.execute('''
+        SELECT DISTINCT month FROM expenses
+        WHERE recurring > 0 AND month < ?
+        ORDER BY month DESC LIMIT 1
+    ''', (current_month,)).fetchone()
 
-    if existing_count == 0:
-        # Find the latest month that has recurring expenses
-        prev = db.execute('''
-            SELECT DISTINCT month FROM expenses
-            WHERE recurring > 0 AND month < ?
-            ORDER BY month DESC LIMIT 1
-        ''', (current_month,)).fetchone()
-        if prev:
-            prev_recurring = db.execute(
-                'SELECT name, category, amount, recurring, note FROM expenses WHERE month = ? AND recurring > 0',
-                (prev['month'],)
+    if prev:
+        prev_recurring = db.execute(
+            'SELECT name, category, amount, recurring, note FROM expenses WHERE month = ? AND recurring > 0',
+            (prev['month'],)
+        ).fetchall()
+        existing_names = set(
+            r['name'] for r in db.execute(
+                'SELECT name FROM expenses WHERE month = ?', (current_month,)
             ).fetchall()
-            for r in prev_recurring:
+        )
+        dismissed_names = set(
+            r['name'] for r in db.execute(
+                'SELECT name FROM expenses_dismissed WHERE month = ?', (current_month,)
+            ).fetchall()
+        )
+        added = 0
+        for r in prev_recurring:
+            if r['name'] not in existing_names and r['name'] not in dismissed_names:
                 amt = r['amount'] if r['recurring'] == 1 else 0
                 db.execute(
                     'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, ?, ?)',
                     (r['name'], r['category'], amt, current_month, r['recurring'], r['note'])
                 )
-            if prev_recurring:
-                db.commit()
+                added += 1
+        if added:
+            db.commit()
 
     expenses = db.execute('''
         SELECT * FROM expenses WHERE month = ?
@@ -164,8 +171,14 @@ async def toggle_recurring(expense_id: int):
 @router.post('/expenses/delete/{expense_id}')
 async def delete_expense(expense_id: int):
     db = get_db()
-    month = db.execute('SELECT month FROM expenses WHERE id = ?', (expense_id,)).fetchone()
-    m = month['month'] if month else ''
+    row = db.execute('SELECT name, month, recurring FROM expenses WHERE id = ?', (expense_id,)).fetchone()
+    m = row['month'] if row else ''
+    # If recurring, remember it was dismissed so it won't auto-populate again
+    if row and row['recurring'] > 0:
+        db.execute(
+            'INSERT OR IGNORE INTO expenses_dismissed (name, month) VALUES (?, ?)',
+            (row['name'], row['month'])
+        )
     db.execute('DELETE FROM expenses WHERE id = ?', (expense_id,))
     db.commit()
     db.close()

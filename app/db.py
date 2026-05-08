@@ -125,6 +125,13 @@ def init_db():
             note TEXT DEFAULT ''
         );
 
+        CREATE TABLE IF NOT EXISTS expenses_dismissed (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            month TEXT NOT NULL,
+            UNIQUE(name, month)
+        );
+
         CREATE TABLE IF NOT EXISTS sync_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             started_at TEXT NOT NULL,
