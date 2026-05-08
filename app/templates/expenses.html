@@ -145,7 +145,7 @@
                 </td>
                 <td class="text-right">
                     <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
-                            onclick="confirmDelete('/expenses/delete/{{ e['id'] }}', '{{ e['name'] }}')">✕</button>
+                            onclick="deleteExpense('/expenses/delete/{{ e['id'] }}', '{{ e['name'] }}')">✕</button>
                 </td>
             </tr>
             {% endfor %}
@@ -203,6 +203,12 @@ function toggleRecurring(btn, id, current) {
             btn.title = titles[next];
             btn.setAttribute('onclick', `toggleRecurring(this, ${id}, ${next})`);
         });
+}
+
+function deleteExpense(url, name) {
+    if (!confirm(`Видалити "${name}"?`)) return;
+    fetch(url, { method: 'POST', redirect: 'manual' })
+        .then(() => location.reload());
 }
 </script>
 {% endblock %}
