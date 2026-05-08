@@ -21,36 +21,32 @@ async def expenses_page(request: Request, month: str = ''):
     current_month = month or datetime.now().strftime('%Y-%m')
     db = get_db()
 
-    # Auto-populate recurring expenses: add any missing from previous month
-    prev = db.execute('''
-        SELECT DISTINCT month FROM expenses
-        WHERE recurring > 0 AND month < ?
-        ORDER BY month DESC LIMIT 1
-    ''', (current_month,)).fetchone()
+    # Auto-populate recurring expenses only if this month is completely empty
+    existing_count = db.execute(
+        'SELECT COUNT(*) as cnt FROM expenses WHERE month = ?',
+        (current_month,)
+    ).fetchone()['cnt']
 
-    if prev:
-        # Get recurring items from previous month
-        prev_recurring = db.execute(
-            'SELECT name, category, amount, recurring, note FROM expenses WHERE month = ? AND recurring > 0',
-            (prev['month'],)
-        ).fetchall()
-        # Get names already in current month
-        existing_names = set(
-            r['name'] for r in db.execute(
-                'SELECT name FROM expenses WHERE month = ?', (current_month,)
+    if existing_count == 0:
+        # Find the latest month that has recurring expenses
+        prev = db.execute('''
+            SELECT DISTINCT month FROM expenses
+            WHERE recurring > 0 AND month < ?
+            ORDER BY month DESC LIMIT 1
+        ''', (current_month,)).fetchone()
+        if prev:
+            prev_recurring = db.execute(
+                'SELECT name, category, amount, recurring, note FROM expenses WHERE month = ? AND recurring > 0',
+                (prev['month'],)
             ).fetchall()
-        )
-        added = 0
-        for r in prev_recurring:
-            if r['name'] not in existing_names:
+            for r in prev_recurring:
                 amt = r['amount'] if r['recurring'] == 1 else 0
                 db.execute(
                     'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, ?, ?)',
                     (r['name'], r['category'], amt, current_month, r['recurring'], r['note'])
                 )
-                added += 1
-        if added:
-            db.commit()
+            if prev_recurring:
+                db.commit()
 
     expenses = db.execute('''
         SELECT * FROM expenses WHERE month = ?
