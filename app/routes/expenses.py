@@ -23,7 +23,7 @@ async def expenses_page(request: Request, month: str = ''):
 
     # Auto-populate recurring expenses if this month has none yet
     existing_recurring = db.execute(
-        'SELECT COUNT(*) as cnt FROM expenses WHERE month = ? AND recurring = 1',
+        'SELECT COUNT(*) as cnt FROM expenses WHERE month = ? AND recurring > 0',
         (current_month,)
     ).fetchone()['cnt']
 
@@ -31,18 +31,20 @@ async def expenses_page(request: Request, month: str = ''):
         # Find the latest month that has recurring expenses
         prev = db.execute('''
             SELECT DISTINCT month FROM expenses
-            WHERE recurring = 1 AND month < ?
+            WHERE recurring > 0 AND month < ?
             ORDER BY month DESC LIMIT 1
         ''', (current_month,)).fetchone()
         if prev:
             recurring_items = db.execute(
-                'SELECT name, category, amount, note FROM expenses WHERE month = ? AND recurring = 1',
+                'SELECT name, category, amount, recurring, note FROM expenses WHERE month = ? AND recurring > 0',
                 (prev['month'],)
             ).fetchall()
             for r in recurring_items:
+                # recurring=1 (fixed): copy with amount; recurring=2 (variable): copy with amount=0
+                amt = r['amount'] if r['recurring'] == 1 else 0
                 db.execute(
-                    'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, 1, ?)',
-                    (r['name'], r['category'], r['amount'], current_month, r['note'])
+                    'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, ?, ?)',
+                    (r['name'], r['category'], amt, current_month, r['recurring'], r['note'])
                 )
             if recurring_items:
                 db.commit()
@@ -150,7 +152,8 @@ async def toggle_recurring(expense_id: int):
     db = get_db()
     row = db.execute('SELECT month, recurring FROM expenses WHERE id = ?', (expense_id,)).fetchone()
     if row:
-        new_val = 0 if row['recurring'] else 1
+        # Cycle: 0 (one-time) → 1 (fixed) → 2 (variable) → 0
+        new_val = (row['recurring'] + 1) % 3
         db.execute('UPDATE expenses SET recurring = ? WHERE id = ?', (new_val, expense_id))
         db.commit()
     m = row['month'] if row else ''
