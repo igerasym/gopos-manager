@@ -15,6 +15,7 @@
         <div class="nav-links" onclick="if(window.innerWidth<769)this.classList.remove('open')">
             {% if request.state.user and request.state.user.role == 'admin' %}
             <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Дашборд</a>
+            <a href="/expenses" class="{% if '/expenses' in request.url.path %}active{% endif %}">Витрати</a>
             {% endif %}
             <a href="/inventory" class="{% if request.url.path == '/inventory' or '/inventory/upload' in request.url.path %}active{% endif %}">Склад</a>
             <a href="/inventory/history" class="{% if '/inventory/count' in request.url.path or '/inventory/history' in request.url.path %}active{% endif %}">Інвентаризація</a>

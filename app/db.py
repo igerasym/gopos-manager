@@ -115,6 +115,16 @@ def init_db():
             difference REAL DEFAULT 0
         );
 
+        CREATE TABLE IF NOT EXISTS expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'Інше',
+            amount REAL NOT NULL,
+            month TEXT NOT NULL,
+            recurring INTEGER DEFAULT 0,
+            note TEXT DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS sync_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             started_at TEXT NOT NULL,

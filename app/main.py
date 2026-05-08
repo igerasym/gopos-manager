@@ -9,7 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.db import init_db
 from app.auth import get_current_user, can_access, create_default_admin
-from app.routes import auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync
+from app.routes import auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync, expenses
 
 BASE_DIR = Path(__file__).parent
 
@@ -101,7 +101,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(AuthMiddleware)
 
-for r in (auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync):
+for r in (auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync, expenses):
     app.include_router(r.router)
 
 if __name__ == '__main__':

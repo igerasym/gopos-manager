@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <h2 style="margin:0;">Витрати</h2>
+    <div style="display:flex; gap:8px; align-items:center;">
+        <form method="get" action="/expenses" style="display:flex; gap:6px; align-items:center;">
+            <input type="month" name="month" value="{{ current_month }}" class="form-control" style="font-size:.85em;" onchange="this.form.submit()">
+        </form>
+    </div>
+</div>
+
+<!-- Summary -->
+<div class="grid-2" style="margin-bottom:16px;">
+    <div class="card">
+        <div class="card-header"><div class="card-title">По категоріях — {{ current_month }}</div></div>
+        {% if by_category %}
+        <table>
+            <tbody>
+                {% for c in by_category %}
+                <tr>
+                    <td style="font-weight:500;">{{ c['category'] }}</td>
+                    <td class="text-right" style="font-weight:600;">{{ '{:,.2f}'.format(c['total']) }} zł</td>
+                    <td class="text-right text-muted" style="font-size:.85em;">
+                        {{ '{:.0f}'.format(c['total'] / total * 100) if total > 0 else 0 }}%
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr style="border-top:2px solid var(--border);">
+                    <td style="font-weight:700;">Всього</td>
+                    <td class="text-right" style="font-weight:700; color:var(--red);">{{ '{:,.2f}'.format(total) }} zł</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+        {% else %}
+        <p class="text-muted" style="padding:12px 0;">Немає витрат за цей місяць.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <div class="card-header"><div class="card-title">Додати витрату</div></div>
+        <form method="post" action="/expenses/add">
+            <input type="hidden" name="month" value="{{ current_month }}">
+            <div class="form-row" style="margin-bottom:8px;">
+                <div class="form-group" style="flex:2;">
+                    <label>Назва</label>
+                    <input name="name" class="form-control" required placeholder="напр. Оренда приміщення">
+                </div>
+                <div class="form-group" style="flex:1;">
+                    <label>Категорія</label>
+                    <select name="category" class="form-control">
+                        {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-row" style="margin-bottom:8px;">
+                <div class="form-group" style="flex:1;">
+                    <label>Сума (zł)</label>
+                    <input name="amount" type="number" step="0.01" class="form-control" required>
+                </div>
+                <div class="form-group" style="flex:1;">
+                    <label>Примітка</label>
+                    <input name="note" class="form-control">
+                </div>
+                <div class="form-group" style="flex:0 0 auto; align-self:end;">
+                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                        <input type="checkbox" name="recurring" value="1"> Щомісячна
+                    </label>
+                </div>
+            </div>
+            <button class="btn btn-primary btn-sm" type="submit">+ Додати</button>
+        </form>
+    </div>
+</div>
+
+<!-- Expenses list -->
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">Всі витрати — {{ current_month }}</div>
+        {% if months|length > 1 %}
+        <form method="post" action="/expenses/copy-month" style="display:flex; gap:6px; align-items:center;">
+            <select name="from_month" class="form-control" style="font-size:.8em; padding:4px 8px;">
+                {% for m in months %}<option value="{{ m['month'] }}">{{ m['month'] }}</option>{% endfor %}
+            </select>
+            <input type="hidden" name="to_month" value="{{ current_month }}">
+            <button class="btn btn-outline btn-sm" type="submit" title="Скопіювати повторювані витрати з іншого місяця">📋 Копіювати</button>
+        </form>
+        {% endif %}
+    </div>
+    {% if expenses %}
+    <table>
+        <thead>
+            <tr>
+                <th>Назва</th>
+                <th>Категорія</th>
+                <th class="text-right">Сума</th>
+                <th>Примітка</th>
+                <th style="width:30px;">🔄</th>
+                <th style="width:40px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in expenses %}
+            <tr>
+                <td style="font-weight:500;">{{ e['name'] }}</td>
+                <td><span class="badge badge-orange">{{ e['category'] }}</span></td>
+                <td class="text-right" style="font-weight:600;">{{ '{:,.2f}'.format(e['amount']) }} zł</td>
+                <td class="text-muted" style="font-size:.85em;">{{ e['note'] or '—' }}</td>
+                <td class="text-center">{{ '✓' if e['recurring'] else '' }}</td>
+                <td class="text-right">
+                    <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
+                            onclick="confirmDelete('/expenses/delete/{{ e['id'] }}', '{{ e['name'] }}')">✕</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted" style="padding:20px 0; text-align:center;">
+        Немає витрат. Додайте першу витрату або скопіюйте з попереднього місяця.
+    </p>
+    {% endif %}
+</div>
+
+{% endblock %}
