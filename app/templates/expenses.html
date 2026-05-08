@@ -143,12 +143,11 @@
                 </td>
                 <td class="text-muted" style="font-size:.85em;">{{ e['note'] or '—' }}</td>
                 <td class="text-center">
-                    <form method="post" action="/expenses/toggle-recurring/{{ e['id'] }}" style="display:inline;">
-                        <button type="submit" style="background:none; border:none; cursor:pointer; font-size:.9em; padding:0;" 
-                                title="{{ 'Зняти щомісячну' if e['recurring'] else 'Зробити щомісячною' }}">
-                            {{ '🔄' if e['recurring'] else '○' }}
-                        </button>
-                    </form>
+                    <button type="button" style="background:none; border:none; cursor:pointer; font-size:.9em; padding:0;" 
+                            title="{{ 'Зняти щомісячну' if e['recurring'] else 'Зробити щомісячною' }}"
+                            onclick="toggleRecurring(this, {{ e['id'] }})">
+                        {{ '🔄' if e['recurring'] else '○' }}
+                    </button>
                 </td>
                 <td class="text-right">
                     <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
@@ -170,7 +169,6 @@
 {% block extra_js %}
 <script>
 function editAmount(el, id, currentAmount) {
-    // Prevent multiple editors
     if (document.querySelector('.inline-edit-form')) return;
     
     const td = el.parentElement;
@@ -186,14 +184,12 @@ function editAmount(el, id, currentAmount) {
     const input = td.querySelector('input');
     input.focus();
     
-    // Cancel on click outside
     function cancelEdit(e) {
         if (!td.contains(e.target)) {
             td.innerHTML = originalHTML;
             document.removeEventListener('mousedown', cancelEdit);
         }
     }
-    // Cancel on Escape
     input.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             td.innerHTML = originalHTML;
@@ -201,6 +197,15 @@ function editAmount(el, id, currentAmount) {
         }
     });
     setTimeout(() => document.addEventListener('mousedown', cancelEdit), 0);
+}
+
+function toggleRecurring(btn, id) {
+    fetch(`/expenses/toggle-recurring/${id}`, { method: 'POST', redirect: 'manual' })
+        .then(() => {
+            const isRecurring = btn.textContent.trim() === '🔄';
+            btn.textContent = isRecurring ? '○' : '🔄';
+            btn.title = isRecurring ? 'Зробити щомісячною' : 'Зняти щомісячну';
+        });
 }
 </script>
 {% endblock %}
