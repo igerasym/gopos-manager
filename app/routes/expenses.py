@@ -105,14 +105,18 @@ async def expenses_page(request: Request, month: str = ''):
 @router.post('/expenses/add')
 async def add_expense(
     name: str = Form(...), category: str = Form('Інше'),
-    amount: float = Form(...), month: str = Form(''),
+    amount: Optional[str] = Form(''), month: str = Form(''),
     recurring: int = Form(0), note: str = Form(''),
 ):
     month = month or datetime.now().strftime('%Y-%m')
+    try:
+        amt = float(amount) if amount else 0.0
+    except (ValueError, TypeError):
+        amt = 0.0
     db = get_db()
     db.execute(
         'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, ?, ?)',
-        (name, category, amount, month, recurring, note)
+        (name, category, amt, month, recurring, note)
     )
     db.commit()
     db.close()
@@ -122,7 +126,7 @@ async def add_expense(
 @router.post('/expenses/update/{expense_id}')
 async def update_expense(
     expense_id: int,
-    amount: Optional[float] = Form(None),
+    amount: Optional[str] = Form(None),
     name: Optional[str] = Form(None),
     category: Optional[str] = Form(None),
     recurring: Optional[int] = Form(None),
@@ -134,8 +138,12 @@ async def update_expense(
     updates = []
     params = []
     if amount is not None:
+        try:
+            amt = float(amount) if amount else 0.0
+        except (ValueError, TypeError):
+            amt = 0.0
         updates.append('amount = ?')
-        params.append(amount)
+        params.append(amt)
     if name:
         updates.append('name = ?')
         params.append(name)
