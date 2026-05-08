@@ -108,15 +108,6 @@
 <div class="card">
     <div class="card-header">
         <div class="card-title">Всі витрати — {{ current_month }}</div>
-        {% if months|length > 1 %}
-        <form method="post" action="/expenses/copy-month" style="display:flex; gap:6px; align-items:center;">
-            <select name="from_month" class="form-control" style="font-size:.8em; padding:4px 8px;">
-                {% for m in months %}<option value="{{ m['month'] }}">{{ m['month'] }}</option>{% endfor %}
-            </select>
-            <input type="hidden" name="to_month" value="{{ current_month }}">
-            <button class="btn btn-outline btn-sm" type="submit" title="Скопіювати повторювані витрати з іншого місяця">📋 Копіювати</button>
-        </form>
-        {% endif %}
     </div>
     {% if expenses %}
     <table>

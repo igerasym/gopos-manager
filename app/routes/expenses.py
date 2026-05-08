@@ -169,19 +169,3 @@ async def delete_expense(expense_id: int):
     return RedirectResponse(f'/expenses?month={m}', status_code=303)
 
 
-@router.post('/expenses/copy-month')
-async def copy_recurring(from_month: str = Form(...), to_month: str = Form(...)):
-    """Copy recurring expenses from one month to another."""
-    db = get_db()
-    recurring = db.execute(
-        'SELECT name, category, amount, recurring, note FROM expenses WHERE month = ? AND recurring = 1',
-        (from_month,)
-    ).fetchall()
-    for r in recurring:
-        db.execute(
-            'INSERT OR IGNORE INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, ?, ?)',
-            (r['name'], r['category'], r['amount'], to_month, 1, r['note'])
-        )
-    db.commit()
-    db.close()
-    return RedirectResponse(f'/expenses?month={to_month}', status_code=303)
