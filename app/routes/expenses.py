@@ -53,7 +53,8 @@ async def expenses_page(request: Request, month: str = ''):
             db.commit()
 
     expenses = db.execute('''
-        SELECT * FROM expenses WHERE month = ? ORDER BY recurring DESC, name
+        SELECT * FROM expenses WHERE month = ?
+        ORDER BY CASE recurring WHEN 1 THEN 0 WHEN 2 THEN 1 ELSE 2 END, name
     ''', (current_month,)).fetchall()
 
     # Totals by category
