@@ -12,13 +12,39 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates'
 
 router = APIRouter()
 
-CATEGORIES = ['Оренда', 'Зарплати', 'Бухгалтерія', 'Комунальні', 'Підписки', 'Інше']
+CATEGORIES = ['Оренда', 'Зарплати', 'Бухгалтерія', 'Комунальні', 'Підписки', 'Побут', 'Податки і ZUS', 'Логістика', 'Продукти', 'Інше']
 
 
 @router.get('/expenses', response_class=HTMLResponse)
 async def expenses_page(request: Request, month: str = ''):
     current_month = month or datetime.now().strftime('%Y-%m')
     db = get_db()
+
+    # Auto-populate recurring expenses if this month has none yet
+    existing_recurring = db.execute(
+        'SELECT COUNT(*) as cnt FROM expenses WHERE month = ? AND recurring = 1',
+        (current_month,)
+    ).fetchone()['cnt']
+
+    if existing_recurring == 0:
+        # Find the latest month that has recurring expenses
+        prev = db.execute('''
+            SELECT DISTINCT month FROM expenses
+            WHERE recurring = 1 AND month < ?
+            ORDER BY month DESC LIMIT 1
+        ''', (current_month,)).fetchone()
+        if prev:
+            recurring_items = db.execute(
+                'SELECT name, category, amount, note FROM expenses WHERE month = ? AND recurring = 1',
+                (prev['month'],)
+            ).fetchall()
+            for r in recurring_items:
+                db.execute(
+                    'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, 1, ?)',
+                    (r['name'], r['category'], r['amount'], current_month, r['note'])
+                )
+            if recurring_items:
+                db.commit()
 
     expenses = db.execute('''
         SELECT * FROM expenses WHERE month = ? ORDER BY category, name
@@ -33,6 +59,25 @@ async def expenses_page(request: Request, month: str = ''):
 
     total = sum(r['total'] for r in by_category)
 
+    # Revenue for this month from sales
+    month_start = current_month + '-01'
+    # Last day of month
+    year, mon = int(current_month[:4]), int(current_month[5:7])
+    if mon == 12:
+        month_end = f'{year + 1}-01-01'
+    else:
+        month_end = f'{year}-{mon + 1:02d}-01'
+
+    revenue_row = db.execute('''
+        SELECT COALESCE(SUM(total_money), 0) as revenue
+        FROM sales WHERE date >= ? AND date < ?
+    ''', (month_start, month_end)).fetchone()
+    revenue = revenue_row['revenue']
+
+    # OpEx = total expenses minus "Продукти" (COGS tracked separately via inventory)
+    opex = sum(r['total'] for r in by_category if r['category'] != 'Продукти')
+    net_profit = revenue - total
+
     # Available months
     months = db.execute('''
         SELECT DISTINCT month FROM expenses ORDER BY month DESC
@@ -43,6 +88,7 @@ async def expenses_page(request: Request, month: str = ''):
         'expenses': expenses, 'by_category': by_category,
         'total': total, 'current_month': current_month,
         'months': months, 'categories': CATEGORIES,
+        'revenue': revenue, 'opex': opex, 'net_profit': net_profit,
     })
 
 
@@ -61,6 +107,26 @@ async def add_expense(
     db.commit()
     db.close()
     return RedirectResponse(f'/expenses?month={month}', status_code=303)
+
+
+@router.post('/expenses/update/{expense_id}')
+async def update_expense(
+    expense_id: int,
+    amount: float = Form(...),
+    name: str = Form(None),
+    category: str = Form(None),
+):
+    db = get_db()
+    row = db.execute('SELECT month FROM expenses WHERE id = ?', (expense_id,)).fetchone()
+    m = row['month'] if row else ''
+    if name and category:
+        db.execute('UPDATE expenses SET amount = ?, name = ?, category = ? WHERE id = ?',
+                   (amount, name, category, expense_id))
+    else:
+        db.execute('UPDATE expenses SET amount = ? WHERE id = ?', (amount, expense_id))
+    db.commit()
+    db.close()
+    return RedirectResponse(f'/expenses?month={m}', status_code=303)
 
 
 @router.post('/expenses/delete/{expense_id}')

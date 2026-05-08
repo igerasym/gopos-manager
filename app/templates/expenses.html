@@ -10,6 +10,34 @@
     </div>
 </div>
 
+<!-- P&L Summary -->
+<div class="card" style="margin-bottom:16px; {% if net_profit >= 0 %}border-left:4px solid var(--green);{% else %}border-left:4px solid var(--red);{% endif %}">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; padding:4px 0;">
+        <div style="text-align:center;">
+            <div class="text-muted" style="font-size:.75em;">Виручка</div>
+            <div style="font-size:1.2em; font-weight:700; color:var(--green);">{{ '{:,.0f}'.format(revenue) }} zł</div>
+        </div>
+        <div style="font-size:1.2em; color:var(--text-muted);">−</div>
+        <div style="text-align:center;">
+            <div class="text-muted" style="font-size:.75em;">Всі витрати</div>
+            <div style="font-size:1.2em; font-weight:700; color:var(--red);">{{ '{:,.0f}'.format(total) }} zł</div>
+        </div>
+        <div style="font-size:1.2em; color:var(--text-muted);">=</div>
+        <div style="text-align:center;">
+            <div class="text-muted" style="font-size:.75em;">Прибуток</div>
+            <div style="font-size:1.2em; font-weight:700; {% if net_profit >= 0 %}color:var(--green);{% else %}color:var(--red);{% endif %}">
+                {{ '{:,.0f}'.format(net_profit) }} zł
+            </div>
+        </div>
+        {% if revenue > 0 %}
+        <div style="text-align:center;">
+            <div class="text-muted" style="font-size:.75em;">Рентабельність</div>
+            <div style="font-size:1.2em; font-weight:700;">{{ '{:.0f}'.format(net_profit / revenue * 100) }}%</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
 <!-- Summary -->
 <div class="grid-2" style="margin-bottom:16px;">
     <div class="card">
@@ -107,7 +135,12 @@
             <tr>
                 <td style="font-weight:500;">{{ e['name'] }}</td>
                 <td><span class="badge badge-orange">{{ e['category'] }}</span></td>
-                <td class="text-right" style="font-weight:600;">{{ '{:,.2f}'.format(e['amount']) }} zł</td>
+                <td class="text-right" style="font-weight:600;">
+                    <span class="editable-amount" data-id="{{ e['id'] }}" style="cursor:pointer; border-bottom:1px dashed var(--border);"
+                          onclick="editAmount(this, {{ e['id'] }}, {{ e['amount'] }})" title="Натисніть щоб редагувати">
+                        {{ '{:,.2f}'.format(e['amount']) }} zł
+                    </span>
+                </td>
                 <td class="text-muted" style="font-size:.85em;">{{ e['note'] or '—' }}</td>
                 <td class="text-center">{{ '✓' if e['recurring'] else '' }}</td>
                 <td class="text-right">
@@ -125,4 +158,42 @@
     {% endif %}
 </div>
 
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function editAmount(el, id, currentAmount) {
+    // Prevent multiple editors
+    if (document.querySelector('.inline-edit-form')) return;
+    
+    const td = el.parentElement;
+    const originalHTML = td.innerHTML;
+    td.innerHTML = `
+        <form method="post" action="/expenses/update/${id}" class="inline-edit-form" style="display:flex; gap:4px; align-items:center; justify-content:flex-end;">
+            <input type="number" name="amount" step="0.01" value="${currentAmount}" 
+                   style="width:100px; padding:2px 6px; font-size:.85em; text-align:right; border:1px solid var(--primary); border-radius:4px;"
+                   autofocus onfocus="this.select()">
+            <button type="submit" class="btn btn-primary btn-sm" style="padding:2px 8px; font-size:.75em;">✓</button>
+        </form>
+    `;
+    const input = td.querySelector('input');
+    input.focus();
+    
+    // Cancel on click outside
+    function cancelEdit(e) {
+        if (!td.contains(e.target)) {
+            td.innerHTML = originalHTML;
+            document.removeEventListener('mousedown', cancelEdit);
+        }
+    }
+    // Cancel on Escape
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            td.innerHTML = originalHTML;
+            document.removeEventListener('mousedown', cancelEdit);
+        }
+    });
+    setTimeout(() => document.addEventListener('mousedown', cancelEdit), 0);
+}
+</script>
 {% endblock %}
