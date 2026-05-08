@@ -1,6 +1,7 @@
 """Expenses routes (admin only)."""
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -47,7 +48,7 @@ async def expenses_page(request: Request, month: str = ''):
                 db.commit()
 
     expenses = db.execute('''
-        SELECT * FROM expenses WHERE month = ? ORDER BY category, name
+        SELECT * FROM expenses WHERE month = ? ORDER BY recurring DESC, amount DESC
     ''', (current_month,)).fetchall()
 
     # Totals by category
@@ -112,19 +113,47 @@ async def add_expense(
 @router.post('/expenses/update/{expense_id}')
 async def update_expense(
     expense_id: int,
-    amount: float = Form(...),
-    name: str = Form(None),
-    category: str = Form(None),
+    amount: Optional[float] = Form(None),
+    name: Optional[str] = Form(None),
+    category: Optional[str] = Form(None),
+    recurring: Optional[int] = Form(None),
 ):
     db = get_db()
     row = db.execute('SELECT month FROM expenses WHERE id = ?', (expense_id,)).fetchone()
     m = row['month'] if row else ''
-    if name and category:
-        db.execute('UPDATE expenses SET amount = ?, name = ?, category = ? WHERE id = ?',
-                   (amount, name, category, expense_id))
-    else:
-        db.execute('UPDATE expenses SET amount = ? WHERE id = ?', (amount, expense_id))
-    db.commit()
+
+    updates = []
+    params = []
+    if amount is not None:
+        updates.append('amount = ?')
+        params.append(amount)
+    if name:
+        updates.append('name = ?')
+        params.append(name)
+    if category:
+        updates.append('category = ?')
+        params.append(category)
+    if recurring is not None:
+        updates.append('recurring = ?')
+        params.append(recurring)
+
+    if updates:
+        params.append(expense_id)
+        db.execute(f'UPDATE expenses SET {", ".join(updates)} WHERE id = ?', params)
+        db.commit()
+    db.close()
+    return RedirectResponse(f'/expenses?month={m}', status_code=303)
+
+
+@router.post('/expenses/toggle-recurring/{expense_id}')
+async def toggle_recurring(expense_id: int):
+    db = get_db()
+    row = db.execute('SELECT month, recurring FROM expenses WHERE id = ?', (expense_id,)).fetchone()
+    if row:
+        new_val = 0 if row['recurring'] else 1
+        db.execute('UPDATE expenses SET recurring = ? WHERE id = ?', (new_val, expense_id))
+        db.commit()
+    m = row['month'] if row else ''
     db.close()
     return RedirectResponse(f'/expenses?month={m}', status_code=303)
 
