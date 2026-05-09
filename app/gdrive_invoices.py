@@ -1,0 +1,218 @@
+"""Google Drive invoice scanner + AWS Textract parser."""
+import io
+import json
+import logging
+import os
+from pathlib import Path
+from typing import Optional
+
+import boto3
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+
+from app.db import get_db
+
+log = logging.getLogger(__name__)
+
+CREDENTIALS_PATH = Path(__file__).parent.parent / 'data' / 'google-credentials.json'
+FOLDER_ID = os.getenv('GDRIVE_FOLDER_ID', '1f9UJ0-BskYgC_dppr7G8bLQrECg67fH6')
+SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
+
+
+def get_drive_service():
+    """Create Google Drive API service."""
+    creds = service_account.Credentials.from_service_account_file(
+        str(CREDENTIALS_PATH), scopes=SCOPES
+    )
+    return build('drive', 'v3', credentials=creds)
+
+
+def list_invoices(folder_id: str = None) -> list[dict]:
+    """List all files in the invoices folder (recursive)."""
+    folder_id = folder_id or FOLDER_ID
+    service = get_drive_service()
+    all_files = []
+    _list_recursive(service, folder_id, all_files, path='')
+    return all_files
+
+
+def _list_recursive(service, folder_id, all_files, path=''):
+    """Recursively list files in folder."""
+    query = f"'{folder_id}' in parents and trashed = false"
+    results = service.files().list(
+        q=query,
+        fields='files(id, name, mimeType, size, createdTime)',
+        pageSize=100
+    ).execute()
+    files = results.get('files', [])
+
+    for f in files:
+        if f['mimeType'] == 'application/vnd.google-apps.folder':
+            # Recurse into subfolders
+            _list_recursive(service, f['id'], all_files, path=f"{path}/{f['name']}")
+        else:
+            f['path'] = f"{path}/{f['name']}" if path else f['name']
+            all_files.append(f)
+
+
+def download_file(file_id: str) -> bytes:
+    """Download a file from Google Drive."""
+    service = get_drive_service()
+    request = service.files().get_media(fileId=file_id)
+    buffer = io.BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    return buffer.getvalue()
+
+
+def parse_invoice_textract(file_bytes: bytes) -> dict:
+    """Parse invoice using AWS Textract AnalyzeExpense."""
+    client = boto3.client('textract', region_name='us-west-2')
+
+    response = client.analyze_expense(
+        Document={'Bytes': file_bytes}
+    )
+
+    result = {
+        'vendor': '',
+        'date': '',
+        'total': 0.0,
+        'items': [],
+    }
+
+    for doc in response.get('ExpenseDocuments', []):
+        # Extract summary fields (vendor, date, total)
+        for field in doc.get('SummaryFields', []):
+            field_type = field.get('Type', {}).get('Text', '')
+            value = field.get('ValueDetection', {}).get('Text', '')
+
+            if field_type == 'VENDOR_NAME':
+                result['vendor'] = value
+            elif field_type == 'INVOICE_RECEIPT_DATE':
+                result['date'] = value
+            elif field_type == 'TOTAL':
+                result['total'] = _parse_number(value)
+
+        # Extract line items
+        for group in doc.get('LineItemGroups', []):
+            for item in group.get('LineItems', []):
+                line = {}
+                for expense_field in item.get('LineItemExpenseFields', []):
+                    ft = expense_field.get('Type', {}).get('Text', '')
+                    val = expense_field.get('ValueDetection', {}).get('Text', '')
+                    if ft == 'ITEM':
+                        line['name'] = val
+                    elif ft == 'QUANTITY':
+                        line['quantity'] = _parse_number(val)
+                    elif ft == 'UNIT_PRICE':
+                        line['unit_price'] = _parse_number(val)
+                    elif ft == 'PRICE':
+                        line['total'] = _parse_number(val)
+                if line.get('name'):
+                    result['items'].append(line)
+
+    return result
+
+
+def _parse_number(text: str) -> float:
+    """Parse number from text (handles Polish format: 1 234,56)."""
+    if not text:
+        return 0.0
+    try:
+        cleaned = text.replace(' ', '').replace(',', '.').replace('zł', '').replace('PLN', '').strip()
+        return float(cleaned)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def scan_and_parse(folder_id: str = None) -> list[dict]:
+    """Scan folder, download and parse all invoices."""
+    files = list_invoices(folder_id)
+    results = []
+
+    # Filter to supported formats
+    supported_types = [
+        'application/pdf',
+        'image/jpeg', 'image/png', 'image/tiff',
+    ]
+
+    for f in files:
+        if f['mimeType'] not in supported_types:
+            log.info(f"Skipping {f['name']} (unsupported type: {f['mimeType']})")
+            continue
+
+        try:
+            log.info(f"Processing: {f['path']}")
+            file_bytes = download_file(f['id'])
+            parsed = parse_invoice_textract(file_bytes)
+            parsed['file_name'] = f['name']
+            parsed['file_path'] = f['path']
+            parsed['file_id'] = f['id']
+            results.append(parsed)
+            log.info(f"  Vendor: {parsed['vendor']}, Items: {len(parsed['items'])}, Total: {parsed['total']}")
+        except Exception as e:
+            log.error(f"  Error parsing {f['name']}: {e}")
+            results.append({
+                'file_name': f['name'],
+                'file_path': f['path'],
+                'file_id': f['id'],
+                'error': str(e),
+            })
+
+    return results
+
+
+def update_ingredient_prices(parsed_invoices: list[dict]) -> dict:
+    """Match parsed invoice items to ingredients and update prices."""
+    db = get_db()
+    ingredients = db.execute('SELECT id, name, unit, unit_price FROM ingredients').fetchall()
+
+    updates = []
+    unmatched = []
+
+    for invoice in parsed_invoices:
+        if 'error' in invoice:
+            continue
+        for item in invoice.get('items', []):
+            item_name = item.get('name', '').strip()
+            if not item_name:
+                continue
+
+            # Try to match with existing ingredient (case-insensitive partial match)
+            matched = None
+            for ing in ingredients:
+                if ing['name'].lower() in item_name.lower() or item_name.lower() in ing['name'].lower():
+                    matched = ing
+                    break
+
+            if matched and item.get('unit_price', 0) > 0:
+                updates.append({
+                    'ingredient_id': matched['id'],
+                    'ingredient_name': matched['name'],
+                    'invoice_item': item_name,
+                    'old_price': matched['unit_price'],
+                    'new_price': item['unit_price'],
+                    'vendor': invoice.get('vendor', ''),
+                })
+            else:
+                unmatched.append({
+                    'name': item_name,
+                    'quantity': item.get('quantity', 0),
+                    'unit_price': item.get('unit_price', 0),
+                    'total': item.get('total', 0),
+                    'vendor': invoice.get('vendor', ''),
+                })
+
+    db.close()
+    return {'updates': updates, 'unmatched': unmatched}
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    files = list_invoices()
+    print(f"Found {len(files)} files:")
+    for f in files:
+        print(f"  {f['path']} ({f['mimeType']})")

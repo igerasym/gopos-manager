@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <h2 style="margin:0;">📄 Фактури (Google Drive)</h2>
+</div>
+
+{% if error %}
+<div class="card" style="border-left:4px solid var(--red); margin-bottom:16px;">
+    <p style="color:var(--red);">Помилка: {{ error }}</p>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header"><div class="card-title">Файли ({{ files|length }})</div></div>
+    {% if files %}
+    <table>
+        <thead>
+            <tr>
+                <th>Файл</th>
+                <th>Тип</th>
+                <th>Дата</th>
+                <th style="width:100px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in files %}
+            <tr>
+                <td style="font-weight:500;">{{ f['path'] or f['name'] }}</td>
+                <td class="text-muted" style="font-size:.85em;">
+                    {% if 'pdf' in f['mimeType'] %}PDF{% elif 'image' in f['mimeType'] %}IMG{% else %}{{ f['mimeType']|truncate(20) }}{% endif %}
+                </td>
+                <td class="text-muted" style="font-size:.85em;">{{ f.get('createdTime', '')[:10] }}</td>
+                <td class="text-right">
+                    {% if f['mimeType'] in ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff'] %}
+                    <button class="btn btn-primary btn-sm" style="font-size:.75em;"
+                            onclick="parseInvoice('{{ f['id'] }}', this)">Парсити</button>
+                    {% else %}
+                    <span class="text-muted" style="font-size:.75em;">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted" style="padding:20px; text-align:center;">
+        Немає файлів. Перевірте що папка розшарена на service account.
+    </p>
+    {% endif %}
+</div>
+
+<!-- Parse result modal -->
+<div id="parse-result" style="display:none; margin-top:16px;">
+    <div class="card">
+        <div class="card-header"><div class="card-title">Результат парсингу</div></div>
+        <div id="parse-content"></div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function parseInvoice(fileId, btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳...';
+    fetch('/invoices/parse/' + fileId, { method: 'POST', credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            btn.textContent = '✓';
+            if (data.error) {
+                document.getElementById('parse-content').innerHTML = 
+                    '<p style="color:var(--red); padding:12px;">Помилка: ' + data.error + '</p>';
+            } else {
+                let html = '<div style="padding:12px;">';
+                html += '<p><strong>Постачальник:</strong> ' + (data.vendor || '—') + '</p>';
+                html += '<p><strong>Дата:</strong> ' + (data.date || '—') + '</p>';
+                html += '<p><strong>Сума:</strong> ' + (data.total || 0).toFixed(2) + ' zł</p>';
+                if (data.items && data.items.length > 0) {
+                    html += '<table><thead><tr><th>Товар</th><th>К-сть</th><th>Ціна</th><th>Сума</th></tr></thead><tbody>';
+                    data.items.forEach(item => {
+                        html += '<tr><td>' + (item.name || '') + '</td>';
+                        html += '<td class="text-right">' + (item.quantity || '') + '</td>';
+                        html += '<td class="text-right">' + (item.unit_price ? item.unit_price.toFixed(2) : '') + '</td>';
+                        html += '<td class="text-right">' + (item.total ? item.total.toFixed(2) : '') + '</td></tr>';
+                    });
+                    html += '</tbody></table>';
+                } else {
+                    html += '<p class="text-muted">Товари не розпізнані</p>';
+                }
+                html += '</div>';
+                document.getElementById('parse-content').innerHTML = html;
+            }
+            document.getElementById('parse-result').style.display = 'block';
+        })
+        .catch(err => {
+            btn.textContent = '✗';
+            document.getElementById('parse-content').innerHTML = 
+                '<p style="color:var(--red); padding:12px;">Помилка запиту</p>';
+            document.getElementById('parse-result').style.display = 'block';
+        });
+}
+</script>
+{% endblock %}
