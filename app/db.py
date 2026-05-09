@@ -136,13 +136,37 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             file_id TEXT NOT NULL UNIQUE,
             file_name TEXT NOT NULL,
+            invoice_number TEXT DEFAULT '',
             folder TEXT DEFAULT '',
             month TEXT DEFAULT '',
             vendor TEXT DEFAULT '',
+            category TEXT DEFAULT 'Продукти',
             total REAL DEFAULT 0,
             items_json TEXT DEFAULT '[]',
-            parsed_at TEXT DEFAULT (datetime('now')),
-            added_to_expenses INTEGER DEFAULT 0
+            status TEXT DEFAULT 'pending',
+            expense_id INTEGER DEFAULT NULL,
+            parsed_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS ingredient_mappings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_name TEXT NOT NULL UNIQUE,
+            ingredient_id INTEGER,
+            action TEXT DEFAULT 'match',
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS invoice_items_pending (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            parsed_invoice_id INTEGER NOT NULL REFERENCES parsed_invoices(id),
+            invoice_name TEXT NOT NULL,
+            quantity REAL DEFAULT 0,
+            unit_price REAL DEFAULT 0,
+            total REAL DEFAULT 0,
+            status TEXT DEFAULT 'pending',
+            ingredient_id INTEGER,
+            suggested_ingredient TEXT DEFAULT '',
+            confidence REAL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS sync_log (

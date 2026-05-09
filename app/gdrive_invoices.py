@@ -151,6 +151,7 @@ def _extract_textract_result(response: dict) -> dict:
         'vendor': '',
         'date': '',
         'total': 0.0,
+        'invoice_number': '',
         'items': [],
     }
 
@@ -164,7 +165,9 @@ def _extract_textract_result(response: dict) -> dict:
             elif field_type == 'INVOICE_RECEIPT_DATE':
                 result['date'] = value
             elif field_type == 'TOTAL':
-                result['total'] = _parse_number(value)
+                result['total'] = max(result['total'], _parse_number(value))
+            elif field_type == 'INVOICE_RECEIPT_ID':
+                result['invoice_number'] = value
 
         for group in doc.get('LineItemGroups', []):
             for item in group.get('LineItems', []):
@@ -295,23 +298,52 @@ def sync_invoices_for_current_month():
     current_month = datetime.now().strftime('%Y-%m')
     db = get_db()
 
-    # Ensure parsed_invoices table exists
-    db.execute('''CREATE TABLE IF NOT EXISTS parsed_invoices (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        file_id TEXT NOT NULL UNIQUE,
-        file_name TEXT NOT NULL,
-        folder TEXT DEFAULT '',
-        month TEXT DEFAULT '',
-        vendor TEXT DEFAULT '',
-        total REAL DEFAULT 0,
-        items_json TEXT DEFAULT '[]',
-        parsed_at TEXT DEFAULT (datetime('now')),
-        added_to_expenses INTEGER DEFAULT 0
-    )''')
+    # Ensure tables exist
+    db.executescript('''
+        CREATE TABLE IF NOT EXISTS parsed_invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_id TEXT NOT NULL UNIQUE,
+            file_name TEXT NOT NULL,
+            invoice_number TEXT DEFAULT '',
+            folder TEXT DEFAULT '',
+            month TEXT DEFAULT '',
+            vendor TEXT DEFAULT '',
+            category TEXT DEFAULT 'Продукти',
+            total REAL DEFAULT 0,
+            items_json TEXT DEFAULT '[]',
+            status TEXT DEFAULT 'pending',
+            expense_id INTEGER DEFAULT NULL,
+            parsed_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS ingredient_mappings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_name TEXT NOT NULL UNIQUE,
+            ingredient_id INTEGER,
+            action TEXT DEFAULT 'match',
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS invoice_items_pending (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            parsed_invoice_id INTEGER NOT NULL,
+            invoice_name TEXT NOT NULL,
+            quantity REAL DEFAULT 0,
+            unit_price REAL DEFAULT 0,
+            total REAL DEFAULT 0,
+            status TEXT DEFAULT 'pending',
+            ingredient_id INTEGER,
+            suggested_ingredient TEXT DEFAULT '',
+            confidence REAL DEFAULT 0
+        );
+    ''')
     db.commit()
 
-    # Get already parsed
-    parsed_ids = set(r['file_id'] for r in db.execute('SELECT file_id FROM parsed_invoices').fetchall())
+    # Get already parsed (by file_id and invoice_number)
+    parsed_file_ids = set(r['file_id'] for r in db.execute('SELECT file_id FROM parsed_invoices').fetchall())
+    parsed_inv_numbers = set(
+        r['invoice_number'] for r in db.execute(
+            'SELECT invoice_number FROM parsed_invoices WHERE invoice_number != ""'
+        ).fetchall()
+    )
 
     # Get invoices for current month
     try:
@@ -326,20 +358,37 @@ def sync_invoices_for_current_month():
     errors = []
 
     for f in invoices:
-        if f['id'] in parsed_ids:
+        if f['id'] in parsed_file_ids:
             continue
         if f['mimeType'] not in supported:
             continue
         try:
             file_bytes = download_file(f['id'])
             result = parse_invoice_textract(file_bytes)
+
+            # Check duplicate by invoice number
+            inv_num = result.get('invoice_number', '')
+            if inv_num and inv_num in parsed_inv_numbers:
+                log.info(f"Skipping duplicate invoice {inv_num}: {f['name']}")
+                continue
+
             db.execute('''
-                INSERT OR REPLACE INTO parsed_invoices (file_id, file_name, folder, month, vendor, total, items_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (f['id'], f['name'], f.get('path', ''), current_month,
+                INSERT OR IGNORE INTO parsed_invoices
+                (file_id, file_name, invoice_number, folder, month, vendor, total, items_json, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+            ''', (f['id'], f['name'], inv_num, f.get('path', ''), current_month,
                   result.get('vendor', ''), result.get('total', 0),
                   json.dumps(result.get('items', []), ensure_ascii=False)))
-            new_parsed.append({'name': f['name'], 'vendor': result.get('vendor', ''), 'total': result.get('total', 0)})
+
+            new_parsed.append({
+                'name': f['name'],
+                'vendor': result.get('vendor', ''),
+                'total': result.get('total', 0),
+                'items_count': len(result.get('items', []))
+            })
+            if inv_num:
+                parsed_inv_numbers.add(inv_num)
+
         except Exception as e:
             errors.append(f"{f['name']}: {str(e)[:80]}")
 
@@ -350,11 +399,11 @@ def sync_invoices_for_current_month():
     if new_parsed or errors:
         try:
             from app.telegram_bot import send_message
-            msg = f"📄 <b>Фактури sync ({current_month})</b>\n\n"
+            msg = f"📄 <b>Фактури ({current_month})</b>\n\n"
             if new_parsed:
-                msg += f"✅ Оброблено: {len(new_parsed)}\n"
+                msg += f"🆕 Нові: {len(new_parsed)} (чекають підтвердження)\n"
                 for p in new_parsed[:10]:
-                    msg += f"  • {p['name']} — {p['vendor']} ({p['total']:.0f} zł)\n"
+                    msg += f"  • {p['vendor'] or p['name']} — {p['total']:.0f} zł ({p['items_count']} товарів)\n"
             if errors:
                 msg += f"\n❌ Помилки: {len(errors)}\n"
                 for e in errors[:5]:

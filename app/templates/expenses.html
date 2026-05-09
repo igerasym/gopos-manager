@@ -158,6 +158,49 @@
     {% endif %}
 </div>
 
+<!-- Pending invoices for approval -->
+{% if pending_invoices %}
+<div class="card" style="margin-top:16px; border-left:4px solid #fbbf24;">
+    <div class="card-header">
+        <div class="card-title">⏳ Фактури для підтвердження ({{ pending_invoices|length }})</div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Постачальник</th>
+                <th>Файл</th>
+                <th class="text-right">Сума</th>
+                <th>Категорія</th>
+                <th style="width:150px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for inv in pending_invoices %}
+            <tr>
+                <td style="font-weight:500;">{{ inv['vendor'] or '—' }}</td>
+                <td class="text-muted" style="font-size:.85em;">{{ inv['file_name'][:40] }}</td>
+                <td class="text-right" style="font-weight:600;">{{ '{:,.2f}'.format(inv['total']) }} zł</td>
+                <td>
+                    <form method="post" action="/expenses/approve-invoice/{{ inv['id'] }}" style="display:inline;" id="approve-form-{{ inv['id'] }}">
+                        <select name="category" class="form-control" style="font-size:.8em; padding:2px 6px; width:auto;">
+                            {% for c in categories %}<option value="{{ c }}" {% if c == 'Продукти' %}selected{% endif %}>{{ c }}</option>{% endfor %}
+                        </select>
+                    </form>
+                </td>
+                <td class="text-right" style="white-space:nowrap;">
+                    <button class="btn btn-primary btn-sm" style="font-size:.75em;"
+                            onclick="document.getElementById('approve-form-{{ inv['id'] }}').submit()">✓ Додати</button>
+                    <form method="post" action="/expenses/skip-invoice/{{ inv['id'] }}" style="display:inline;">
+                        <button class="btn btn-outline btn-sm" style="font-size:.75em;" type="submit">✗</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
 <!-- Invoices from Google Drive -->
 {% if invoices %}
 <div class="card" style="margin-top:16px;">
