@@ -55,15 +55,14 @@ def list_invoices_for_month(month: str) -> list[dict]:
     month_num = month[5:7]  # '05'
     month_name = MONTH_NAMES_UK.get(month_num, '')
 
+    # Strict match: month name + year
     matched = []
     for f in all_files:
-        path_lower = f.get('path', '').lower()
-        # Match: folder contains Ukrainian month name AND year
-        if month_name and month_name in path_lower and year in f.get('path', ''):
+        path = f.get('path', '')
+        path_lower = path.lower()
+        if month_name and month_name in path_lower and year in path:
             matched.append(f)
-        # Fallback: just month name without year (old folders)
-        elif month_name and month_name in path_lower:
-            matched.append(f)
+
     return matched
 
 
