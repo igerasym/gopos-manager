@@ -62,15 +62,20 @@ async def expenses_page(request: Request, month: str = ''):
 
     db.close()
 
-    # Load only already-parsed invoices from DB (no Drive scan on page load)
+    # Load parsed invoices from DB for this month
     parsed_ids = set()
     pending_invoices = []
+    all_invoices = []
     try:
         db2 = get_db()
         parsed_rows = db2.execute('SELECT file_id FROM parsed_invoices').fetchall()
         parsed_ids = set(r['file_id'] for r in parsed_rows)
         pending_invoices = db2.execute(
             "SELECT * FROM parsed_invoices WHERE month = ? AND expense_status = 'pending' ORDER BY vendor",
+            (current_month,)
+        ).fetchall()
+        all_invoices = db2.execute(
+            "SELECT * FROM parsed_invoices WHERE month = ? ORDER BY expense_status, vendor",
             (current_month,)
         ).fetchall()
         db2.close()
@@ -83,6 +88,7 @@ async def expenses_page(request: Request, month: str = ''):
         'months': months, 'categories': CATEGORIES,
         'revenue': revenue, 'net_profit': net_profit,
         'pending_invoices': pending_invoices,
+        'all_invoices': all_invoices,
     })
 
 
