@@ -1,13 +1,16 @@
 """Expenses routes (admin only)."""
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
+
+log = logging.getLogger(__name__)
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 
@@ -94,11 +97,21 @@ async def expenses_page(request: Request, month: str = ''):
     ''').fetchall()
 
     db.close()
+
+    # Load invoices from Google Drive for this month
+    invoices = []
+    try:
+        from app.gdrive_invoices import list_invoices_for_month
+        invoices = list_invoices_for_month(current_month)
+    except Exception as e:
+        log.warning(f"Could not load invoices: {e}")
+
     return templates.TemplateResponse(request, 'expenses.html', context={
         'expenses': expenses, 'by_category': by_category,
         'total': total, 'current_month': current_month,
         'months': months, 'categories': CATEGORIES,
         'revenue': revenue, 'opex': opex, 'net_profit': net_profit,
+        'invoices': invoices,
     })
 
 
@@ -193,3 +206,16 @@ async def delete_expense(expense_id: int):
     return RedirectResponse(f'/expenses?month={m}', status_code=303)
 
 
+
+@router.post('/expenses/parse-invoice/{file_id}')
+async def parse_invoice(file_id: str):
+    """Parse a single invoice from Google Drive using AWS Textract."""
+    try:
+        from app.gdrive_invoices import download_file, parse_invoice_textract
+        file_bytes = download_file(file_id)
+        result = parse_invoice_textract(file_bytes)
+        result['file_id'] = file_id
+        return JSONResponse(result)
+    except Exception as e:
+        log.error(f"Invoice parse error: {e}")
+        return JSONResponse({'error': str(e)}, status_code=500)

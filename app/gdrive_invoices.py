@@ -28,6 +28,14 @@ def get_drive_service():
     return build('drive', 'v3', credentials=creds)
 
 
+MONTH_NAMES_UK = {
+    '01': 'січень', '02': 'лютий', '03': 'березень',
+    '04': 'квітень', '05': 'травень', '06': 'червень',
+    '07': 'липень', '08': 'серпень', '09': 'вересень',
+    '10': 'жовтень', '11': 'листопад', '12': 'грудень',
+}
+
+
 def list_invoices(folder_id: str = None) -> list[dict]:
     """List all files in the invoices folder (recursive)."""
     folder_id = folder_id or FOLDER_ID
@@ -35,6 +43,25 @@ def list_invoices(folder_id: str = None) -> list[dict]:
     all_files = []
     _list_recursive(service, folder_id, all_files, path='')
     return all_files
+
+
+def list_invoices_for_month(month: str) -> list[dict]:
+    """List invoices for a specific month (e.g. '2026-05').
+    Matches folder names containing month name in Ukrainian or month number.
+    """
+    all_files = list_invoices()
+    month_num = month[5:7]  # '05'
+    month_name = MONTH_NAMES_UK.get(month_num, '')
+
+    matched = []
+    for f in all_files:
+        path_lower = f.get('path', '').lower()
+        # Match by Ukrainian month name or month number
+        if month_name and month_name in path_lower:
+            matched.append(f)
+        elif f'/{month_num}/' in f.get('path', '') or f'({month_num})' in f.get('path', ''):
+            matched.append(f)
+    return matched
 
 
 def _list_recursive(service, folder_id, all_files, path=''):
