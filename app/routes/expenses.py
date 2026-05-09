@@ -265,7 +265,7 @@ async def approve_invoice(invoice_id: int, category: str = Form('Продукт�
     # Add to expenses
     cur = db.execute(
         'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, 0, ?)',
-        (vendor, category, amount, month, f"Фактура: {inv['file_name']}")
+        (vendor, category, amount, month, f"Фактура #{inv['invoice_number'] or inv['file_name']}")
     )
     expense_id = cur.lastrowid
 
@@ -274,8 +274,54 @@ async def approve_invoice(invoice_id: int, category: str = Form('Продукт�
         'UPDATE parsed_invoices SET status = ?, expense_id = ?, category = ? WHERE id = ?',
         ('approved', expense_id, category, invoice_id)
     )
+
+    # Record price history for matched items
+    import json
+    items = json.loads(inv['items_json']) if inv['items_json'] else []
+    price_alerts = []
+
+    for item in items:
+        if not item.get('name') or not item.get('unit_price'):
+            continue
+        # Check if this item has a mapping
+        mapping = db.execute(
+            'SELECT ingredient_id FROM ingredient_mappings WHERE invoice_name = ?',
+            (item['name'],)
+        ).fetchone()
+        if mapping and mapping['ingredient_id']:
+            ing_id = mapping['ingredient_id']
+            old_price_row = db.execute(
+                'SELECT unit_price FROM ingredients WHERE id = ?', (ing_id,)
+            ).fetchone()
+            old_price = old_price_row['unit_price'] if old_price_row else 0
+
+            new_price = item['unit_price']
+            # Save price history
+            db.execute(
+                'INSERT INTO ingredient_price_history (ingredient_id, price, invoice_id) VALUES (?, ?, ?)',
+                (ing_id, new_price, invoice_id)
+            )
+            # Update current price
+            db.execute('UPDATE ingredients SET unit_price = ? WHERE id = ?', (new_price, ing_id))
+
+            # Check for price alert
+            from app.gdrive_invoices import check_price_alerts
+            alert = check_price_alerts(ing_id, new_price, old_price)
+            if alert:
+                price_alerts.append(alert)
+
     db.commit()
     db.close()
+
+    # Send price alerts via Telegram
+    if price_alerts:
+        try:
+            from app.telegram_bot import send_message
+            msg = "⚠️ <b>Зміна цін</b>\n\n" + "\n".join(price_alerts)
+            send_message(msg)
+        except Exception:
+            pass
+
     return RedirectResponse(f'/expenses?month={month}', status_code=303)
 
 

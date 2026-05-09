@@ -169,6 +169,22 @@ def init_db():
             confidence REAL DEFAULT 0
         );
 
+        CREATE TABLE IF NOT EXISTS vendor_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vendor_pattern TEXT NOT NULL UNIQUE,
+            category TEXT NOT NULL DEFAULT 'Продукти',
+            expense_name TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS ingredient_price_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ingredient_id INTEGER NOT NULL REFERENCES ingredients(id),
+            price REAL NOT NULL,
+            date TEXT DEFAULT (date('now')),
+            invoice_id INTEGER,
+            note TEXT DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS sync_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             started_at TEXT NOT NULL,

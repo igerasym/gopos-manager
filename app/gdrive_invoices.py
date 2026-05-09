@@ -200,6 +200,71 @@ def _parse_number(text: str) -> float:
         return 0.0
 
 
+# Default vendor rules (used if DB table is empty or as fallback)
+DEFAULT_VENDOR_RULES = [
+    ('makro', 'Продукти', 'Закупка Makro'),
+    ('foundation', 'Продукти', 'Кава Foundation'),
+    ('coffee plant', 'Продукти', 'Кава Coffee Plant'),
+    ('coffeeplant', 'Продукти', 'Кава Coffee Plant'),
+    ('fresh black', 'Продукти', 'Кава Fresh Black'),
+    ('coffeedesk', 'Продукти', 'Закуп Coffeedesk'),
+    ('ferment', 'Продукти', 'Випічка Ferment'),
+    ('bakers house', 'Продукти', 'Випічка Bakers House'),
+    ('merchant', 'Продукти', 'Лимонади Merchant'),
+    ('mr.pops', 'Продукти', 'Mr Pops морозиво'),
+    ('mr pops', 'Продукти', 'Mr Pops морозиво'),
+    ('natural rascal', 'Продукти', 'Natural Rascal'),
+    ('matcha bros', 'Продукти', 'Matcha Bros'),
+    ('pge', 'Комунальні', 'Електрика'),
+    ('energa', 'Комунальні', 'Електрика'),
+    ('tauron', 'Комунальні', 'Електрика дистрибуція'),
+    ('play', 'Побут', 'Інтернет Play'),
+    ('santander', 'Побут', 'Santander'),
+    ('allegro', 'Побут', 'Allegro'),
+    ('hulvanska', 'Зарплати', 'Зарплати'),
+]
+
+
+def classify_vendor(vendor: str, file_name: str = '') -> tuple[str, str]:
+    """Classify vendor into category and expense name using rules.
+    Returns (category, expense_name).
+    """
+    search_text = f"{vendor} {file_name}".lower()
+
+    # Try DB rules first
+    try:
+        db = get_db()
+        rules = db.execute('SELECT vendor_pattern, category, expense_name FROM vendor_rules').fetchall()
+        db.close()
+        for r in rules:
+            if r['vendor_pattern'].lower() in search_text:
+                return r['category'], r['expense_name']
+    except Exception:
+        pass
+
+    # Fallback to default rules
+    for pattern, category, name in DEFAULT_VENDOR_RULES:
+        if pattern in search_text:
+            return category, name
+
+    return 'Інше', vendor or file_name
+
+
+def check_price_alerts(ingredient_id: int, new_price: float, old_price: float) -> str | None:
+    """Check if price change exceeds threshold (10%). Returns alert message or None."""
+    if old_price <= 0 or new_price <= 0:
+        return None
+    change_pct = ((new_price - old_price) / old_price) * 100
+    if abs(change_pct) >= 10:
+        db = get_db()
+        ing = db.execute('SELECT name, unit FROM ingredients WHERE id = ?', (ingredient_id,)).fetchone()
+        db.close()
+        if ing:
+            direction = '📈' if change_pct > 0 else '📉'
+            return f"{direction} <b>{ing['name']}</b>: {old_price:.2f} → {new_price:.2f} zł/{ing['unit']} ({change_pct:+.0f}%)"
+    return None
+
+
 def scan_and_parse(folder_id: str = None) -> list[dict]:
     """Scan folder, download and parse all invoices."""
     files = list_invoices(folder_id)
@@ -372,12 +437,16 @@ def sync_invoices_for_current_month():
                 log.info(f"Skipping duplicate invoice {inv_num}: {f['name']}")
                 continue
 
+            # Auto-classify vendor
+            vendor = result.get('vendor', '')
+            category, expense_name = classify_vendor(vendor, f['name'])
+
             db.execute('''
                 INSERT OR IGNORE INTO parsed_invoices
-                (file_id, file_name, invoice_number, folder, month, vendor, total, items_json, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                (file_id, file_name, invoice_number, folder, month, vendor, category, total, items_json, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
             ''', (f['id'], f['name'], inv_num, f.get('path', ''), current_month,
-                  result.get('vendor', ''), result.get('total', 0),
+                  expense_name or vendor, category, result.get('total', 0),
                   json.dumps(result.get('items', []), ensure_ascii=False)))
 
             new_parsed.append({
