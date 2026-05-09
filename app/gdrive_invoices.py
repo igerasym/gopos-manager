@@ -376,7 +376,8 @@ def sync_invoices_for_current_month():
             category TEXT DEFAULT 'Продукти',
             total REAL DEFAULT 0,
             items_json TEXT DEFAULT '[]',
-            status TEXT DEFAULT 'pending',
+            parse_status TEXT DEFAULT 'pending',
+            expense_status TEXT DEFAULT 'pending',
             expense_id INTEGER DEFAULT NULL,
             parsed_at TEXT DEFAULT (datetime('now'))
         );
@@ -443,8 +444,8 @@ def sync_invoices_for_current_month():
 
             db.execute('''
                 INSERT OR IGNORE INTO parsed_invoices
-                (file_id, file_name, invoice_number, folder, month, vendor, category, total, items_json, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                (file_id, file_name, invoice_number, folder, month, vendor, category, total, items_json, parse_status, expense_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'parsed', 'pending')
             ''', (f['id'], f['name'], inv_num, f.get('path', ''), current_month,
                   expense_name or vendor, category, result.get('total', 0),
                   json.dumps(result.get('items', []), ensure_ascii=False)))

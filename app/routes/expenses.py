@@ -73,8 +73,8 @@ async def expenses_page(request: Request, month: str = ''):
         parsed_rows = db2.execute('SELECT file_id FROM parsed_invoices').fetchall()
         parsed_ids = set(r['file_id'] for r in parsed_rows)
         pending_invoices = db2.execute(
-            'SELECT * FROM parsed_invoices WHERE month = ? AND status = ? ORDER BY vendor',
-            (current_month, 'pending')
+            "SELECT * FROM parsed_invoices WHERE month = ? AND expense_status = 'pending' ORDER BY vendor",
+            (current_month,)
         ).fetchall()
         db2.close()
     except Exception as e:
@@ -178,8 +178,8 @@ async def parse_invoice(file_id: str):
         db = get_db()
         db.execute('''
             INSERT OR IGNORE INTO parsed_invoices
-            (file_id, file_name, invoice_number, vendor, category, total, items_json, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+            (file_id, file_name, invoice_number, vendor, category, total, items_json, parse_status, expense_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'parsed', 'pending')
         ''', (file_id, '', result.get('invoice_number', ''),
               expense_name or result.get('vendor', ''), category,
               result.get('total', 0),
@@ -215,8 +215,8 @@ async def approve_invoice(invoice_id: int, category: str = Form('Продукт�
 
     # Update invoice status
     db.execute(
-        'UPDATE parsed_invoices SET status = ?, expense_id = ?, category = ? WHERE id = ?',
-        ('approved', expense_id, category, invoice_id)
+        'UPDATE parsed_invoices SET expense_status = ?, expense_id = ?, category = ? WHERE id = ?',
+        ('added', expense_id, category, invoice_id)
     )
 
     # Record price history for matched items
@@ -268,7 +268,7 @@ async def skip_invoice(invoice_id: int):
     db = get_db()
     inv = db.execute('SELECT month FROM parsed_invoices WHERE id = ?', (invoice_id,)).fetchone()
     month = inv['month'] if inv else ''
-    db.execute('UPDATE parsed_invoices SET status = ? WHERE id = ?', ('skipped', invoice_id))
+    db.execute("UPDATE parsed_invoices SET expense_status = 'skipped' WHERE id = ?", (invoice_id,))
     db.commit()
     db.close()
     return RedirectResponse(f'/expenses?month={month}', status_code=303)
@@ -306,8 +306,8 @@ async def process_all_invoices(month: str = Form('')):
 
             db.execute('''
                 INSERT OR IGNORE INTO parsed_invoices
-                (file_id, file_name, invoice_number, folder, month, vendor, category, total, items_json, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                (file_id, file_name, invoice_number, folder, month, vendor, category, total, items_json, parse_status, expense_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'parsed', 'pending')
             ''', (f['id'], f['name'], result.get('invoice_number', ''),
                   f.get('path', ''), current_month,
                   expense_name or result.get('vendor', ''), category,

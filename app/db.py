@@ -143,7 +143,8 @@ def init_db():
             category TEXT DEFAULT 'Продукти',
             total REAL DEFAULT 0,
             items_json TEXT DEFAULT '[]',
-            status TEXT DEFAULT 'pending',
+            parse_status TEXT DEFAULT 'pending',
+            expense_status TEXT DEFAULT 'pending',
             expense_id INTEGER DEFAULT NULL,
             parsed_at TEXT DEFAULT (datetime('now'))
         );
