@@ -270,6 +270,33 @@ async def skip_invoice(invoice_id: int):
     return RedirectResponse(f'/expenses?month={month}', status_code=303)
 
 
+@router.get('/expenses/scan-drive')
+async def scan_drive(month: str = ''):
+    """Scan Google Drive folder for invoices (no parsing, just list)."""
+    current_month = month or datetime.now().strftime('%Y-%m')
+    try:
+        from app.gdrive_invoices import list_invoices_for_month
+        files = list_invoices_for_month(current_month)
+
+        # Check which are already parsed
+        db = get_db()
+        parsed_ids = set(
+            r['file_id'] for r in db.execute('SELECT file_id FROM parsed_invoices').fetchall()
+        )
+        db.close()
+
+        supported = ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']
+        new_files = [f['name'] for f in files if f['id'] not in parsed_ids and f['mimeType'] in supported]
+
+        return JSONResponse({
+            'total': len(files),
+            'new_count': len(new_files),
+            'new_files': new_files[:20],
+        })
+    except Exception as e:
+        return JSONResponse({'error': str(e)[:200]}, status_code=500)
+
+
 @router.post('/expenses/process-invoices')
 async def process_all_invoices(month: str = Form('')):
     """Scan Google Drive for new invoices, parse them with Textract."""

@@ -181,24 +181,23 @@
     {% endif %}
 </div>
 
-<!-- Invoices actions -->
+<!-- Invoices section -->
 <div class="card" style="margin-top:16px;">
     <div class="card-header">
         <div class="card-title">📄 Фактури — {{ current_month }}</div>
-        <form method="post" action="/expenses/process-invoices" style="display:inline;">
-            <input type="hidden" name="month" value="{{ current_month }}">
-            <button class="btn btn-primary btn-sm" type="submit">⚡ Сканувати Drive і обробити нові</button>
-        </form>
+        <div style="display:flex; gap:8px;">
+            <button class="btn btn-outline btn-sm" onclick="scanDrive(this)" title="Перевірити папку на нові файли">🔍 Сканувати</button>
+            <form method="post" action="/expenses/process-invoices" style="display:inline;">
+                <input type="hidden" name="month" value="{{ current_month }}">
+                <button class="btn btn-primary btn-sm" type="submit" title="Парсити нові фактури через Textract">⚡ Обробити</button>
+            </form>
+        </div>
     </div>
-    <p class="text-muted" style="padding:8px 0; font-size:.85em;">
-        Натисніть кнопку щоб перевірити папку "Фактури ({{ current_month }})" на Google Drive і обробити нові файли.
-    </p>
-</div>
-
-<div id="parse-result" style="display:none; margin-top:12px;">
-    <div class="card">
-        <div class="card-header"><div class="card-title">Результат парсингу</div></div>
-        <div id="parse-content"></div>
+    <div id="scan-result" style="padding:8px 0;">
+        <p class="text-muted" style="font-size:.85em; margin:0;">
+            🔍 Сканувати — перевірить папку на Drive<br>
+            ⚡ Обробити — розпізнає нові фактури і додасть для підтвердження
+        </p>
     </div>
 </div>
 
@@ -236,6 +235,36 @@ function deleteExpense(url, name) {
     form.action = url;
     document.body.appendChild(form);
     form.submit();
+}
+
+function scanDrive(btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Скануємо...';
+    const month = '{{ current_month }}';
+    fetch('/expenses/scan-drive?month=' + month, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            btn.textContent = '🔍 Сканувати';
+            btn.disabled = false;
+            const el = document.getElementById('scan-result');
+            if (data.error) {
+                el.innerHTML = '<p style="color:var(--red); font-size:.85em;">❌ ' + data.error + '</p>';
+            } else {
+                let html = '<div style="font-size:.85em;">';
+                html += '<p style="margin:4px 0;"><strong>' + data.total + '</strong> файлів у папці, <strong>' + data.new_count + '</strong> нових</p>';
+                if (data.new_files && data.new_files.length > 0) {
+                    html += '<ul style="margin:4px 0; padding-left:16px;">';
+                    data.new_files.forEach(f => { html += '<li>' + f + '</li>'; });
+                    html += '</ul>';
+                    html += '<p class="text-muted">Натисніть ⚡ Обробити щоб розпізнати</p>';
+                } else {
+                    html += '<p class="text-muted">Нових фактур немає ✓</p>';
+                }
+                html += '</div>';
+                el.innerHTML = html;
+            }
+        })
+        .catch(() => { btn.textContent = '🔍 Сканувати'; btn.disabled = false; });
 }
 </script>
 {% endblock %}
