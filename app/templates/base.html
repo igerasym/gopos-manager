@@ -26,7 +26,7 @@
         </div>
         <div class="nav-right">
             <span id="sync-status" style="font-size:.8em; margin-right:8px;"></span>
-            {% if request.state.user and request.state.user.role == 'admin' %}
+            {% if request.state.user and request.state.user.role == 'admin' and request.url.path == '/' %}
             <form action="/sync" method="post">
                 <button class="btn btn-success btn-sm" type="submit" id="sync-btn">🔄 Синк GoPOS</button>
             </form>

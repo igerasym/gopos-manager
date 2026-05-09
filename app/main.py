@@ -35,6 +35,12 @@ async def lifespan(app: FastAPI):
                 daily_report()
             except Exception:
                 pass
+            # Sync invoices from Google Drive
+            try:
+                from app.gdrive_invoices import sync_invoices_for_current_month
+                sync_invoices_for_current_month()
+            except Exception:
+                pass
             finally:
                 loop.close()
         threading.Thread(target=run, daemon=True).start()

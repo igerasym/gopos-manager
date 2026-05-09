@@ -243,3 +243,82 @@ if __name__ == '__main__':
     print(f"Found {len(files)} files:")
     for f in files:
         print(f"  {f['path']} ({f['mimeType']})")
+
+
+def sync_invoices_for_current_month():
+    """Auto-sync: parse all new invoices for current month, notify via Telegram."""
+    import json
+    from datetime import datetime
+
+    current_month = datetime.now().strftime('%Y-%m')
+    db = get_db()
+
+    # Ensure parsed_invoices table exists
+    db.execute('''CREATE TABLE IF NOT EXISTS parsed_invoices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_id TEXT NOT NULL UNIQUE,
+        file_name TEXT NOT NULL,
+        folder TEXT DEFAULT '',
+        month TEXT DEFAULT '',
+        vendor TEXT DEFAULT '',
+        total REAL DEFAULT 0,
+        items_json TEXT DEFAULT '[]',
+        parsed_at TEXT DEFAULT (datetime('now')),
+        added_to_expenses INTEGER DEFAULT 0
+    )''')
+    db.commit()
+
+    # Get already parsed
+    parsed_ids = set(r['file_id'] for r in db.execute('SELECT file_id FROM parsed_invoices').fetchall())
+
+    # Get invoices for current month
+    try:
+        invoices = list_invoices_for_month(current_month)
+    except Exception as e:
+        log.error(f"Could not list invoices: {e}")
+        db.close()
+        return
+
+    supported = ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']
+    new_parsed = []
+    errors = []
+
+    for f in invoices:
+        if f['id'] in parsed_ids:
+            continue
+        if f['mimeType'] not in supported:
+            continue
+        try:
+            file_bytes = download_file(f['id'])
+            result = parse_invoice_textract(file_bytes)
+            db.execute('''
+                INSERT OR REPLACE INTO parsed_invoices (file_id, file_name, folder, month, vendor, total, items_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (f['id'], f['name'], f.get('path', ''), current_month,
+                  result.get('vendor', ''), result.get('total', 0),
+                  json.dumps(result.get('items', []), ensure_ascii=False)))
+            new_parsed.append({'name': f['name'], 'vendor': result.get('vendor', ''), 'total': result.get('total', 0)})
+        except Exception as e:
+            errors.append(f"{f['name']}: {str(e)[:80]}")
+
+    db.commit()
+    db.close()
+
+    # Telegram notification
+    if new_parsed or errors:
+        try:
+            from app.telegram_bot import send_message
+            msg = f"📄 <b>Фактури sync ({current_month})</b>\n\n"
+            if new_parsed:
+                msg += f"✅ Оброблено: {len(new_parsed)}\n"
+                for p in new_parsed[:10]:
+                    msg += f"  • {p['name']} — {p['vendor']} ({p['total']:.0f} zł)\n"
+            if errors:
+                msg += f"\n❌ Помилки: {len(errors)}\n"
+                for e in errors[:5]:
+                    msg += f"  • {e}\n"
+            send_message(msg)
+        except Exception:
+            pass
+
+    log.info(f"Invoice sync done: {len(new_parsed)} new, {len(errors)} errors")

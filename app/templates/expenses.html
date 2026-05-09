@@ -163,10 +163,15 @@
 <div class="card" style="margin-top:16px;">
     <div class="card-header">
         <div class="card-title">📄 Фактури — {{ current_month }} ({{ invoices|length }})</div>
+        <form method="post" action="/expenses/process-invoices" style="display:inline;">
+            <input type="hidden" name="month" value="{{ current_month }}">
+            <button class="btn btn-primary btn-sm" type="submit">⚡ Обробити нові</button>
+        </form>
     </div>
     <table>
         <thead>
             <tr>
+                <th style="width:30px;">✓</th>
                 <th>Файл</th>
                 <th style="width:80px;">Тип</th>
                 <th style="width:100px;"></th>
@@ -174,15 +179,20 @@
         </thead>
         <tbody>
             {% for f in invoices %}
-            <tr>
+            <tr style="{% if f['id'] in parsed_ids %}opacity:.6;{% endif %}">
+                <td class="text-center">
+                    {% if f['id'] in parsed_ids %}✅{% else %}○{% endif %}
+                </td>
                 <td style="font-size:.85em;">{{ f['name'] }}</td>
                 <td class="text-muted" style="font-size:.8em;">
                     {% if 'pdf' in f['mimeType'] %}PDF{% elif 'image' in f['mimeType'] %}IMG{% else %}?{% endif %}
                 </td>
                 <td class="text-right">
-                    {% if f['mimeType'] in ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff'] %}
+                    {% if f['mimeType'] in ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff'] and f['id'] not in parsed_ids %}
                     <button class="btn btn-outline btn-sm" style="font-size:.75em;"
                             onclick="parseInvoice('{{ f['id'] }}', this)">Парсити</button>
+                    {% elif f['id'] in parsed_ids %}
+                    <span class="text-muted" style="font-size:.75em;">оброблено</span>
                     {% endif %}
                 </td>
             </tr>

@@ -100,9 +100,15 @@ async def expenses_page(request: Request, month: str = ''):
 
     # Load invoices from Google Drive for this month
     invoices = []
+    parsed_ids = set()
     try:
         from app.gdrive_invoices import list_invoices_for_month
         invoices = list_invoices_for_month(current_month)
+        # Get already parsed file IDs
+        db2 = get_db()
+        parsed_rows = db2.execute('SELECT file_id FROM parsed_invoices').fetchall()
+        parsed_ids = set(r['file_id'] for r in parsed_rows)
+        db2.close()
     except Exception as e:
         log.warning(f"Could not load invoices: {e}")
 
@@ -111,7 +117,7 @@ async def expenses_page(request: Request, month: str = ''):
         'total': total, 'current_month': current_month,
         'months': months, 'categories': CATEGORIES,
         'revenue': revenue, 'opex': opex, 'net_profit': net_profit,
-        'invoices': invoices,
+        'invoices': invoices, 'parsed_ids': parsed_ids,
     })
 
 
@@ -212,10 +218,87 @@ async def parse_invoice(file_id: str):
     """Parse a single invoice from Google Drive using AWS Textract."""
     try:
         from app.gdrive_invoices import download_file, parse_invoice_textract
+        import json
+
         file_bytes = download_file(file_id)
         result = parse_invoice_textract(file_bytes)
         result['file_id'] = file_id
+
+        # Save to parsed_invoices table
+        db = get_db()
+        db.execute('''
+            INSERT OR REPLACE INTO parsed_invoices (file_id, file_name, vendor, total, items_json)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (file_id, result.get('file_name', ''), result.get('vendor', ''),
+              result.get('total', 0), json.dumps(result.get('items', []), ensure_ascii=False)))
+        db.commit()
+        db.close()
+
         return JSONResponse(result)
     except Exception as e:
         log.error(f"Invoice parse error: {e}")
         return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@router.post('/expenses/process-invoices')
+async def process_all_invoices(month: str = Form('')):
+    """Parse all unparsed invoices for the month and add totals to expenses."""
+    import json
+    from app.gdrive_invoices import list_invoices_for_month, download_file, parse_invoice_textract
+
+    current_month = month or datetime.now().strftime('%Y-%m')
+    db = get_db()
+
+    # Get already parsed file_ids
+    parsed_ids = set(
+        r['file_id'] for r in db.execute('SELECT file_id FROM parsed_invoices').fetchall()
+    )
+
+    # Get invoices for this month
+    try:
+        invoices = list_invoices_for_month(current_month)
+    except Exception as e:
+        db.close()
+        return RedirectResponse(f'/expenses?month={current_month}', status_code=303)
+
+    supported = ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']
+    new_parsed = []
+    errors = []
+
+    for f in invoices:
+        if f['id'] in parsed_ids:
+            continue
+        if f['mimeType'] not in supported:
+            continue
+        try:
+            file_bytes = download_file(f['id'])
+            result = parse_invoice_textract(file_bytes)
+            db.execute('''
+                INSERT OR REPLACE INTO parsed_invoices (file_id, file_name, folder, month, vendor, total, items_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (f['id'], f['name'], f.get('path', ''), current_month,
+                  result.get('vendor', ''), result.get('total', 0),
+                  json.dumps(result.get('items', []), ensure_ascii=False)))
+            new_parsed.append({'name': f['name'], 'vendor': result.get('vendor', ''), 'total': result.get('total', 0)})
+        except Exception as e:
+            errors.append(f"{f['name']}: {str(e)[:80]}")
+
+    db.commit()
+    db.close()
+
+    # Send Telegram notification
+    try:
+        from app.telegram_bot import send_message
+        if new_parsed:
+            msg = f"📄 <b>Фактури оброблені ({current_month})</b>\n\n"
+            for p in new_parsed:
+                msg += f"✅ {p['name']}\n   {p['vendor']} — {p['total']:.2f} zł\n"
+            if errors:
+                msg += f"\n❌ Помилки ({len(errors)}):\n"
+                for e in errors[:5]:
+                    msg += f"  • {e}\n"
+            send_message(msg)
+    except Exception:
+        pass
+
+    return RedirectResponse(f'/expenses?month={current_month}', status_code=303)

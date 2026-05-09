@@ -132,6 +132,19 @@ def init_db():
             UNIQUE(name, month)
         );
 
+        CREATE TABLE IF NOT EXISTS parsed_invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_id TEXT NOT NULL UNIQUE,
+            file_name TEXT NOT NULL,
+            folder TEXT DEFAULT '',
+            month TEXT DEFAULT '',
+            vendor TEXT DEFAULT '',
+            total REAL DEFAULT 0,
+            items_json TEXT DEFAULT '[]',
+            parsed_at TEXT DEFAULT (datetime('now')),
+            added_to_expenses INTEGER DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS sync_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             started_at TEXT NOT NULL,
