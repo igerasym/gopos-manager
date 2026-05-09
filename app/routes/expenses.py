@@ -62,13 +62,10 @@ async def expenses_page(request: Request, month: str = ''):
 
     db.close()
 
-    # Load invoices from Google Drive for this month
-    invoices = []
+    # Load only already-parsed invoices from DB (no Drive scan on page load)
     parsed_ids = set()
     pending_invoices = []
     try:
-        from app.gdrive_invoices import list_invoices_for_month
-        invoices = list_invoices_for_month(current_month)
         db2 = get_db()
         parsed_rows = db2.execute('SELECT file_id FROM parsed_invoices').fetchall()
         parsed_ids = set(r['file_id'] for r in parsed_rows)
@@ -78,14 +75,13 @@ async def expenses_page(request: Request, month: str = ''):
         ).fetchall()
         db2.close()
     except Exception as e:
-        log.warning(f"Could not load invoices: {e}")
+        log.warning(f"Could not load parsed invoices: {e}")
 
     return templates.TemplateResponse(request, 'expenses.html', context={
         'expenses': expenses, 'by_category': by_category,
         'total': total, 'current_month': current_month,
         'months': months, 'categories': CATEGORIES,
         'revenue': revenue, 'net_profit': net_profit,
-        'invoices': invoices, 'parsed_ids': parsed_ids,
         'pending_invoices': pending_invoices,
     })
 
@@ -276,7 +272,7 @@ async def skip_invoice(invoice_id: int):
 
 @router.post('/expenses/process-invoices')
 async def process_all_invoices(month: str = Form('')):
-    """Parse all unparsed invoices for the month."""
+    """Scan Google Drive for new invoices, parse them with Textract."""
     from app.gdrive_invoices import list_invoices_for_month, download_file, parse_invoice_textract, classify_vendor
 
     current_month = month or datetime.now().strftime('%Y-%m')

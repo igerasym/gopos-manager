@@ -181,53 +181,26 @@
     {% endif %}
 </div>
 
-<!-- Invoices from Google Drive -->
-{% if invoices %}
+<!-- Invoices actions -->
 <div class="card" style="margin-top:16px;">
     <div class="card-header">
-        <div class="card-title">📄 Фактури — {{ current_month }} ({{ invoices|length }})</div>
+        <div class="card-title">📄 Фактури — {{ current_month }}</div>
         <form method="post" action="/expenses/process-invoices" style="display:inline;">
             <input type="hidden" name="month" value="{{ current_month }}">
-            <button class="btn btn-primary btn-sm" type="submit">⚡ Обробити нові</button>
+            <button class="btn btn-primary btn-sm" type="submit">⚡ Сканувати Drive і обробити нові</button>
         </form>
     </div>
-    <table>
-        <thead>
-            <tr>
-                <th style="width:30px;">✓</th>
-                <th>Файл</th>
-                <th style="width:80px;">Тип</th>
-                <th style="width:100px;"></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for f in invoices %}
-            <tr style="{% if f['id'] in parsed_ids %}opacity:.6;{% endif %}">
-                <td class="text-center">{% if f['id'] in parsed_ids %}✅{% else %}○{% endif %}</td>
-                <td style="font-size:.85em;">{{ f['name'] }}</td>
-                <td class="text-muted" style="font-size:.8em;">
-                    {% if 'pdf' in f['mimeType'] %}PDF{% elif 'image' in f['mimeType'] %}IMG{% else %}?{% endif %}
-                </td>
-                <td class="text-right">
-                    {% if f['mimeType'] in ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff'] and f['id'] not in parsed_ids %}
-                    <button class="btn btn-outline btn-sm" style="font-size:.75em;"
-                            onclick="parseInvoice('{{ f['id'] }}', this)">Парсити</button>
-                    {% elif f['id'] in parsed_ids %}
-                    <span class="text-muted" style="font-size:.75em;">оброблено</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <p class="text-muted" style="padding:8px 0; font-size:.85em;">
+        Натисніть кнопку щоб перевірити папку "Фактури ({{ current_month }})" на Google Drive і обробити нові файли.
+    </p>
 </div>
+
 <div id="parse-result" style="display:none; margin-top:12px;">
     <div class="card">
         <div class="card-header"><div class="card-title">Результат парсингу</div></div>
         <div id="parse-content"></div>
     </div>
 </div>
-{% endif %}
 
 {% endblock %}
 
@@ -263,38 +236,6 @@ function deleteExpense(url, name) {
     form.action = url;
     document.body.appendChild(form);
     form.submit();
-}
-
-function parseInvoice(fileId, btn) {
-    btn.disabled = true;
-    btn.textContent = '⏳...';
-    fetch('/expenses/parse-invoice/' + fileId, { method: 'POST', credentials: 'same-origin' })
-        .then(r => r.json())
-        .then(data => {
-            btn.textContent = '✓';
-            let html = '<div style="padding:12px;">';
-            if (data.error) {
-                html += '<p style="color:var(--red);">Помилка: ' + data.error + '</p>';
-            } else {
-                html += '<p><strong>Постачальник:</strong> ' + (data.vendor || '—') + ' → ' + (data.expense_name || data.category || '') + '</p>';
-                html += '<p><strong>Сума:</strong> ' + (data.total || 0).toFixed(2) + ' zł</p>';
-                if (data.items && data.items.length > 0) {
-                    html += '<table><thead><tr><th>Товар</th><th class="text-right">К-сть</th><th class="text-right">Ціна</th></tr></thead><tbody>';
-                    data.items.slice(0, 15).forEach(item => {
-                        html += '<tr><td>' + (item.name || '') + '</td>';
-                        html += '<td class="text-right">' + (item.quantity || '') + '</td>';
-                        html += '<td class="text-right">' + (item.unit_price ? item.unit_price.toFixed(2) : '') + '</td></tr>';
-                    });
-                    if (data.items.length > 15) html += '<tr><td colspan="3" class="text-muted">...ще ' + (data.items.length - 15) + ' товарів</td></tr>';
-                    html += '</tbody></table>';
-                }
-            }
-            html += '</div>';
-            document.getElementById('parse-content').innerHTML = html;
-            document.getElementById('parse-result').style.display = 'block';
-            document.getElementById('parse-result').scrollIntoView({behavior: 'smooth'});
-        })
-        .catch(() => { btn.textContent = '✗'; });
 }
 </script>
 {% endblock %}
