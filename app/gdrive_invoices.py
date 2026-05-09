@@ -98,13 +98,55 @@ def download_file(file_id: str) -> bytes:
 
 
 def parse_invoice_textract(file_bytes: bytes) -> dict:
-    """Parse invoice using AWS Textract AnalyzeExpense."""
+    """Parse invoice using AWS Textract AnalyzeExpense.
+    Handles multi-page PDFs by converting to images first.
+    """
     client = boto3.client('textract', region_name='us-west-2')
 
-    response = client.analyze_expense(
-        Document={'Bytes': file_bytes}
-    )
+    # Try direct parsing first (works for single-page and some PDFs)
+    try:
+        response = client.analyze_expense(Document={'Bytes': file_bytes})
+        return _extract_textract_result(response)
+    except client.exceptions.UnsupportedDocumentException:
+        pass
 
+    # Fallback: convert PDF pages to images and parse each
+    try:
+        import pdfplumber
+        from PIL import Image
+        pdf = pdfplumber.open(io.BytesIO(file_bytes))
+        all_items = []
+        vendor = ''
+        date = ''
+        total = 0.0
+
+        for page in pdf.pages[:5]:  # Max 5 pages
+            img = page.to_image(resolution=200)
+            img_buffer = io.BytesIO()
+            img.original.save(img_buffer, format='PNG')
+            img_bytes = img_buffer.getvalue()
+
+            try:
+                response = client.analyze_expense(Document={'Bytes': img_bytes})
+                page_result = _extract_textract_result(response)
+                if page_result['vendor'] and not vendor:
+                    vendor = page_result['vendor']
+                if page_result['date'] and not date:
+                    date = page_result['date']
+                if page_result['total'] > total:
+                    total = page_result['total']
+                all_items.extend(page_result['items'])
+            except Exception:
+                continue
+
+        pdf.close()
+        return {'vendor': vendor, 'date': date, 'total': total, 'items': all_items}
+    except Exception as e:
+        raise Exception(f"Could not parse PDF: {e}")
+
+
+def _extract_textract_result(response: dict) -> dict:
+    """Extract structured data from Textract AnalyzeExpense response."""
     result = {
         'vendor': '',
         'date': '',
@@ -113,7 +155,6 @@ def parse_invoice_textract(file_bytes: bytes) -> dict:
     }
 
     for doc in response.get('ExpenseDocuments', []):
-        # Extract summary fields (vendor, date, total)
         for field in doc.get('SummaryFields', []):
             field_type = field.get('Type', {}).get('Text', '')
             value = field.get('ValueDetection', {}).get('Text', '')
@@ -125,7 +166,6 @@ def parse_invoice_textract(file_bytes: bytes) -> dict:
             elif field_type == 'TOTAL':
                 result['total'] = _parse_number(value)
 
-        # Extract line items
         for group in doc.get('LineItemGroups', []):
             for item in group.get('LineItems', []):
                 line = {}
