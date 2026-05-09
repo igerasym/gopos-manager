@@ -286,25 +286,14 @@ function scanDrive(btn) {
     fetch('/expenses/scan-drive?month=' + month, { credentials: 'same-origin' })
         .then(r => r.json())
         .then(data => {
-            btn.textContent = '🔍 Сканувати';
-            btn.disabled = false;
-            const el = document.getElementById('scan-result-info');
-            el.style.display = 'block';
-            if (data.error) {
-                el.innerHTML = '<p style="color:var(--red); font-size:.85em; margin:0;">❌ ' + data.error + '</p>';
+            if (data.new_count > 0) {
+                location.reload();
             } else {
-                let html = '<div style="font-size:.85em;">';
-                html += '<p style="margin:4px 0;">📁 <strong>' + data.total + '</strong> файлів у папці, <strong style="color:var(--primary);">' + data.new_count + '</strong> нових</p>';
-                if (data.new_files && data.new_files.length > 0) {
-                    html += '<ul style="margin:4px 0; padding-left:16px;">';
-                    data.new_files.forEach(f => { html += '<li>' + f + '</li>'; });
-                    html += '</ul>';
-                    html += '<p style="color:var(--primary);">👆 Натисніть ⚡ Обробити</p>';
-                } else {
-                    html += '<p style="color:var(--green);">✓ Нових фактур немає</p>';
-                }
-                html += '</div>';
-                el.innerHTML = html;
+                btn.textContent = '🔍 Сканувати';
+                btn.disabled = false;
+                const el = document.getElementById('scan-result-info');
+                el.style.display = 'block';
+                el.innerHTML = '<p style="color:var(--green); font-size:.85em; margin:0;">✓ Нових фактур немає</p>';
             }
         })
         .catch(() => { btn.textContent = '🔍 Сканувати'; btn.disabled = false; });

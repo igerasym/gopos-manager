@@ -278,21 +278,33 @@ async def skip_invoice(invoice_id: int):
 
 @router.get('/expenses/scan-drive')
 async def scan_drive(month: str = ''):
-    """Scan Google Drive folder for invoices (no parsing, just list)."""
+    """Scan Google Drive folder — save new files to DB (without Textract parsing)."""
     current_month = month or datetime.now().strftime('%Y-%m')
     try:
         from app.gdrive_invoices import list_invoices_for_month
+
         files = list_invoices_for_month(current_month)
 
-        # Check which are already parsed
         db = get_db()
         parsed_ids = set(
             r['file_id'] for r in db.execute('SELECT file_id FROM parsed_invoices').fetchall()
         )
-        db.close()
 
         supported = ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']
-        new_files = [f['name'] for f in files if f['id'] not in parsed_ids and f['mimeType'] in supported]
+        new_files = []
+        for f in files:
+            if f['id'] not in parsed_ids and f['mimeType'] in supported:
+                # Save to DB with parse_status=pending (not yet parsed by Textract)
+                db.execute('''
+                    INSERT OR IGNORE INTO parsed_invoices
+                    (file_id, file_name, folder, month, parse_status, expense_status)
+                    VALUES (?, ?, ?, ?, 'pending', 'pending')
+                ''', (f['id'], f['name'], f.get('path', ''), current_month))
+                new_files.append(f['name'])
+
+        if new_files:
+            db.commit()
+        db.close()
 
         return JSONResponse({
             'total': len(files),
