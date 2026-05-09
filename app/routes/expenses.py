@@ -1,4 +1,5 @@
 """Expenses routes (admin only)."""
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -16,7 +17,7 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates'
 
 router = APIRouter()
 
-CATEGORIES = ['Оренда', 'Зарплати', 'Бухгалтерія', 'Комунальні', 'Підписки', 'Побут', 'Податки і ZUS', 'Логістика', 'Продукти', 'Інше']
+CATEGORIES = ['Оренда', 'Зарплати', 'Бухгалтерія', 'Комунальні', 'Побут', 'Податки і ZUS', 'Логістика', 'Продукти', 'Інше']
 
 
 @router.get('/expenses', response_class=HTMLResponse)
@@ -24,43 +25,9 @@ async def expenses_page(request: Request, month: str = ''):
     current_month = month or datetime.now().strftime('%Y-%m')
     db = get_db()
 
-    # Auto-populate: add any recurring from previous month that are missing in current
-    prev = db.execute('''
-        SELECT DISTINCT month FROM expenses
-        WHERE recurring > 0 AND month < ?
-        ORDER BY month DESC LIMIT 1
-    ''', (current_month,)).fetchone()
-
-    if prev:
-        prev_recurring = db.execute(
-            'SELECT name, category, amount, recurring, note FROM expenses WHERE month = ? AND recurring > 0',
-            (prev['month'],)
-        ).fetchall()
-        existing_names = set(
-            r['name'] for r in db.execute(
-                'SELECT name FROM expenses WHERE month = ?', (current_month,)
-            ).fetchall()
-        )
-        dismissed_names = set(
-            r['name'] for r in db.execute(
-                'SELECT name FROM expenses_dismissed WHERE month = ?', (current_month,)
-            ).fetchall()
-        )
-        added = 0
-        for r in prev_recurring:
-            if r['name'] not in existing_names and r['name'] not in dismissed_names:
-                amt = r['amount'] if r['recurring'] == 1 else 0
-                db.execute(
-                    'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, ?, ?)',
-                    (r['name'], r['category'], amt, current_month, r['recurring'], r['note'])
-                )
-                added += 1
-        if added:
-            db.commit()
-
+    # All expenses for this month (sorted by amount desc)
     expenses = db.execute('''
-        SELECT * FROM expenses WHERE month = ?
-        ORDER BY CASE recurring WHEN 1 THEN 0 WHEN 2 THEN 1 ELSE 2 END, name
+        SELECT * FROM expenses WHERE month = ? ORDER BY amount DESC
     ''', (current_month,)).fetchall()
 
     # Totals by category
@@ -74,7 +41,6 @@ async def expenses_page(request: Request, month: str = ''):
 
     # Revenue for this month from sales
     month_start = current_month + '-01'
-    # Last day of month
     year, mon = int(current_month[:4]), int(current_month[5:7])
     if mon == 12:
         month_end = f'{year + 1}-01-01'
@@ -87,8 +53,6 @@ async def expenses_page(request: Request, month: str = ''):
     ''', (month_start, month_end)).fetchone()
     revenue = revenue_row['revenue']
 
-    # OpEx = total expenses minus "Продукти" (COGS tracked separately via inventory)
-    opex = sum(r['total'] for r in by_category if r['category'] != 'Продукти')
     net_profit = revenue - total
 
     # Available months
@@ -105,11 +69,9 @@ async def expenses_page(request: Request, month: str = ''):
     try:
         from app.gdrive_invoices import list_invoices_for_month
         invoices = list_invoices_for_month(current_month)
-        # Get already parsed file IDs
         db2 = get_db()
         parsed_rows = db2.execute('SELECT file_id FROM parsed_invoices').fetchall()
         parsed_ids = set(r['file_id'] for r in parsed_rows)
-        # Get pending invoices for approval
         pending_invoices = db2.execute(
             'SELECT * FROM parsed_invoices WHERE month = ? AND status = ? ORDER BY vendor',
             (current_month, 'pending')
@@ -122,7 +84,7 @@ async def expenses_page(request: Request, month: str = ''):
         'expenses': expenses, 'by_category': by_category,
         'total': total, 'current_month': current_month,
         'months': months, 'categories': CATEGORIES,
-        'revenue': revenue, 'opex': opex, 'net_profit': net_profit,
+        'revenue': revenue, 'net_profit': net_profit,
         'invoices': invoices, 'parsed_ids': parsed_ids,
         'pending_invoices': pending_invoices,
     })
@@ -132,7 +94,7 @@ async def expenses_page(request: Request, month: str = ''):
 async def add_expense(
     name: str = Form(...), category: str = Form('Інше'),
     amount: Optional[str] = Form(''), month: str = Form(''),
-    recurring: int = Form(0), note: str = Form(''),
+    note: str = Form(''),
 ):
     month = month or datetime.now().strftime('%Y-%m')
     try:
@@ -141,8 +103,8 @@ async def add_expense(
         amt = 0.0
     db = get_db()
     db.execute(
-        'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, ?, ?)',
-        (name, category, amt, month, recurring, note)
+        'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, 0, ?)',
+        (name, category, amt, month, note)
     )
     db.commit()
     db.close()
@@ -155,7 +117,6 @@ async def update_expense(
     amount: Optional[str] = Form(None),
     name: Optional[str] = Form(None),
     category: Optional[str] = Form(None),
-    recurring: Optional[int] = Form(None),
 ):
     db = get_db()
     row = db.execute('SELECT month FROM expenses WHERE id = ?', (expense_id,)).fetchone()
@@ -176,9 +137,6 @@ async def update_expense(
     if category:
         updates.append('category = ?')
         params.append(category)
-    if recurring is not None:
-        updates.append('recurring = ?')
-        params.append(recurring)
 
     if updates:
         params.append(expense_id)
@@ -188,57 +146,43 @@ async def update_expense(
     return RedirectResponse(f'/expenses?month={m}', status_code=303)
 
 
-@router.post('/expenses/toggle-recurring/{expense_id}')
-async def toggle_recurring(expense_id: int):
-    db = get_db()
-    row = db.execute('SELECT month, recurring FROM expenses WHERE id = ?', (expense_id,)).fetchone()
-    if row:
-        # Cycle: 0 (one-time) → 1 (fixed) → 2 (variable) → 0
-        new_val = (row['recurring'] + 1) % 3
-        db.execute('UPDATE expenses SET recurring = ? WHERE id = ?', (new_val, expense_id))
-        db.commit()
-    m = row['month'] if row else ''
-    db.close()
-    return RedirectResponse(f'/expenses?month={m}', status_code=303)
-
-
 @router.post('/expenses/delete/{expense_id}')
 async def delete_expense(expense_id: int):
     db = get_db()
-    row = db.execute('SELECT name, month, recurring FROM expenses WHERE id = ?', (expense_id,)).fetchone()
+    row = db.execute('SELECT month FROM expenses WHERE id = ?', (expense_id,)).fetchone()
     m = row['month'] if row else ''
-    # If recurring, remember it was dismissed so it won't auto-populate again
-    if row and row['recurring'] > 0:
-        db.execute(
-            'INSERT OR IGNORE INTO expenses_dismissed (name, month) VALUES (?, ?)',
-            (row['name'], row['month'])
-        )
     db.execute('DELETE FROM expenses WHERE id = ?', (expense_id,))
     db.commit()
     db.close()
     return RedirectResponse(f'/expenses?month={m}', status_code=303)
 
 
+# ── Invoice parsing endpoints ──
 
 @router.post('/expenses/parse-invoice/{file_id}')
 async def parse_invoice(file_id: str):
     """Parse a single invoice from Google Drive using AWS Textract."""
     try:
-        from app.gdrive_invoices import download_file, parse_invoice_textract
-        import json
+        from app.gdrive_invoices import download_file, parse_invoice_textract, classify_vendor
 
         file_bytes = download_file(file_id)
         result = parse_invoice_textract(file_bytes)
         result['file_id'] = file_id
 
-        # Save to parsed_invoices table
+        # Auto-classify
+        category, expense_name = classify_vendor(result.get('vendor', ''), '')
+        result['category'] = category
+        result['expense_name'] = expense_name
+
+        # Save to parsed_invoices
         db = get_db()
         db.execute('''
-            INSERT OR REPLACE INTO parsed_invoices
-            (file_id, file_name, invoice_number, vendor, total, items_json, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'pending')
-        ''', (file_id, result.get('file_name', ''), result.get('invoice_number', ''),
-              result.get('vendor', ''), result.get('total', 0),
+            INSERT OR IGNORE INTO parsed_invoices
+            (file_id, file_name, invoice_number, vendor, category, total, items_json, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+        ''', (file_id, '', result.get('invoice_number', ''),
+              expense_name or result.get('vendor', ''), category,
+              result.get('total', 0),
               json.dumps(result.get('items', []), ensure_ascii=False)))
         db.commit()
         db.close()
@@ -276,14 +220,12 @@ async def approve_invoice(invoice_id: int, category: str = Form('Продукт�
     )
 
     # Record price history for matched items
-    import json
     items = json.loads(inv['items_json']) if inv['items_json'] else []
     price_alerts = []
 
     for item in items:
         if not item.get('name') or not item.get('unit_price'):
             continue
-        # Check if this item has a mapping
         mapping = db.execute(
             'SELECT ingredient_id FROM ingredient_mappings WHERE invoice_name = ?',
             (item['name'],)
@@ -294,17 +236,14 @@ async def approve_invoice(invoice_id: int, category: str = Form('Продукт�
                 'SELECT unit_price FROM ingredients WHERE id = ?', (ing_id,)
             ).fetchone()
             old_price = old_price_row['unit_price'] if old_price_row else 0
-
             new_price = item['unit_price']
-            # Save price history
+
             db.execute(
                 'INSERT INTO ingredient_price_history (ingredient_id, price, invoice_id) VALUES (?, ?, ?)',
                 (ing_id, new_price, invoice_id)
             )
-            # Update current price
             db.execute('UPDATE ingredients SET unit_price = ? WHERE id = ?', (new_price, ing_id))
 
-            # Check for price alert
             from app.gdrive_invoices import check_price_alerts
             alert = check_price_alerts(ing_id, new_price, old_price)
             if alert:
@@ -313,12 +252,10 @@ async def approve_invoice(invoice_id: int, category: str = Form('Продукт�
     db.commit()
     db.close()
 
-    # Send price alerts via Telegram
     if price_alerts:
         try:
             from app.telegram_bot import send_message
-            msg = "⚠️ <b>Зміна цін</b>\n\n" + "\n".join(price_alerts)
-            send_message(msg)
+            send_message("⚠️ <b>Зміна цін</b>\n\n" + "\n".join(price_alerts))
         except Exception:
             pass
 
@@ -327,7 +264,7 @@ async def approve_invoice(invoice_id: int, category: str = Form('Продукт�
 
 @router.post('/expenses/skip-invoice/{invoice_id}')
 async def skip_invoice(invoice_id: int):
-    """Skip a parsed invoice — mark as skipped, don't add to expenses."""
+    """Skip a parsed invoice."""
     db = get_db()
     inv = db.execute('SELECT month FROM parsed_invoices WHERE id = ?', (invoice_id,)).fetchone()
     month = inv['month'] if inv else ''
@@ -339,22 +276,19 @@ async def skip_invoice(invoice_id: int):
 
 @router.post('/expenses/process-invoices')
 async def process_all_invoices(month: str = Form('')):
-    """Parse all unparsed invoices for the month and add totals to expenses."""
-    import json
-    from app.gdrive_invoices import list_invoices_for_month, download_file, parse_invoice_textract
+    """Parse all unparsed invoices for the month."""
+    from app.gdrive_invoices import list_invoices_for_month, download_file, parse_invoice_textract, classify_vendor
 
     current_month = month or datetime.now().strftime('%Y-%m')
     db = get_db()
 
-    # Get already parsed file_ids
     parsed_ids = set(
         r['file_id'] for r in db.execute('SELECT file_id FROM parsed_invoices').fetchall()
     )
 
-    # Get invoices for this month
     try:
         invoices = list_invoices_for_month(current_month)
-    except Exception as e:
+    except Exception:
         db.close()
         return RedirectResponse(f'/expenses?month={current_month}', status_code=303)
 
@@ -363,37 +297,37 @@ async def process_all_invoices(month: str = Form('')):
     errors = []
 
     for f in invoices:
-        if f['id'] in parsed_ids:
-            continue
-        if f['mimeType'] not in supported:
+        if f['id'] in parsed_ids or f['mimeType'] not in supported:
             continue
         try:
             file_bytes = download_file(f['id'])
             result = parse_invoice_textract(file_bytes)
+            category, expense_name = classify_vendor(result.get('vendor', ''), f['name'])
+
             db.execute('''
-                INSERT OR REPLACE INTO parsed_invoices (file_id, file_name, folder, month, vendor, total, items_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (f['id'], f['name'], f.get('path', ''), current_month,
-                  result.get('vendor', ''), result.get('total', 0),
+                INSERT OR IGNORE INTO parsed_invoices
+                (file_id, file_name, invoice_number, folder, month, vendor, category, total, items_json, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+            ''', (f['id'], f['name'], result.get('invoice_number', ''),
+                  f.get('path', ''), current_month,
+                  expense_name or result.get('vendor', ''), category,
+                  result.get('total', 0),
                   json.dumps(result.get('items', []), ensure_ascii=False)))
-            new_parsed.append({'name': f['name'], 'vendor': result.get('vendor', ''), 'total': result.get('total', 0)})
+            new_parsed.append({'name': f['name'], 'vendor': expense_name, 'total': result.get('total', 0)})
         except Exception as e:
             errors.append(f"{f['name']}: {str(e)[:80]}")
 
     db.commit()
     db.close()
 
-    # Send Telegram notification
     try:
         from app.telegram_bot import send_message
         if new_parsed:
-            msg = f"📄 <b>Фактури оброблені ({current_month})</b>\n\n"
+            msg = f"📄 <b>Фактури ({current_month})</b>\n\n"
             for p in new_parsed:
-                msg += f"✅ {p['name']}\n   {p['vendor']} — {p['total']:.2f} zł\n"
+                msg += f"✅ {p['vendor']} — {p['total']:.0f} zł\n"
             if errors:
-                msg += f"\n❌ Помилки ({len(errors)}):\n"
-                for e in errors[:5]:
-                    msg += f"  • {e}\n"
+                msg += f"\n❌ Помилки: {len(errors)}\n"
             send_message(msg)
     except Exception:
         pass

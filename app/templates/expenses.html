@@ -3,11 +3,9 @@
 
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
     <h2 style="margin:0;">Витрати</h2>
-    <div style="display:flex; gap:8px; align-items:center;">
-        <form method="get" action="/expenses" style="display:flex; gap:6px; align-items:center;">
-            <input type="month" name="month" value="{{ current_month }}" class="form-control" style="font-size:.85em;" onchange="this.form.submit()">
-        </form>
-    </div>
+    <form method="get" action="/expenses" style="display:flex; gap:6px; align-items:center;">
+        <input type="month" name="month" value="{{ current_month }}" class="form-control" style="font-size:.85em;" onchange="this.form.submit()">
+    </form>
 </div>
 
 <!-- P&L Summary -->
@@ -38,10 +36,10 @@
     </div>
 </div>
 
-<!-- Summary -->
+<!-- Summary + Add form -->
 <div class="grid-2" style="margin-bottom:16px;">
     <div class="card">
-        <div class="card-header"><div class="card-title">По категоріях — {{ current_month }}</div></div>
+        <div class="card-header"><div class="card-title">По категоріях</div></div>
         {% if by_category %}
         <table>
             <tbody>
@@ -69,13 +67,13 @@
     </div>
 
     <div class="card">
-        <div class="card-header"><div class="card-title">Додати витрату</div></div>
+        <div class="card-header"><div class="card-title">Додати вручну</div></div>
         <form method="post" action="/expenses/add">
             <input type="hidden" name="month" value="{{ current_month }}">
             <div class="form-row" style="margin-bottom:8px;">
                 <div class="form-group" style="flex:2;">
                     <label>Назва</label>
-                    <input name="name" class="form-control" required placeholder="напр. Оренда приміщення">
+                    <input name="name" class="form-control" required placeholder="напр. Зарплата Аліна">
                 </div>
                 <div class="form-group" style="flex:1;">
                     <label>Категорія</label>
@@ -93,74 +91,15 @@
                     <label>Примітка</label>
                     <input name="note" class="form-control">
                 </div>
-                <div class="form-group" style="flex:0 0 auto; align-self:end;">
-                    <label>Тип</label>
-                    <select name="recurring" class="form-control" style="font-size:.85em; padding:4px 6px;">
-                        <option value="0">Разова</option>
-                        <option value="1">Фіксована 🔄</option>
-                        <option value="2">Регулярна 📝</option>
-                    </select>
-                </div>
             </div>
             <button class="btn btn-primary btn-sm" type="submit">+ Додати</button>
         </form>
     </div>
 </div>
 
-<!-- Expenses list -->
-<div class="card">
-    <div class="card-header">
-        <div class="card-title">Всі витрати — {{ current_month }}</div>
-    </div>
-    {% if expenses %}
-    <table>
-        <thead>
-            <tr>
-                <th>Назва</th>
-                <th>Категорія</th>
-                <th class="text-right">Сума</th>
-                <th>Примітка</th>
-                <th style="width:30px;" title="🔄 Фіксована (з сумою) | 📝 Регулярна (без суми) | ○ Разова">Тип</th>
-                <th style="width:40px;"></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for e in expenses %}
-            <tr>
-                <td style="font-weight:500;">{{ e['name'] }}</td>
-                <td><span class="badge badge-orange">{{ e['category'] }}</span></td>
-                <td class="text-right" style="font-weight:600;">
-                    <span class="editable-amount" data-id="{{ e['id'] }}" style="cursor:pointer; border-bottom:1px dashed var(--border);"
-                          onclick="editAmount(this, {{ e['id'] }}, {{ e['amount'] }})" title="Натисніть щоб редагувати">
-                        {{ '{:,.2f}'.format(e['amount']) }} zł
-                    </span>
-                </td>
-                <td class="text-muted" style="font-size:.85em;">{{ e['note'] or '—' }}</td>
-                <td class="text-center">
-                    <button type="button" style="background:none; border:none; cursor:pointer; font-size:.9em; padding:0;" 
-                            title="{% if e['recurring'] == 1 %}Фіксована (з сумою){% elif e['recurring'] == 2 %}Регулярна (без суми){% else %}Разова{% endif %}"
-                            onclick="toggleRecurring(this, {{ e['id'] }}, {{ e['recurring'] }})">
-                        {% if e['recurring'] == 1 %}🔄{% elif e['recurring'] == 2 %}📝{% else %}○{% endif %}
-                    </button>
-                </td>
-                <td class="text-right">
-                    <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
-                            onclick="deleteExpense('/expenses/delete/{{ e['id'] }}', '{{ e['name'] }}')">✕</button>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <p class="text-muted" style="padding:20px 0; text-align:center;">
-        Немає витрат. Додайте першу витрату або скопіюйте з попереднього місяця.
-    </p>
-    {% endif %}
-</div>
-
 <!-- Pending invoices for approval -->
 {% if pending_invoices %}
-<div class="card" style="margin-top:16px; border-left:4px solid #fbbf24;">
+<div class="card" style="margin-bottom:16px; border-left:4px solid #fbbf24;">
     <div class="card-header">
         <div class="card-title">⏳ Фактури для підтвердження ({{ pending_invoices|length }})</div>
     </div>
@@ -183,7 +122,7 @@
                 <td>
                     <form method="post" action="/expenses/approve-invoice/{{ inv['id'] }}" style="display:inline;" id="approve-form-{{ inv['id'] }}">
                         <select name="category" class="form-control" style="font-size:.8em; padding:2px 6px; width:auto;">
-                            {% for c in categories %}<option value="{{ c }}" {% if c == 'Продукти' %}selected{% endif %}>{{ c }}</option>{% endfor %}
+                            {% for c in categories %}<option value="{{ c }}" {% if c == inv['category'] %}selected{% endif %}>{{ c }}</option>{% endfor %}
                         </select>
                     </form>
                 </td>
@@ -200,6 +139,47 @@
     </table>
 </div>
 {% endif %}
+
+<!-- Expenses list -->
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">Всі витрати — {{ current_month }}</div>
+    </div>
+    {% if expenses %}
+    <table>
+        <thead>
+            <tr>
+                <th>Назва</th>
+                <th>Категорія</th>
+                <th class="text-right">Сума</th>
+                <th>Примітка</th>
+                <th style="width:40px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in expenses %}
+            <tr>
+                <td style="font-weight:500;">{{ e['name'] }}</td>
+                <td><span class="badge badge-orange">{{ e['category'] }}</span></td>
+                <td class="text-right" style="font-weight:600;">
+                    <span style="cursor:pointer; border-bottom:1px dashed var(--border);"
+                          onclick="editAmount(this, {{ e['id'] }}, {{ e['amount'] }})" title="Редагувати">
+                        {{ '{:,.2f}'.format(e['amount']) }} zł
+                    </span>
+                </td>
+                <td class="text-muted" style="font-size:.85em;">{{ e['note'] or '—' }}</td>
+                <td class="text-right">
+                    <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
+                            onclick="deleteExpense('/expenses/delete/{{ e['id'] }}', '{{ e['name'] }}')">✕</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted" style="padding:20px 0; text-align:center;">Немає витрат за цей місяць.</p>
+    {% endif %}
+</div>
 
 <!-- Invoices from Google Drive -->
 {% if invoices %}
@@ -223,9 +203,7 @@
         <tbody>
             {% for f in invoices %}
             <tr style="{% if f['id'] in parsed_ids %}opacity:.6;{% endif %}">
-                <td class="text-center">
-                    {% if f['id'] in parsed_ids %}✅{% else %}○{% endif %}
-                </td>
+                <td class="text-center">{% if f['id'] in parsed_ids %}✅{% else %}○{% endif %}</td>
                 <td style="font-size:.85em;">{{ f['name'] }}</td>
                 <td class="text-muted" style="font-size:.8em;">
                     {% if 'pdf' in f['mimeType'] %}PDF{% elif 'image' in f['mimeType'] %}IMG{% else %}?{% endif %}
@@ -257,7 +235,6 @@
 <script>
 function editAmount(el, id, currentAmount) {
     if (document.querySelector('.inline-edit-form')) return;
-    
     const td = el.parentElement;
     const originalHTML = td.innerHTML;
     td.innerHTML = `
@@ -270,32 +247,13 @@ function editAmount(el, id, currentAmount) {
     `;
     const input = td.querySelector('input');
     input.focus();
-    
     function cancelEdit(e) {
-        if (!td.contains(e.target)) {
-            td.innerHTML = originalHTML;
-            document.removeEventListener('mousedown', cancelEdit);
-        }
+        if (!td.contains(e.target)) { td.innerHTML = originalHTML; document.removeEventListener('mousedown', cancelEdit); }
     }
     input.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            td.innerHTML = originalHTML;
-            document.removeEventListener('mousedown', cancelEdit);
-        }
+        if (e.key === 'Escape') { td.innerHTML = originalHTML; document.removeEventListener('mousedown', cancelEdit); }
     });
     setTimeout(() => document.addEventListener('mousedown', cancelEdit), 0);
-}
-
-function toggleRecurring(btn, id, current) {
-    fetch(`/expenses/toggle-recurring/${id}`, { method: 'POST', credentials: 'same-origin' })
-        .then(() => {
-            const next = (current + 1) % 3;
-            const icons = ['○', '🔄', '📝'];
-            const titles = ['Разова', 'Фіксована (з сумою)', 'Регулярна (без суми)'];
-            btn.textContent = icons[next];
-            btn.title = titles[next];
-            btn.setAttribute('onclick', `toggleRecurring(this, ${id}, ${next})`);
-        });
 }
 
 function deleteExpense(url, name) {
@@ -318,16 +276,16 @@ function parseInvoice(fileId, btn) {
             if (data.error) {
                 html += '<p style="color:var(--red);">Помилка: ' + data.error + '</p>';
             } else {
-                html += '<p><strong>Постачальник:</strong> ' + (data.vendor || '—') + '</p>';
-                html += '<p><strong>Дата:</strong> ' + (data.date || '—') + ' | <strong>Сума:</strong> ' + (data.total || 0).toFixed(2) + ' zł</p>';
+                html += '<p><strong>Постачальник:</strong> ' + (data.vendor || '—') + ' → ' + (data.expense_name || data.category || '') + '</p>';
+                html += '<p><strong>Сума:</strong> ' + (data.total || 0).toFixed(2) + ' zł</p>';
                 if (data.items && data.items.length > 0) {
-                    html += '<table><thead><tr><th>Товар</th><th class="text-right">К-сть</th><th class="text-right">Ціна</th><th class="text-right">Сума</th></tr></thead><tbody>';
-                    data.items.forEach(item => {
+                    html += '<table><thead><tr><th>Товар</th><th class="text-right">К-сть</th><th class="text-right">Ціна</th></tr></thead><tbody>';
+                    data.items.slice(0, 15).forEach(item => {
                         html += '<tr><td>' + (item.name || '') + '</td>';
                         html += '<td class="text-right">' + (item.quantity || '') + '</td>';
-                        html += '<td class="text-right">' + (item.unit_price ? item.unit_price.toFixed(2) : '') + '</td>';
-                        html += '<td class="text-right">' + (item.total ? item.total.toFixed(2) : '') + '</td></tr>';
+                        html += '<td class="text-right">' + (item.unit_price ? item.unit_price.toFixed(2) : '') + '</td></tr>';
                     });
+                    if (data.items.length > 15) html += '<tr><td colspan="3" class="text-muted">...ще ' + (data.items.length - 15) + ' товарів</td></tr>';
                     html += '</tbody></table>';
                 }
             }
