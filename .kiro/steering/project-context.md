@@ -117,7 +117,7 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - New items: UI prompt "Add to inventory?" or "Map to existing?"
 
 ## Telegram Bot
-- Token: `8794015342:AAFXA55Eh90dX-TuLQRJ3nl4yKiQArWjwiw`, chat_id: `372866576`
+- Token and chat_id in `.env` on prod (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
 - Daily report after sync: revenue, top 5, low stock
 - Sync failure alerts
 - Invoice processing notifications
