@@ -591,22 +591,27 @@ def _process_invoices_sync(current_month: str):
                         ing_id = m.get('ingredient_id')
                         status = 'pending'
 
-                        # Auto-confirm if high confidence
+                        # Auto-confirm if high confidence (mapping only — not price update)
                         if action == 'match' and ing_id and confidence >= 0.85:
                             # Save mapping
                             db.execute(
                                 'INSERT OR REPLACE INTO ingredient_mappings (invoice_name, ingredient_id, action) VALUES (?, ?, ?)',
                                 (m['invoice_name'], ing_id, 'match')
                             )
-                            # Update price
-                            if m.get('unit_price', 0) > 0:
+                            # Price update with sanity check: skip if dramatic change
+                            new_price = m.get('unit_price', 0)
+                            if new_price > 0:
                                 old_row = db.execute('SELECT unit_price FROM ingredients WHERE id = ?', (ing_id,)).fetchone()
                                 old_price = old_row['unit_price'] if old_row else 0
-                                db.execute('UPDATE ingredients SET unit_price = ? WHERE id = ?', (m['unit_price'], ing_id))
-                                db.execute(
-                                    'INSERT INTO ingredient_price_history (ingredient_id, price, invoice_id) VALUES (?, ?, ?)',
-                                    (ing_id, m['unit_price'], invoice_db_id)
-                                )
+                                price_reasonable = (old_price == 0) or (0.2 <= new_price / old_price <= 5.0)
+                                if price_reasonable:
+                                    db.execute('UPDATE ingredients SET unit_price = ? WHERE id = ?', (new_price, ing_id))
+                                    db.execute(
+                                        'INSERT INTO ingredient_price_history (ingredient_id, price, invoice_id) VALUES (?, ?, ?)',
+                                        (ing_id, new_price, invoice_db_id)
+                                    )
+                                else:
+                                    log.warning(f"Skipping price update for ingredient {ing_id}: {old_price} -> {new_price} (likely package vs unit issue)")
                             status = 'confirmed'
 
                         db.execute('''
