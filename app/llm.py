@@ -196,19 +196,21 @@ Reply with ONLY valid JSON:
     return json.loads(response)
 
 
-def map_items_to_ingredients(invoice_items: list, ingredients: list, existing_mappings: dict = None) -> list:
+def map_items_to_ingredients(invoice_items: list, ingredients: list, existing_mappings: dict = None, pos_products: list = None) -> list:
     """Map invoice items to existing ingredients using LLM.
 
     Args:
         invoice_items: [{'name': str, 'quantity': float, 'unit_price': float}, ...]
         ingredients: [{'id': int, 'name': str, 'unit': str}, ...]
         existing_mappings: {invoice_name: ingredient_id} for already-mapped items
+        pos_products: list of product names from sales (for resale matching)
 
     Returns:
-        [{'invoice_name': str, 'ingredient_id': int|None, 'action': 'match'|'new'|'skip',
+        [{'invoice_name': str, 'ingredient_id': int|None, 'action': 'match'|'new'|'skip'|'resale',
           'confidence': float, 'suggested_name': str}, ...]
     """
     existing_mappings = existing_mappings or {}
+    pos_products = pos_products or []
 
     results = []
     items_to_map = []
@@ -238,26 +240,39 @@ def map_items_to_ingredients(invoice_items: list, ingredients: list, existing_ma
     items_list = '\n'.join([f"  {idx}: {it.get('name', '')} ({it.get('quantity', 0)} szt, {it.get('unit_price', 0):.2f} zł/szt)"
                             for idx, it in enumerate(items_to_map)])
 
-    prompt = f"""You map invoice items from a Polish coffee shop supplier to existing inventory ingredients.
+    # POS products for resale matching (limit to coffee/wine/drink products to keep prompt smaller)
+    resale_candidates = [p for p in pos_products if any(k in p.lower() for k in
+                        ['foundation', 'coffee plant', 'drip bag', 'wino', 'wine', 'kawa ziarn', 'mr.pops'])]
+    pos_list = '\n'.join(f"  - {p}" for p in resale_candidates[:60]) if resale_candidates else '(none)'
+
+    prompt = f"""You map invoice items from a Polish coffee shop supplier to inventory ingredients.
 
 EXISTING INGREDIENTS (id: name (unit)):
 {ing_list}
+
+POS PRODUCTS FOR RESALE (these are sold "as is" — buy 1 pack, sell 1 pack):
+{pos_list}
 
 INVOICE ITEMS TO MAP:
 {items_list}
 
 For each invoice item, decide:
-1. "match" — if there's a clear match in existing ingredients (e.g. "LACIATE MLEKO UHT 3,2% 1L" matches "Mleko 3.2%")
-2. "new" — if it's a real food/drink item but NOT in our list (suggest a clean short name in Polish)
-3. "skip" — if it's not a food ingredient (cash register paper "SIGMA ROLKA", cleaning products, packaging)
+1. "match" — clear match in existing ingredients (e.g. "LACIATE MLEKO 3,2% 1L" matches "Mleko 3.2%")
+2. "resale" — invoice item is a coffee bag / drip bag / wine bottle that we RESELL as-is.
+   The suggested_name MUST EXACTLY MATCH a POS product name from the list above.
+   Example: invoice "Foundation Kawa ziarnista Kenia Kathakwa (filter) 250 gr" → suggested_name "Foundation filter Kenia Kegwa AB 250g" (find closest match in POS list)
+3. "new" — real ingredient but not in our list (suggest clean Polish name for inventory use)
+4. "skip" — not a food/inventory item (cash register paper, cleaning, packaging)
 
-Confidence: 0.0-1.0. Only use "match" with confidence >= 0.7.
+For "resale" items: confidence should be high (>0.85). Use POS product list as authoritative source.
+For "match" items: confidence >= 0.7.
 
-Reply with ONLY valid JSON array, no markdown. One object per item, in same order:
+Reply with ONLY valid JSON array:
 [
   {{"item_index": 0, "action": "match", "ingredient_id": 5, "confidence": 0.95, "suggested_name": ""}},
-  {{"item_index": 1, "action": "new", "ingredient_id": null, "confidence": 0.0, "suggested_name": "Mleko migdałowe Barista"}},
-  {{"item_index": 2, "action": "skip", "ingredient_id": null, "confidence": 1.0, "suggested_name": ""}}
+  {{"item_index": 1, "action": "resale", "ingredient_id": null, "confidence": 0.9, "suggested_name": "Foundation filter Kenia Kegwa AB 250g"}},
+  {{"item_index": 2, "action": "new", "ingredient_id": null, "confidence": 0.0, "suggested_name": "Mleko migdałowe Barista"}},
+  {{"item_index": 3, "action": "skip", "ingredient_id": null, "confidence": 1.0, "suggested_name": ""}}
 ]"""
 
     response = call_llm(prompt, max_tokens=2000)

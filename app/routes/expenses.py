@@ -574,7 +574,13 @@ def _process_invoices_sync(current_month: str):
                                 for r in db.execute('SELECT invoice_name, ingredient_id FROM ingredient_mappings').fetchall()}
 
                     llm_classification = classify_invoice(result.get('vendor', ''), f['name'], items)
-                    llm_mappings = map_items_to_ingredients(items, ingredients, existing)
+
+                    # Get POS products for resale matching
+                    pos_products = [r['product_name'] for r in db.execute(
+                        'SELECT DISTINCT product_name FROM sales ORDER BY product_name'
+                    ).fetchall()]
+
+                    llm_mappings = map_items_to_ingredients(items, ingredients, existing, pos_products)
 
                     db.execute(
                         'UPDATE parsed_invoices SET category = ?, vendor = ? WHERE id = ?',
@@ -583,7 +589,7 @@ def _process_invoices_sync(current_month: str):
                          invoice_db_id)
                     )
 
-                    # Auto-match high-confidence items, save others as pending
+                    # Auto-confirm if high confidence (mapping only — not price update)
                     db.execute('DELETE FROM invoice_items_pending WHERE parsed_invoice_id = ?', (invoice_db_id,))
                     for m in llm_mappings:
                         action = m['action']
@@ -591,8 +597,40 @@ def _process_invoices_sync(current_month: str):
                         ing_id = m.get('ingredient_id')
                         status = 'pending'
 
-                        # Auto-confirm if high confidence (mapping only — not price update)
-                        if action == 'match' and ing_id and confidence >= 0.85:
+                        # Auto-create resale ingredient (matches POS name → auto-match resale works)
+                        if action == 'resale' and m.get('suggested_name') and confidence >= 0.85:
+                            pos_name = m['suggested_name']
+                            existing_resale = db.execute(
+                                'SELECT id FROM ingredients WHERE name = ?', (pos_name,)
+                            ).fetchone()
+                            if existing_resale:
+                                ing_id = existing_resale['id']
+                                # Update price if reasonable
+                                if m.get('unit_price', 0) > 0:
+                                    old_row = db.execute('SELECT unit_price FROM ingredients WHERE id = ?', (ing_id,)).fetchone()
+                                    old_price = old_row['unit_price'] if old_row else 0
+                                    new_price = m['unit_price']
+                                    price_ok = (old_price == 0) or (0.2 <= new_price / old_price <= 5.0)
+                                    if price_ok:
+                                        db.execute('UPDATE ingredients SET unit_price = ? WHERE id = ?', (new_price, ing_id))
+                                        db.execute(
+                                            'INSERT INTO ingredient_price_history (ingredient_id, price, invoice_id) VALUES (?, ?, ?)',
+                                            (ing_id, new_price, invoice_db_id)
+                                        )
+                            else:
+                                # Create new resale ingredient with POS name
+                                cur = db.execute(
+                                    'INSERT INTO ingredients (name, unit, quantity, min_quantity, unit_price) VALUES (?, ?, 0, 1, ?)',
+                                    (pos_name, 'szt', m.get('unit_price', 0))
+                                )
+                                ing_id = cur.lastrowid
+                            db.execute(
+                                'INSERT OR REPLACE INTO ingredient_mappings (invoice_name, ingredient_id, action) VALUES (?, ?, ?)',
+                                (m['invoice_name'], ing_id, 'resale')
+                            )
+                            status = 'confirmed'
+                        # Auto-confirm match if high confidence (mapping only — not price update)
+                        elif action == 'match' and ing_id and confidence >= 0.85:
                             # Save mapping
                             db.execute(
                                 'INSERT OR REPLACE INTO ingredient_mappings (invoice_name, ingredient_id, action) VALUES (?, ?, ?)',
