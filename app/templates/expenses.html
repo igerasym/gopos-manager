@@ -256,12 +256,12 @@
     </div>
 </div>
 
-<!-- Items mapping modal -->
-<div id="items-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.5); z-index:1000; padding:20px; overflow-y:auto;">
-    <div style="background:white; max-width:900px; margin:20px auto; border-radius:8px; padding:20px;">
+<!-- Items mapping modal (uses unified style) -->
+<div id="items-modal-overlay" class="modal-overlay">
+    <div class="modal" style="max-width:900px; max-height:85vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
             <h3 id="items-modal-title" style="margin:0;">Маппінг товарів</h3>
-            <button onclick="document.getElementById('items-modal').style.display='none'" class="btn btn-outline btn-sm">✕</button>
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('items-modal-overlay').classList.remove('open')">✕</button>
         </div>
         <div id="items-modal-content"></div>
     </div>
@@ -272,8 +272,32 @@
 {% block extra_js %}
 <script>
 function startProcess() {
-    alert('Обробка запущена у фоні. Це займе кілька хвилин (до 30 сек на фактуру). Оновлюйте сторінку щоб бачити прогрес — фактури будуть з\'являтися по одній.');
+    showInfoModal('⏳ Обробка запущена',
+        'Парсинг фактур запущено у фоновому режимі. Це займе кілька хвилин (до 30 сек на фактуру).<br><br>' +
+        'Оновлюйте сторінку щоб бачити прогрес — фактури будуть з\'являтися по одній.');
     return true;
+}
+
+function showInfoModal(title, html) {
+    const modal = document.getElementById('confirm-modal');
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-name').textContent = '';
+    const details = document.getElementById('modal-details');
+    details.innerHTML = html;
+    details.style.display = 'block';
+    document.getElementById('modal-warning').style.display = 'none';
+    const form = document.getElementById('modal-form');
+    if (form) form.style.display = 'none';
+    const cancelBtn = document.querySelector('#confirm-modal .modal-actions .btn-outline');
+    cancelBtn.textContent = 'OK';
+    cancelBtn.onclick = function() {
+        closeModal();
+        // Restore default state
+        cancelBtn.textContent = 'Скасувати';
+        cancelBtn.onclick = closeModal;
+        if (form) form.style.display = 'inline';
+    };
+    modal.classList.add('open');
 }
 
 function editAmount(el, id, currentAmount) {
@@ -334,17 +358,17 @@ function llmClassify(invoiceId, btn) {
     fetch('/expenses/llm-classify/' + invoiceId, { method: 'POST', credentials: 'same-origin' })
         .then(r => r.json())
         .then(data => {
-            if (data.error) { alert('Error: ' + data.error); btn.textContent = '🤖'; btn.disabled = false; }
+            if (data.error) { showInfoModal('❌ Помилка', data.error); btn.textContent = '🤖'; btn.disabled = false; }
             else { location.reload(); }
         })
         .catch(() => { btn.textContent = '🤖'; btn.disabled = false; });
 }
 
 function showItems(invoiceId, vendor) {
-    const modal = document.getElementById('items-modal');
+    const modal = document.getElementById('items-modal-overlay');
     document.getElementById('items-modal-title').textContent = 'Товари: ' + vendor;
-    document.getElementById('items-modal-content').innerHTML = '<p>Завантаження...</p>';
-    modal.style.display = 'block';
+    document.getElementById('items-modal-content').innerHTML = '<p class="text-muted">Завантаження...</p>';
+    modal.classList.add('open');
 
     fetch('/expenses/items/' + invoiceId, { credentials: 'same-origin' })
         .then(r => r.json())
@@ -406,18 +430,18 @@ function confirmItem(itemId) {
     if (action === 'match') {
         const inp = document.getElementById('ing-search-' + itemId);
         const id = inp.dataset.id;
-        if (!id) { alert('Виберіть інгредієнт'); return; }
+        if (!id) { showInfoModal('⚠️ Увага', 'Виберіть інгредієнт зі списку'); return; }
         fd.append('ingredient_id', id);
     } else if (action === 'new') {
         const name = document.getElementById('new-name-' + itemId).value.trim();
-        if (!name) { alert('Введіть назву'); return; }
+        if (!name) { showInfoModal('⚠️ Увага', 'Введіть назву нового товару'); return; }
         fd.append('new_name', name);
     }
     fetch('/expenses/items/confirm/' + itemId, { method: 'POST', body: fd, credentials: 'same-origin' })
         .then(r => r.json())
         .then(d => {
             if (d.ok) document.getElementById('item-' + itemId).style.opacity = 0.5;
-            else alert('Error: ' + (d.error || 'unknown'));
+            else showInfoModal('❌ Помилка', d.error || 'unknown');
         });
 }
 
@@ -433,8 +457,8 @@ function confirmAllItems() {
             .then(r => r.json()).then(() => count++);
     });
     Promise.all(promises).then(() => {
-        alert('Підтверджено: ' + count);
-        location.reload();
+        showInfoModal('✅ Готово', 'Підтверджено: ' + count + ' товарів');
+        setTimeout(() => location.reload(), 1500);
     });
 }
 </script>
