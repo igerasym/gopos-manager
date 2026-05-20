@@ -208,7 +208,7 @@
             </thead>
             <tbody>
                 {% for inv in all_invoices %}
-                <tr>
+                <tr {% if inv['parse_status'] == 'processing' %}class="processing-row"{% endif %}>
                     <td style="font-size:.85em;">
                         <span style="font-weight:500;">{{ inv['vendor'] or '—' }}</span>
                         <span class="text-muted"> · {{ inv['file_name'][:30] }}</span>
@@ -219,6 +219,10 @@
                             <span style="color:var(--green);" title="Розпізнано">✅</span>
                         {% elif inv['parse_status'] == 'error' %}
                             <span style="color:var(--red);" title="Помилка">❌</span>
+                        {% elif inv['parse_status'] == 'processing' %}
+                            <span class="spinner" title="Обробка...">⚙️</span>
+                        {% elif inv['parse_status'] == 'duplicate' %}
+                            <span class="text-muted" title="Дублікат">⊘</span>
                         {% else %}
                             <span class="text-muted" title="Очікує">⏳</span>
                         {% endif %}
@@ -270,7 +274,32 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+.spinner {
+    display: inline-block;
+    animation: spin 1.2s linear infinite;
+}
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+.processing-row {
+    background: linear-gradient(90deg, transparent, rgba(251,191,36,.1), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+}
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+</style>
 <script>
+// Auto-refresh if there are processing invoices
+{% set has_processing = all_invoices | selectattr('parse_status', 'equalto', 'processing') | list | length %}
+{% if has_processing > 0 %}
+setTimeout(() => location.reload(), 5000);
+{% endif %}
+
 function startProcess() {
     showInfoModal('⏳ Обробка запущена',
         'Парсинг фактур запущено у фоновому режимі. Це займе кілька хвилин (до 30 сек на фактуру).<br><br>' +

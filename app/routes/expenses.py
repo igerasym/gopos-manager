@@ -438,6 +438,12 @@ def _process_invoices_sync(current_month: str):
         if f['id'] in fully_parsed_ids or f['mimeType'] not in supported:
             continue
         try:
+            # Mark as processing
+            if f['id'] in all_known:
+                db.execute("UPDATE parsed_invoices SET parse_status = 'processing' WHERE id = ?",
+                           (all_known[f['id']],))
+                db.commit()
+
             file_bytes = download_file(f['id'])
             file_hash = hashlib.md5(file_bytes).hexdigest()
 
