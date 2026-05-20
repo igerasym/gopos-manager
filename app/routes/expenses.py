@@ -381,18 +381,34 @@ async def scan_drive(month: str = ''):
 
 @router.post('/expenses/process-invoices')
 async def process_all_invoices(month: str = Form('')):
-    """Scan Google Drive for new invoices, parse them with Textract."""
+    """Start invoice processing in background — returns immediately."""
+    current_month = month or datetime.now().strftime('%Y-%m')
+
+    import threading
+    def run_processing():
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            _process_invoices_sync(current_month)
+        except Exception as e:
+            log.error(f"Background processing failed: {e}")
+        finally:
+            loop.close()
+
+    threading.Thread(target=run_processing, daemon=True).start()
+    return RedirectResponse(f'/expenses?month={current_month}', status_code=303)
+
+
+def _process_invoices_sync(current_month: str):
+    """Sync processing of all pending invoices."""
     from app.gdrive_invoices import list_invoices_for_month, download_file, parse_invoice_textract, classify_vendor
 
-    current_month = month or datetime.now().strftime('%Y-%m')
     db = get_db()
 
-    # Get already parsed (those that have parse_status='parsed')
     fully_parsed_ids = set(
         r['file_id'] for r in db.execute("SELECT file_id FROM parsed_invoices WHERE parse_status = 'parsed'").fetchall()
     )
-
-    # Get all known file_ids (parsed or just scanned)
     all_known = {r['file_id']: r['id']
                  for r in db.execute('SELECT file_id, id FROM parsed_invoices').fetchall()}
 
@@ -400,7 +416,7 @@ async def process_all_invoices(month: str = Form('')):
         invoices = list_invoices_for_month(current_month)
     except Exception:
         db.close()
-        return RedirectResponse(f'/expenses?month={current_month}', status_code=303)
+        return
 
     supported = ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']
     new_parsed = []
@@ -416,7 +432,6 @@ async def process_all_invoices(month: str = Form('')):
 
             invoice_db_id = all_known.get(f['id'])
             if invoice_db_id:
-                # Update existing record
                 db.execute('''
                     UPDATE parsed_invoices SET
                         invoice_number = ?, vendor = ?, category = ?, total = ?,
@@ -428,7 +443,6 @@ async def process_all_invoices(month: str = Form('')):
                       json.dumps(result.get('items', []), ensure_ascii=False),
                       invoice_db_id))
             else:
-                # Insert new
                 cur = db.execute('''
                     INSERT OR IGNORE INTO parsed_invoices
                     (file_id, file_name, invoice_number, folder, month, vendor, category, total, items_json, parse_status, expense_status)
@@ -439,6 +453,8 @@ async def process_all_invoices(month: str = Form('')):
                       result.get('total', 0),
                       json.dumps(result.get('items', []), ensure_ascii=False)))
                 invoice_db_id = cur.lastrowid
+
+            db.commit()  # Commit after each invoice for incremental progress
 
             # LLM classification + item mapping
             if invoice_db_id and result.get('items'):
@@ -466,32 +482,30 @@ async def process_all_invoices(month: str = Form('')):
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (invoice_db_id, m['invoice_name'], m.get('quantity', 0), m.get('unit_price', 0),
                               m['action'], m.get('ingredient_id'), m.get('suggested_name', ''), m.get('confidence', 0)))
+                    db.commit()
                 except Exception as llm_err:
                     log.warning(f"LLM processing failed for {f['name']}: {llm_err}")
 
             new_parsed.append({'name': f['name'], 'vendor': expense_name, 'total': result.get('total', 0)})
         except Exception as e:
             errors.append(f"{f['name']}: {str(e)[:80]}")
-            # Mark as error
             if f['id'] in all_known:
                 db.execute("UPDATE parsed_invoices SET parse_status = 'error' WHERE id = ?", (all_known[f['id']],))
+                db.commit()
 
-    db.commit()
     db.close()
 
     try:
         from app.telegram_bot import send_message
         if new_parsed:
             msg = f"📄 <b>Фактури ({current_month})</b>\n\n"
-            for p in new_parsed:
+            for p in new_parsed[:15]:
                 msg += f"✅ {p['vendor']} — {p['total']:.0f} zł\n"
             if errors:
                 msg += f"\n❌ Помилки: {len(errors)}\n"
             send_message(msg)
     except Exception:
         pass
-
-    return RedirectResponse(f'/expenses?month={current_month}', status_code=303)
 
 
 @router.post('/expenses/items/confirm/{item_id}')
