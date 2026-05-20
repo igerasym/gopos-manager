@@ -38,48 +38,49 @@ def call_llm(prompt: str, max_tokens: int = 1000) -> str:
 
 
 def classify_invoice(vendor: str, file_name: str, items: list) -> dict:
-    """Classify invoice into category and suggest expense name.
-    Returns: {'category': str, 'expense_name': str, 'reasoning': str}
-    """
+    """Classify invoice into category and suggest expense name."""
     categories = ['Оренда', 'Зарплати', 'Бухгалтерія', 'Комунальні', 'Побут',
                   'Податки і ZUS', 'Логістика', 'Продукти', 'Інше']
 
-    items_preview = '\n'.join([f"- {it.get('name', '')}" for it in items[:10]])
-    if len(items) > 10:
-        items_preview += f"\n...({len(items) - 10} more)"
+    items_preview = '\n'.join([f"- {it.get('name', '')}" for it in items[:15]])
+    if len(items) > 15:
+        items_preview += f"\n...({len(items) - 15} more)"
 
-    prompt = f"""You are classifying invoices for a Polish coffee shop.
+    prompt = f"""You are classifying invoices for "The Frame" coffee shop in Warsaw, Poland.
 
-Vendor name: {vendor}
+Vendor (extracted by OCR): {vendor}
 File name: {file_name}
-Items on invoice (first 10):
+Items on invoice (first 15):
 {items_preview}
 
-Classify into ONE category from this list:
-{', '.join(categories)}
-
-Categories meanings:
-- Продукти: food/drinks ingredients (Makro, coffee suppliers like Foundation/Coffee Plant, bakeries, milk, fruits)
-- Комунальні: utilities (electricity PGE/Energa/Tauron, water, gas)
-- Побут: household items (cleaning, packaging, paper towels, dishes, internet)
-- Оренда: rent
+Categories:
+- Продукти: food/drinks for sale (Makro grocery, coffee suppliers, bakeries, milk, fruits, wine for sale)
+- Комунальні: utilities (electricity PGE/Energa/Tauron, water, gas, internet)
+- Побут: operational items (cleaning, packaging, dishes, instax cassettes, printing menus/posters, flowers, decorations, equipment)
+- Оренда: rent only
 - Зарплати: salaries
 - Бухгалтерія: accounting services
-- Податки і ZUS: taxes and social security (ZUS, PIT, VAT)
-- Логістика: delivery, taxi
-- Інше: other
+- Податки і ZUS: taxes (ZUS, PIT, VAT)
+- Логістика: delivery, taxi, fuel
+- Інше: only if truly cannot classify
 
-Also suggest a short expense name (in Ukrainian, max 30 chars), like:
-- "Закупка Makro" for Makro Cash & Carry
-- "Кава Foundation" for Foundation Coffee
-- "Електрика" for PGE
-- "Інтернет Play" for Play S.A.
+Generate a SHORT meaningful expense name in Ukrainian (max 30 chars) based on what's ACTUALLY on the invoice.
+DO NOT use file names or generic OCR-extracted vendor strings — look at the items!
 
-Reply with ONLY valid JSON, no markdown:
-{{"category": "...", "expense_name": "...", "reasoning": "brief explanation"}}"""
+EXAMPLES:
+- Items "MLEKO, JAJA, MASLO" → "Закупка Makro" (Продукти)
+- Items "Foundation Kawa Kenya" → "Кава Foundation" (Продукти)
+- Items contain "Energia czynna" → "Електрика" (Комунальні)
+- Items "WKLAD INSTAX" → "Касети Instax" (Побут)
+- Items "Wydruk menu", "Plakat" → "Друк меню" (Побут)
+- Items "Wino", "Vinos" → "Закупка вина" (Продукти)
+- Items "Tort", "Cake" → "Торт / десерт" (Побут)
+- Items contain "Naprawa", repair → "Ремонт" (Побут)
+
+Reply with ONLY valid JSON (no markdown, no explanation outside JSON):
+{{"category": "...", "expense_name": "...", "reasoning": "brief explanation in Ukrainian"}}"""
 
     response = call_llm(prompt, max_tokens=300)
-    # Extract JSON from response
     response = response.strip()
     if response.startswith('```'):
         response = response.split('```')[1]
@@ -91,7 +92,7 @@ Reply with ONLY valid JSON, no markdown:
 
 def map_items_to_ingredients(invoice_items: list, ingredients: list, existing_mappings: dict = None) -> list:
     """Map invoice items to existing ingredients using LLM.
-    
+
     Args:
         invoice_items: [{'name': str, 'quantity': float, 'unit_price': float}, ...]
         ingredients: [{'id': int, 'name': str, 'unit': str}, ...]
@@ -103,7 +104,6 @@ def map_items_to_ingredients(invoice_items: list, ingredients: list, existing_ma
     """
     existing_mappings = existing_mappings or {}
 
-    # Pre-filter: items already mapped
     results = []
     items_to_map = []
     for item in invoice_items:
@@ -127,10 +127,8 @@ def map_items_to_ingredients(invoice_items: list, ingredients: list, existing_ma
     if not items_to_map:
         return results
 
-    # Build ingredient list for prompt
     ing_list = '\n'.join([f"  {i['id']}: {i['name']} ({i['unit']})" for i in ingredients])
 
-    # Build invoice items list
     items_list = '\n'.join([f"  {idx}: {it.get('name', '')} ({it.get('quantity', 0)} szt, {it.get('unit_price', 0):.2f} zł/szt)"
                             for idx, it in enumerate(items_to_map)])
 
