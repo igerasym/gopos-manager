@@ -402,6 +402,7 @@ async def process_all_invoices(month: str = Form('')):
 
 def _process_invoices_sync(current_month: str):
     """Sync processing of all pending invoices."""
+    import hashlib
     from app.gdrive_invoices import list_invoices_for_month, download_file, parse_invoice_textract, classify_vendor
 
     db = get_db()
@@ -411,6 +412,16 @@ def _process_invoices_sync(current_month: str):
     )
     all_known = {r['file_id']: r['id']
                  for r in db.execute('SELECT file_id, id FROM parsed_invoices').fetchall()}
+    # Hashes of already processed files (to detect renamed duplicates)
+    known_hashes = set(
+        r['file_hash'] for r in db.execute("SELECT file_hash FROM parsed_invoices WHERE file_hash != ''").fetchall()
+    )
+    # Known invoice numbers
+    known_inv_numbers = set(
+        r['invoice_number'] for r in db.execute(
+            "SELECT invoice_number FROM parsed_invoices WHERE invoice_number != ''"
+        ).fetchall()
+    )
 
     try:
         invoices = list_invoices_for_month(current_month)
@@ -420,6 +431,7 @@ def _process_invoices_sync(current_month: str):
 
     supported = ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']
     new_parsed = []
+    auto_approved = []
     errors = []
 
     for f in invoices:
@@ -427,17 +439,39 @@ def _process_invoices_sync(current_month: str):
             continue
         try:
             file_bytes = download_file(f['id'])
+            file_hash = hashlib.md5(file_bytes).hexdigest()
+
+            # Check duplicate by hash (renamed file)
+            if file_hash in known_hashes:
+                log.info(f"Skipping duplicate by hash: {f['name']}")
+                if f['id'] in all_known:
+                    db.execute("UPDATE parsed_invoices SET parse_status = 'duplicate' WHERE id = ?",
+                               (all_known[f['id']],))
+                    db.commit()
+                continue
+
             result = parse_invoice_textract(file_bytes)
+
+            # Check duplicate by invoice number
+            inv_num = result.get('invoice_number', '')
+            if inv_num and inv_num in known_inv_numbers:
+                log.info(f"Skipping duplicate by invoice number {inv_num}: {f['name']}")
+                if f['id'] in all_known:
+                    db.execute("UPDATE parsed_invoices SET parse_status = 'duplicate' WHERE id = ?",
+                               (all_known[f['id']],))
+                    db.commit()
+                continue
+
             category, expense_name = classify_vendor(result.get('vendor', ''), f['name'])
 
             invoice_db_id = all_known.get(f['id'])
             if invoice_db_id:
                 db.execute('''
                     UPDATE parsed_invoices SET
-                        invoice_number = ?, vendor = ?, category = ?, total = ?,
+                        file_hash = ?, invoice_number = ?, vendor = ?, category = ?, total = ?,
                         items_json = ?, parse_status = 'parsed'
                     WHERE id = ?
-                ''', (result.get('invoice_number', ''),
+                ''', (file_hash, inv_num,
                       expense_name or result.get('vendor', ''), category,
                       result.get('total', 0),
                       json.dumps(result.get('items', []), ensure_ascii=False),
@@ -445,18 +479,23 @@ def _process_invoices_sync(current_month: str):
             else:
                 cur = db.execute('''
                     INSERT OR IGNORE INTO parsed_invoices
-                    (file_id, file_name, invoice_number, folder, month, vendor, category, total, items_json, parse_status, expense_status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'parsed', 'pending')
-                ''', (f['id'], f['name'], result.get('invoice_number', ''),
+                    (file_id, file_name, file_hash, invoice_number, folder, month, vendor, category, total, items_json, parse_status, expense_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'parsed', 'pending')
+                ''', (f['id'], f['name'], file_hash, inv_num,
                       f.get('path', ''), current_month,
                       expense_name or result.get('vendor', ''), category,
                       result.get('total', 0),
                       json.dumps(result.get('items', []), ensure_ascii=False)))
                 invoice_db_id = cur.lastrowid
 
-            db.commit()  # Commit after each invoice for incremental progress
+            known_hashes.add(file_hash)
+            if inv_num:
+                known_inv_numbers.add(inv_num)
+            db.commit()
 
             # LLM classification + item mapping
+            llm_classification = None
+            llm_mappings = []
             if invoice_db_id and result.get('items'):
                 try:
                     from app.llm import classify_invoice, map_items_to_ingredients
@@ -465,28 +504,73 @@ def _process_invoices_sync(current_month: str):
                     existing = {r['invoice_name']: r['ingredient_id']
                                 for r in db.execute('SELECT invoice_name, ingredient_id FROM ingredient_mappings').fetchall()}
 
-                    classification = classify_invoice(result.get('vendor', ''), f['name'], items)
-                    mappings = map_items_to_ingredients(items, ingredients, existing)
+                    llm_classification = classify_invoice(result.get('vendor', ''), f['name'], items)
+                    llm_mappings = map_items_to_ingredients(items, ingredients, existing)
 
                     db.execute(
                         'UPDATE parsed_invoices SET category = ?, vendor = ? WHERE id = ?',
-                        (classification.get('category', category),
-                         classification.get('expense_name', expense_name) or result.get('vendor', ''),
+                        (llm_classification.get('category', category),
+                         llm_classification.get('expense_name', expense_name) or result.get('vendor', ''),
                          invoice_db_id)
                     )
+
+                    # Auto-match high-confidence items, save others as pending
                     db.execute('DELETE FROM invoice_items_pending WHERE parsed_invoice_id = ?', (invoice_db_id,))
-                    for m in mappings:
+                    for m in llm_mappings:
+                        action = m['action']
+                        confidence = m.get('confidence', 0)
+                        ing_id = m.get('ingredient_id')
+                        status = 'pending'
+
+                        # Auto-confirm if high confidence
+                        if action == 'match' and ing_id and confidence >= 0.85:
+                            # Save mapping
+                            db.execute(
+                                'INSERT OR REPLACE INTO ingredient_mappings (invoice_name, ingredient_id, action) VALUES (?, ?, ?)',
+                                (m['invoice_name'], ing_id, 'match')
+                            )
+                            # Update price
+                            if m.get('unit_price', 0) > 0:
+                                old_row = db.execute('SELECT unit_price FROM ingredients WHERE id = ?', (ing_id,)).fetchone()
+                                old_price = old_row['unit_price'] if old_row else 0
+                                db.execute('UPDATE ingredients SET unit_price = ? WHERE id = ?', (m['unit_price'], ing_id))
+                                db.execute(
+                                    'INSERT INTO ingredient_price_history (ingredient_id, price, invoice_id) VALUES (?, ?, ?)',
+                                    (ing_id, m['unit_price'], invoice_db_id)
+                                )
+                            status = 'confirmed'
+
                         db.execute('''
                             INSERT INTO invoice_items_pending
                             (parsed_invoice_id, invoice_name, quantity, unit_price, status, ingredient_id, suggested_ingredient, confidence)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (invoice_db_id, m['invoice_name'], m.get('quantity', 0), m.get('unit_price', 0),
-                              m['action'], m.get('ingredient_id'), m.get('suggested_name', ''), m.get('confidence', 0)))
+                              status, ing_id, m.get('suggested_name', ''), confidence))
                     db.commit()
                 except Exception as llm_err:
                     log.warning(f"LLM processing failed for {f['name']}: {llm_err}")
 
-            new_parsed.append({'name': f['name'], 'vendor': expense_name, 'total': result.get('total', 0)})
+            # Auto-approve to expenses if vendor is recognized AND total > 0
+            invoice_total = result.get('total', 0)
+            invoice_vendor = (llm_classification.get('expense_name') if llm_classification else None) or expense_name
+            invoice_category = (llm_classification.get('category') if llm_classification else None) or category
+            vendor_known = bool(invoice_vendor and invoice_vendor.lower() not in ('', '—', 'інше'))
+
+            if vendor_known and invoice_total > 0:
+                cur = db.execute(
+                    'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, 0, ?)',
+                    (invoice_vendor, invoice_category, invoice_total, current_month,
+                     f"Фактура #{inv_num or f['name']}")
+                )
+                expense_id = cur.lastrowid
+                db.execute(
+                    "UPDATE parsed_invoices SET expense_status = 'added', expense_id = ? WHERE id = ?",
+                    (expense_id, invoice_db_id)
+                )
+                db.commit()
+                auto_approved.append({'name': f['name'], 'vendor': invoice_vendor, 'total': invoice_total})
+
+            new_parsed.append({'name': f['name'], 'vendor': expense_name, 'total': invoice_total})
         except Exception as e:
             errors.append(f"{f['name']}: {str(e)[:80]}")
             if f['id'] in all_known:
@@ -497,10 +581,15 @@ def _process_invoices_sync(current_month: str):
 
     try:
         from app.telegram_bot import send_message
-        if new_parsed:
+        if new_parsed or errors:
             msg = f"📄 <b>Фактури ({current_month})</b>\n\n"
-            for p in new_parsed[:15]:
-                msg += f"✅ {p['vendor']} — {p['total']:.0f} zł\n"
+            if auto_approved:
+                msg += f"✅ Авто-додано у витрати: {len(auto_approved)}\n"
+                for p in auto_approved[:10]:
+                    msg += f"  • {p['vendor']} — {p['total']:.0f} zł\n"
+            pending_count = len(new_parsed) - len(auto_approved)
+            if pending_count > 0:
+                msg += f"\n⏳ Чекають підтвердження: {pending_count}\n"
             if errors:
                 msg += f"\n❌ Помилки: {len(errors)}\n"
             send_message(msg)

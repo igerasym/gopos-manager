@@ -136,6 +136,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             file_id TEXT NOT NULL UNIQUE,
             file_name TEXT NOT NULL,
+            file_hash TEXT DEFAULT '',
             invoice_number TEXT DEFAULT '',
             folder TEXT DEFAULT '',
             month TEXT DEFAULT '',
