@@ -192,8 +192,12 @@ def _extract_textract_result(response: dict) -> dict:
     if result['total'] == 0 and result['items']:
         line_totals = sum((it.get('total', 0) or 0) for it in result['items'])
         qty_price = sum((it.get('quantity', 0) or 0) * (it.get('unit_price', 0) or 0) for it in result['items'])
-        # Use the bigger one (more likely the actual brutto sum)
-        result['total'] = max(line_totals, qty_price)
+        # PRICE field is usually brutto on each line, prefer that.
+        # qty*unit_price can mix netto/brutto, use only if line_totals missing
+        if line_totals > 0:
+            result['total'] = line_totals
+        else:
+            result['total'] = qty_price
 
     return result
 
