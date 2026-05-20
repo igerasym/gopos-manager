@@ -77,6 +77,11 @@ EXAMPLES:
 - Items "Tort", "Cake" → "Торт / десерт" (Побут)
 - Items contain "Naprawa", repair → "Ремонт" (Побут)
 
+IMPORTANT: 
+- NEVER use "Krajowy System e-Faktur", "KSeF", "Faktura VAT" or similar generic system text as expense_name. These are just headers, not vendors!
+- If vendor is unclear and no items visible, use file name pattern to guess (NIP numbers like 7010564340 are usually utilities)
+- If totally unknown, prefer "Невідомий постачальник" in category "Інше"
+
 Reply with ONLY valid JSON (no markdown, no explanation outside JSON):
 {{"category": "...", "expense_name": "...", "reasoning": "brief explanation in Ukrainian"}}"""
 
