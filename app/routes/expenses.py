@@ -85,6 +85,7 @@ async def expenses_page(request: Request, month: str = ''):
     pending_invoices = []
     all_invoices = []
     pending_items_counts = {}
+    expense_to_invoice = {}  # expense_id -> {file_id, file_name, ...}
     try:
         db2 = get_db()
         parsed_rows = db2.execute('SELECT file_id FROM parsed_invoices').fetchall()
@@ -105,9 +106,23 @@ async def expenses_page(request: Request, month: str = ''):
             GROUP BY parsed_invoice_id
         ''').fetchall()
         pending_items_counts = {r['parsed_invoice_id']: r['cnt'] for r in rows}
+        # Build expense -> invoice map
+        for inv in all_invoices:
+            if inv['expense_id']:
+                expense_to_invoice[inv['expense_id']] = {
+                    'file_id': inv['file_id'],
+                    'file_name': inv['file_name'],
+                    'invoice_number': inv['invoice_number'],
+                }
         db2.close()
     except Exception as e:
         log.warning(f"Could not load parsed invoices: {e}")
+
+    # Attach invoice info to expense items in groups
+    for group in expenses:
+        for item in group['items']:
+            inv = expense_to_invoice.get(item['id'])
+            item['invoice'] = inv
 
     return templates.TemplateResponse(request, 'expenses.html', context={
         'expenses': expenses, 'by_category': by_category,
