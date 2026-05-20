@@ -1,4 +1,5 @@
 """LLM integration via AWS Bedrock for invoice classification and ingredient mapping."""
+import base64
 import json
 import logging
 import os
@@ -37,6 +38,101 @@ def call_llm(prompt: str, max_tokens: int = 1000) -> str:
         raise
 
 
+def parse_invoice_with_vision(file_bytes: bytes, file_name: str = '') -> dict:
+    """Parse invoice PDF/image directly with Claude vision.
+
+    Returns: {
+        'vendor': str, 'date': str, 'invoice_number': str,
+        'total': float, 'items': [{name, quantity, unit_price, total}, ...]
+    }
+    """
+    import io
+    # Convert PDF to images first (Claude vision needs images)
+    is_pdf = file_name.lower().endswith('.pdf') or file_bytes[:4] == b'%PDF'
+
+    images = []
+    if is_pdf:
+        try:
+            import pdfplumber
+            pdf = pdfplumber.open(io.BytesIO(file_bytes))
+            for page in pdf.pages[:5]:  # Max 5 pages
+                img = page.to_image(resolution=150)
+                buf = io.BytesIO()
+                img.original.save(buf, format='PNG')
+                images.append(('png', buf.getvalue()))
+            pdf.close()
+        except Exception as e:
+            raise Exception(f"PDF to image conversion failed: {e}")
+    else:
+        # Detect format from bytes
+        fmt = 'png'
+        if file_bytes[:3] == b'\xff\xd8\xff':
+            fmt = 'jpeg'
+        images.append((fmt, file_bytes))
+
+    if not images:
+        raise Exception("No images extracted from file")
+
+    # Build content with all images + prompt
+    content = []
+    for fmt, img_bytes in images:
+        content.append({
+            'image': {
+                'format': fmt,
+                'source': {'bytes': img_bytes}
+            }
+        })
+
+    prompt = """You are extracting data from a Polish invoice (faktura) for a coffee shop.
+
+Extract:
+- vendor: company name (e.g. "MAKRO", "Foundation Coffee", "PGE")
+- invoice_number: faktura number (e.g. "FV/2026/123")
+- date: invoice date (YYYY-MM-DD format)
+- total: TOTAL BRUTTO amount in PLN (the "Razem do zapłaty" / "Wartość brutto" — final amount with VAT)
+- items: array of line items, each with:
+  - name: short product name (clean, no codes)
+  - quantity: numeric quantity
+  - unit_price: BRUTTO unit price in PLN (with VAT)
+  - total: BRUTTO line total in PLN
+
+IMPORTANT:
+- Use BRUTTO (with VAT) prices, NOT netto
+- Total must match sum of line totals (verify yourself!)
+- For multi-page invoices: extract ALL items from all pages
+- If you see "Razem" or "Suma" — that's the total
+- Numbers may use comma as decimal separator (1.234,56 → 1234.56)
+
+Reply with ONLY valid JSON (no markdown, no explanation):
+{
+  "vendor": "...",
+  "invoice_number": "...",
+  "date": "YYYY-MM-DD",
+  "total": 0.00,
+  "items": [
+    {"name": "...", "quantity": 1.0, "unit_price": 10.00, "total": 10.00}
+  ]
+}"""
+
+    content.append({'text': prompt})
+
+    client = get_client()
+    response = client.converse(
+        modelId=MODEL_ID,
+        messages=[{'role': 'user', 'content': content}],
+        inferenceConfig={'maxTokens': 4000, 'temperature': 0.0}
+    )
+
+    text = response['output']['message']['content'][0]['text'].strip()
+    if text.startswith('```'):
+        text = text.split('```')[1]
+        if text.startswith('json'):
+            text = text[4:]
+        text = text.strip()
+
+    return json.loads(text)
+
+
 def classify_invoice(vendor: str, file_name: str, items: list) -> dict:
     """Classify invoice into category and suggest expense name."""
     categories = ['Оренда', 'Зарплати', 'Бухгалтерія', 'Комунальні', 'Побут',
@@ -48,7 +144,7 @@ def classify_invoice(vendor: str, file_name: str, items: list) -> dict:
 
     prompt = f"""You are classifying invoices for "The Frame" coffee shop in Warsaw, Poland.
 
-Vendor (extracted by OCR): {vendor}
+Vendor: {vendor}
 File name: {file_name}
 Items on invoice (first 15):
 {items_preview}
@@ -64,34 +160,30 @@ Categories:
 - Логістика: delivery, taxi, fuel
 - Інше: only if truly cannot classify
 
-Generate a SHORT meaningful expense name in Ukrainian (max 30 chars) based on what's ACTUALLY on the invoice.
-DO NOT use file names or generic OCR-extracted vendor strings — look at the items!
+Generate a SHORT meaningful expense name in Ukrainian (max 30 chars).
+
+CONSISTENCY: Use the same expense_name for the same vendor:
+- Coffeedesk → "Закуп Coffeedesk"
+- Makro → "Закупка Makro"
+- Foundation → "Кава Foundation"
+- Coffee Plant → "Кава Coffee Plant"
+- Fresh Black → "Кава Fresh Black"
+- Ferment bakery → "Випічка Ferment"
+- Bakers House → "Випічка Bakers House"
+- PGE/Tauron/Energa → "Електрика"
+- Orange/Play → "Інтернет [provider]"
 
 EXAMPLES:
-- Items "MLEKO, JAJA, MASLO" → "Закупка Makro" (Продукти)
-- Items "Foundation Kawa Kenya" → "Кава Foundation" (Продукти)
-- Items "Coffeedesk", coffee accessories, syrups → "Закуп Coffeedesk" (Продукти)
-- Items contain "Energia czynna" → "Електрика" (Комунальні)
+- Items "MLEKO, JAJA" → "Закупка Makro"
+- Items "Foundation Kawa" → "Кава Foundation"
+- Items "Energia czynna" → "Електрика" (Комунальні)
 - Items "WKLAD INSTAX" → "Касети Instax" (Побут)
-- Items "Wydruk menu", "Plakat" → "Друк меню" (Побут)
+- Items "Wydruk menu" → "Друк меню" (Побут)
 - Items "Wino", "Vinos" → "Закупка вина" (Продукти)
-- Items "Tort", "Cake" → "Торт / десерт" (Побут)
-- Items contain "Naprawa", repair → "Ремонт" (Побут)
 
-CONSISTENCY: Use the same expense_name for the same vendor. Do NOT invent new variations:
-- Coffeedesk supplier → ALWAYS "Закуп Coffeedesk" (not "Кава Coffeedesk", "Закупка Coffeedesk" etc.)
-- Makro → ALWAYS "Закупка Makro"
-- Foundation → ALWAYS "Кава Foundation"
-- Ferment bakery → ALWAYS "Випічка Ferment"
-- Bakers House → ALWAYS "Випічка Bakers House"
-- PGE/Tauron/Energa → ALWAYS "Електрика"
+NEVER use "KSeF", "Krajowy System", "Faktura VAT" as expense_name — these are headers, not vendors!
 
-IMPORTANT: 
-- NEVER use "Krajowy System e-Faktur", "KSeF", "Faktura VAT" or similar generic system text as expense_name. These are just headers, not vendors!
-- If vendor is unclear and no items visible, use file name pattern to guess (NIP numbers like 7010564340 are usually utilities)
-- If totally unknown, prefer "Невідомий постачальник" in category "Інше"
-
-Reply with ONLY valid JSON (no markdown, no explanation outside JSON):
+Reply with ONLY valid JSON:
 {{"category": "...", "expense_name": "...", "reasoning": "brief explanation in Ukrainian"}}"""
 
     response = call_llm(prompt, max_tokens=300)

@@ -434,9 +434,10 @@ async def process_all_invoices(month: str = Form('')):
 
 
 def _process_invoices_sync(current_month: str):
-    """Sync processing of all pending invoices."""
+    """Sync processing of all pending invoices using Claude vision (Textract as fallback)."""
     import hashlib
     from app.gdrive_invoices import list_invoices_for_month, download_file, parse_invoice_textract, classify_vendor
+    from app.llm import parse_invoice_with_vision, classify_invoice, map_items_to_ingredients
 
     db = get_db()
 
@@ -496,7 +497,17 @@ def _process_invoices_sync(current_month: str):
                     db.commit()
                 continue
 
-            result = parse_invoice_textract(file_bytes)
+            # Try Claude vision first, fallback to Textract
+            result = None
+            try:
+                result = parse_invoice_with_vision(file_bytes, f['name'])
+                log.info(f"Parsed with Claude vision: {f['name']}")
+            except Exception as vision_err:
+                log.warning(f"Claude vision failed for {f['name']}, fallback to Textract: {vision_err}")
+                try:
+                    result = parse_invoice_textract(file_bytes)
+                except Exception as textract_err:
+                    raise Exception(f"Both vision and Textract failed: {textract_err}")
 
             # Check duplicate by invoice number
             inv_num = result.get('invoice_number', '')
