@@ -164,8 +164,10 @@ def _extract_textract_result(response: dict) -> dict:
                 result['vendor'] = value
             elif field_type == 'INVOICE_RECEIPT_DATE':
                 result['date'] = value
-            elif field_type == 'TOTAL':
-                result['total'] = max(result['total'], _parse_number(value))
+            elif field_type in ('TOTAL', 'AMOUNT_PAID', 'AMOUNT_DUE', 'SUBTOTAL'):
+                v = _parse_number(value)
+                if v > result['total']:
+                    result['total'] = v
             elif field_type == 'INVOICE_RECEIPT_ID':
                 result['invoice_number'] = value
 
@@ -185,6 +187,13 @@ def _extract_textract_result(response: dict) -> dict:
                         line['total'] = _parse_number(val)
                 if line.get('name'):
                     result['items'].append(line)
+
+    # Fallback: if no total found, sum from line items
+    if result['total'] == 0 and result['items']:
+        line_totals = sum((it.get('total', 0) or 0) for it in result['items'])
+        qty_price = sum((it.get('quantity', 0) or 0) * (it.get('unit_price', 0) or 0) for it in result['items'])
+        # Use the bigger one (more likely the actual brutto sum)
+        result['total'] = max(line_totals, qty_price)
 
     return result
 
