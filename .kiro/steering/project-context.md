@@ -109,12 +109,16 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 8. On approve → checks ingredient_mappings, updates prices, sends alerts
 9. Telegram notification with summary
 
-## Waiting for LLM (AWS Bedrock quota)
-- Quota request open (case 177833073600217) for Claude 3.5 Haiku / Nova Lite
-- When available: LLM will map invoice items → ingredients (fuzzy matching)
-- `ingredient_mappings` table = "memory" — once mapped, always automatic
-- Items get status: matched / uncertain / new / skip
-- New items: UI prompt "Add to inventory?" or "Map to existing?"
+## LLM Setup (active)
+- **Primary:** Claude Haiku 4.5 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`) on Bedrock us-west-2
+- **Fallback:** AWS Textract `analyze_expense` (used only if Claude fails)
+- **Cost:** ~$1-2/month for 50-80 invoices
+- **Future option:** Nova 2 Lite ($0.17/1M input vs Claude $1/1M, ~6x cheaper) — try later if cost matters
+- **Vision-based parsing:** PDF → images via pdfplumber → Claude vision → JSON
+- Single LLM call extracts: vendor, invoice_number, date, total, items[]
+- Then second call for classification + ingredient mapping
+- IAM role `CatchMyActions-EC2-Role` has `AmazonBedrockFullAccess` and `AmazonTextractFullAccess`
+- Note: Claude 3 Haiku and 3.5 Haiku are marked Legacy by Anthropic for new accounts — use Haiku 4.5
 
 ## Telegram Bot
 - Token and chat_id in `.env` on prod (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
@@ -189,7 +193,7 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - Signature Coffee Cherry Ice Latte (espresso + cherry syrup + milk)
 
 ## What's Next (backlog)
-- LLM invoice item → ingredient mapping (waiting for Bedrock quota)
+- Try Nova 2 Lite to reduce LLM costs (~6x cheaper than Claude Haiku 4.5)
 - Auto-delivery creation on invoice approve
 - Waste tracking
 - Stock forecast
