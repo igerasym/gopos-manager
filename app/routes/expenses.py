@@ -25,10 +25,28 @@ async def expenses_page(request: Request, month: str = ''):
     current_month = month or datetime.now().strftime('%Y-%m')
     db = get_db()
 
-    # All expenses for this month (sorted by amount desc)
-    expenses = db.execute('''
+    # All expenses for this month grouped by name
+    expenses_raw = db.execute('''
         SELECT * FROM expenses WHERE month = ? ORDER BY amount DESC
     ''', (current_month,)).fetchall()
+
+    # Group by name (vendor) — sum amounts for same name
+    grouped = {}
+    for e in expenses_raw:
+        key = e['name']
+        if key not in grouped:
+            grouped[key] = {
+                'name': key,
+                'category': e['category'],
+                'amount': 0,
+                'count': 0,
+                'items': [],
+            }
+        grouped[key]['amount'] += e['amount']
+        grouped[key]['count'] += 1
+        grouped[key]['items'].append(dict(e))
+
+    expenses = sorted(grouped.values(), key=lambda x: x['amount'], reverse=True)
 
     # Totals by category
     by_category = db.execute('''

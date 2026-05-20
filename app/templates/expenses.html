@@ -152,27 +152,56 @@
                 <th>Назва</th>
                 <th>Категорія</th>
                 <th class="text-right">Сума</th>
-                <th>Примітка</th>
+                <th class="text-right" style="width:60px;">К-сть</th>
                 <th style="width:40px;"></th>
             </tr>
         </thead>
         <tbody>
             {% for e in expenses %}
-            <tr>
-                <td style="font-weight:500;">{{ e['name'] }}</td>
+            <tr {% if e['count'] > 1 %}style="cursor:pointer;" onclick="toggleGroup('{{ loop.index }}')"{% endif %}>
+                <td style="font-weight:500;">
+                    {% if e['count'] > 1 %}<span style="font-size:.8em; color:var(--text-muted);">▸</span>{% endif %}
+                    {{ e['name'] }}
+                </td>
                 <td><span class="badge badge-orange">{{ e['category'] }}</span></td>
                 <td class="text-right" style="font-weight:600;">
-                    <span style="cursor:pointer; border-bottom:1px dashed var(--border);"
-                          onclick="editAmount(this, {{ e['id'] }}, {{ e['amount'] }})" title="Редагувати">
-                        {{ '{:,.2f}'.format(e['amount']) }} zł
-                    </span>
+                    {{ '{:,.2f}'.format(e['amount']) }} zł
                 </td>
-                <td class="text-muted" style="font-size:.85em;">{{ e['note'] or '—' }}</td>
+                <td class="text-right text-muted" style="font-size:.85em;">
+                    {% if e['count'] > 1 %}×{{ e['count'] }}{% endif %}
+                </td>
                 <td class="text-right">
+                    {% if e['count'] == 1 %}
                     <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
-                            onclick="deleteExpense('/expenses/delete/{{ e['id'] }}', '{{ e['name'] }}')">✕</button>
+                            onclick="event.stopPropagation(); deleteExpense('/expenses/delete/{{ e['items'][0]['id'] }}', '{{ e['name'] }}')">✕</button>
+                    {% endif %}
                 </td>
             </tr>
+            {% if e['count'] > 1 %}
+            <tr id="group-{{ loop.index }}" style="display:none; background:var(--bg);">
+                <td colspan="5" style="padding:0;">
+                    <table style="width:100%; margin:0;">
+                        {% for item in e['items'] %}
+                        <tr>
+                            <td style="padding-left:32px; font-size:.85em;" class="text-muted">
+                                {{ item['note'] or '—' }}
+                            </td>
+                            <td class="text-right" style="font-size:.85em;">
+                                <span style="cursor:pointer; border-bottom:1px dashed var(--border);"
+                                      onclick="editAmount(this, {{ item['id'] }}, {{ item['amount'] }})" title="Редагувати">
+                                    {{ '{:,.2f}'.format(item['amount']) }} zł
+                                </span>
+                            </td>
+                            <td class="text-right" style="width:60px; padding-right:16px;">
+                                <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
+                                        onclick="deleteExpense('/expenses/delete/{{ item['id'] }}', '{{ e['name'] }}')">✕</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </td>
+            </tr>
+            {% endif %}
             {% endfor %}
         </tbody>
     </table>
@@ -299,6 +328,21 @@
 {% if has_processing > 0 %}
 setTimeout(() => location.reload(), 5000);
 {% endif %}
+
+// Auto-refresh after clicking "Обробити" — wait for processing to start
+document.addEventListener('DOMContentLoaded', function() {
+    const processForm = document.querySelector('form[action="/expenses/process-invoices"]');
+    if (processForm) {
+        processForm.addEventListener('submit', function() {
+            setTimeout(() => location.reload(), 3000);
+        });
+    }
+});
+
+function toggleGroup(idx) {
+    const row = document.getElementById('group-' + idx);
+    if (row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+}
 
 function showInfoModal(title, html) {
     const modal = document.getElementById('confirm-modal');
