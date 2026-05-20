@@ -66,6 +66,7 @@ async def expenses_page(request: Request, month: str = ''):
     parsed_ids = set()
     pending_invoices = []
     all_invoices = []
+    pending_items_counts = {}
     try:
         db2 = get_db()
         parsed_rows = db2.execute('SELECT file_id FROM parsed_invoices').fetchall()
@@ -78,6 +79,14 @@ async def expenses_page(request: Request, month: str = ''):
             "SELECT * FROM parsed_invoices WHERE month = ? ORDER BY expense_status, vendor",
             (current_month,)
         ).fetchall()
+        # Count pending items per invoice
+        rows = db2.execute('''
+            SELECT parsed_invoice_id, COUNT(*) as cnt
+            FROM invoice_items_pending
+            WHERE status = 'pending'
+            GROUP BY parsed_invoice_id
+        ''').fetchall()
+        pending_items_counts = {r['parsed_invoice_id']: r['cnt'] for r in rows}
         db2.close()
     except Exception as e:
         log.warning(f"Could not load parsed invoices: {e}")
@@ -89,6 +98,7 @@ async def expenses_page(request: Request, month: str = ''):
         'revenue': revenue, 'net_profit': net_profit,
         'pending_invoices': pending_invoices,
         'all_invoices': all_invoices,
+        'pending_items_counts': pending_items_counts,
     })
 
 
@@ -193,6 +203,60 @@ async def parse_invoice(file_id: str):
     except Exception as e:
         log.error(f"Invoice parse error: {e}")
         return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@router.post('/expenses/llm-classify/{invoice_id}')
+async def llm_classify_invoice(invoice_id: int):
+    """Use LLM to classify invoice and map items to ingredients."""
+    db = get_db()
+    inv = db.execute('SELECT * FROM parsed_invoices WHERE id = ?', (invoice_id,)).fetchone()
+    if not inv:
+        db.close()
+        return JSONResponse({'error': 'Invoice not found'}, status_code=404)
+
+    items = json.loads(inv['items_json']) if inv['items_json'] else []
+
+    # Get all ingredients
+    ingredients = [dict(r) for r in db.execute('SELECT id, name, unit FROM ingredients ORDER BY name').fetchall()]
+
+    # Get existing mappings
+    existing = {r['invoice_name']: r['ingredient_id']
+                for r in db.execute('SELECT invoice_name, ingredient_id FROM ingredient_mappings').fetchall()}
+
+    try:
+        from app.llm import classify_invoice, map_items_to_ingredients
+
+        # Classify vendor
+        classification = classify_invoice(inv['vendor'] or '', inv['file_name'] or '', items)
+
+        # Map items
+        mappings = map_items_to_ingredients(items, ingredients, existing)
+
+        # Save pending items for review
+        db.execute('DELETE FROM invoice_items_pending WHERE parsed_invoice_id = ?', (invoice_id,))
+        for m in mappings:
+            db.execute('''
+                INSERT INTO invoice_items_pending
+                (parsed_invoice_id, invoice_name, quantity, unit_price, status, ingredient_id, suggested_ingredient, confidence)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (invoice_id, m['invoice_name'], m.get('quantity', 0), m.get('unit_price', 0),
+                  m['action'], m.get('ingredient_id'), m.get('suggested_name', ''), m.get('confidence', 0)))
+
+        # Update invoice with LLM classification
+        db.execute(
+            'UPDATE parsed_invoices SET category = ?, vendor = ? WHERE id = ?',
+            (classification['category'], classification['expense_name'] or inv['vendor'], invoice_id)
+        )
+        db.commit()
+        db.close()
+        return JSONResponse({
+            'classification': classification,
+            'mappings': mappings,
+        })
+    except Exception as e:
+        log.error(f"LLM classify error: {e}")
+        db.close()
+        return JSONResponse({'error': str(e)[:200]}, status_code=500)
 
 
 @router.post('/expenses/approve-invoice/{invoice_id}')
@@ -345,7 +409,7 @@ async def process_all_invoices(month: str = Form('')):
             result = parse_invoice_textract(file_bytes)
             category, expense_name = classify_vendor(result.get('vendor', ''), f['name'])
 
-            db.execute('''
+            cur = db.execute('''
                 INSERT OR IGNORE INTO parsed_invoices
                 (file_id, file_name, invoice_number, folder, month, vendor, category, total, items_json, parse_status, expense_status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'parsed', 'pending')
@@ -354,6 +418,36 @@ async def process_all_invoices(month: str = Form('')):
                   expense_name or result.get('vendor', ''), category,
                   result.get('total', 0),
                   json.dumps(result.get('items', []), ensure_ascii=False)))
+            invoice_db_id = cur.lastrowid
+
+            # LLM classification + item mapping
+            if invoice_db_id and result.get('items'):
+                try:
+                    from app.llm import classify_invoice, map_items_to_ingredients
+                    items = result.get('items', [])
+                    ingredients = [dict(r) for r in db.execute('SELECT id, name, unit FROM ingredients').fetchall()]
+                    existing = {r['invoice_name']: r['ingredient_id']
+                                for r in db.execute('SELECT invoice_name, ingredient_id FROM ingredient_mappings').fetchall()}
+
+                    classification = classify_invoice(result.get('vendor', ''), f['name'], items)
+                    mappings = map_items_to_ingredients(items, ingredients, existing)
+
+                    db.execute(
+                        'UPDATE parsed_invoices SET category = ?, vendor = ? WHERE id = ?',
+                        (classification.get('category', category),
+                         classification.get('expense_name', expense_name) or result.get('vendor', ''),
+                         invoice_db_id)
+                    )
+                    for m in mappings:
+                        db.execute('''
+                            INSERT INTO invoice_items_pending
+                            (parsed_invoice_id, invoice_name, quantity, unit_price, status, ingredient_id, suggested_ingredient, confidence)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (invoice_db_id, m['invoice_name'], m.get('quantity', 0), m.get('unit_price', 0),
+                              m['action'], m.get('ingredient_id'), m.get('suggested_name', ''), m.get('confidence', 0)))
+                except Exception as llm_err:
+                    log.warning(f"LLM processing failed for {f['name']}: {llm_err}")
+
             new_parsed.append({'name': f['name'], 'vendor': expense_name, 'total': result.get('total', 0)})
         except Exception as e:
             errors.append(f"{f['name']}: {str(e)[:80]}")
@@ -374,3 +468,74 @@ async def process_all_invoices(month: str = Form('')):
         pass
 
     return RedirectResponse(f'/expenses?month={current_month}', status_code=303)
+
+
+@router.post('/expenses/items/confirm/{item_id}')
+async def confirm_item_mapping(item_id: int, action: str = Form(...), ingredient_id: Optional[int] = Form(None), new_name: Optional[str] = Form('')):
+    """Confirm a single item mapping: match existing / create new / skip."""
+    db = get_db()
+    item = db.execute('SELECT * FROM invoice_items_pending WHERE id = ?', (item_id,)).fetchone()
+    if not item:
+        db.close()
+        return JSONResponse({'error': 'Item not found'}, status_code=404)
+
+    invoice_name = item['invoice_name']
+    final_ingredient_id = None
+
+    if action == 'match' and ingredient_id:
+        final_ingredient_id = ingredient_id
+        # Update price
+        if item['unit_price'] > 0:
+            old_row = db.execute('SELECT unit_price FROM ingredients WHERE id = ?', (ingredient_id,)).fetchone()
+            old_price = old_row['unit_price'] if old_row else 0
+            db.execute('UPDATE ingredients SET unit_price = ? WHERE id = ?', (item['unit_price'], ingredient_id))
+            db.execute(
+                'INSERT INTO ingredient_price_history (ingredient_id, price, invoice_id) VALUES (?, ?, ?)',
+                (ingredient_id, item['unit_price'], item['parsed_invoice_id'])
+            )
+            # Price alert
+            try:
+                from app.gdrive_invoices import check_price_alerts
+                from app.telegram_bot import send_message
+                alert = check_price_alerts(ingredient_id, item['unit_price'], old_price)
+                if alert:
+                    send_message("⚠️ <b>Зміна ціни</b>\n\n" + alert)
+            except Exception:
+                pass
+
+    elif action == 'new' and new_name:
+        # Create new ingredient
+        cur = db.execute(
+            'INSERT INTO ingredients (name, unit, quantity, min_quantity, unit_price) VALUES (?, ?, 0, 0, ?)',
+            (new_name, 'szt', item['unit_price'])
+        )
+        final_ingredient_id = cur.lastrowid
+
+    # Save mapping
+    db.execute(
+        'INSERT OR REPLACE INTO ingredient_mappings (invoice_name, ingredient_id, action) VALUES (?, ?, ?)',
+        (invoice_name, final_ingredient_id, action)
+    )
+    # Update pending item
+    db.execute(
+        'UPDATE invoice_items_pending SET status = ?, ingredient_id = ? WHERE id = ?',
+        ('confirmed', final_ingredient_id, item_id)
+    )
+    db.commit()
+    db.close()
+    return JSONResponse({'ok': True})
+
+
+@router.get('/expenses/items/{invoice_id}')
+async def get_invoice_items(invoice_id: int):
+    """Get pending items for an invoice."""
+    db = get_db()
+    items = db.execute('''
+        SELECT ip.*, i.name as ingredient_name
+        FROM invoice_items_pending ip
+        LEFT JOIN ingredients i ON ip.ingredient_id = i.id
+        WHERE ip.parsed_invoice_id = ?
+        ORDER BY ip.status, ip.confidence DESC
+    ''', (invoice_id,)).fetchall()
+    db.close()
+    return JSONResponse({'items': [dict(r) for r in items]})

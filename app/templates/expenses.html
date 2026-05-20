@@ -203,6 +203,7 @@
                     <th class="text-right">Сума</th>
                     <th style="width:80px;">Парсинг</th>
                     <th style="width:80px;">Витрати</th>
+                    <th style="width:120px;">Товари</th>
                 </tr>
             </thead>
             <tbody>
@@ -224,11 +225,23 @@
                     </td>
                     <td class="text-center">
                         {% if inv['expense_status'] == 'added' %}
-                            <span style="color:var(--green);" title="Додано у витрати">✅</span>
+                            <span style="color:var(--green);" title="Додано">✅</span>
                         {% elif inv['expense_status'] == 'skipped' %}
                             <span class="text-muted" title="Пропущено">⊘</span>
                         {% else %}
-                            <span style="color:#fbbf24;" title="Чекає підтвердження">⏳</span>
+                            <span style="color:#fbbf24;" title="Чекає">⏳</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        {% set pending_cnt = pending_items_counts.get(inv['id'], 0) %}
+                        {% if pending_cnt > 0 %}
+                            <button class="btn btn-outline btn-sm" style="font-size:.7em; padding:2px 6px;"
+                                    onclick="showItems({{ inv['id'] }}, '{{ inv['vendor']|e }}')">{{ pending_cnt }} 🔧</button>
+                        {% elif inv['parse_status'] == 'parsed' %}
+                            <button class="btn btn-outline btn-sm" style="font-size:.7em; padding:2px 6px;"
+                                    onclick="llmClassify({{ inv['id'] }}, this)" title="Класифікувати з AI">🤖</button>
+                        {% else %}
+                            <span class="text-muted" style="font-size:.75em;">—</span>
                         {% endif %}
                     </td>
                 </tr>
@@ -240,6 +253,17 @@
             Натисніть 🔍 Сканувати → ⚡ Обробити щоб додати фактури
         </p>
         {% endif %}
+    </div>
+</div>
+
+<!-- Items mapping modal -->
+<div id="items-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.5); z-index:1000; padding:20px; overflow-y:auto;">
+    <div style="background:white; max-width:900px; margin:20px auto; border-radius:8px; padding:20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h3 id="items-modal-title" style="margin:0;">Маппінг товарів</h3>
+            <button onclick="document.getElementById('items-modal').style.display='none'" class="btn btn-outline btn-sm">✕</button>
+        </div>
+        <div id="items-modal-content"></div>
     </div>
 </div>
 
@@ -297,6 +321,116 @@ function scanDrive(btn) {
             }
         })
         .catch(() => { btn.textContent = '🔍 Сканувати'; btn.disabled = false; });
+}
+
+function llmClassify(invoiceId, btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    fetch('/expenses/llm-classify/' + invoiceId, { method: 'POST', credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { alert('Error: ' + data.error); btn.textContent = '🤖'; btn.disabled = false; }
+            else { location.reload(); }
+        })
+        .catch(() => { btn.textContent = '🤖'; btn.disabled = false; });
+}
+
+function showItems(invoiceId, vendor) {
+    const modal = document.getElementById('items-modal');
+    document.getElementById('items-modal-title').textContent = 'Товари: ' + vendor;
+    document.getElementById('items-modal-content').innerHTML = '<p>Завантаження...</p>';
+    modal.style.display = 'block';
+
+    fetch('/expenses/items/' + invoiceId, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            const items = data.items || [];
+            let html = '<table><thead><tr><th>Товар з фактури</th><th>К-сть</th><th>Ціна</th><th>Дія</th><th>Інгредієнт</th><th></th></tr></thead><tbody>';
+            items.forEach(item => {
+                const isPending = item.status === 'pending';
+                const conf = item.confidence ? ' (' + Math.round(item.confidence * 100) + '%)' : '';
+                html += '<tr id="item-' + item.id + '" style="' + (isPending ? '' : 'opacity:.5;') + '">';
+                html += '<td style="font-size:.85em;">' + item.invoice_name + '</td>';
+                html += '<td class="text-right">' + (item.quantity || '') + '</td>';
+                html += '<td class="text-right">' + (item.unit_price ? item.unit_price.toFixed(2) : '') + '</td>';
+                if (isPending) {
+                    html += '<td><select id="action-' + item.id + '" onchange="onActionChange(' + item.id + ')" style="font-size:.8em;">';
+                    html += '<option value="match"' + (item.status === 'match' ? ' selected' : '') + '>✓ Замапити</option>';
+                    html += '<option value="new"' + (item.status === 'new' ? ' selected' : '') + '>➕ Новий</option>';
+                    html += '<option value="skip"' + (item.status === 'skip' ? ' selected' : '') + '>⊘ Пропустити</option>';
+                    html += '</select></td>';
+                    html += '<td><div id="ing-input-' + item.id + '">';
+                    if (item.status === 'match' || item.status === 'pending') {
+                        html += '<input type="text" id="ing-search-' + item.id + '" value="' + (item.ingredient_name || '') + '" placeholder="Пошук інгредієнту..." style="width:200px; font-size:.85em;" data-id="' + (item.ingredient_id || '') + '">';
+                    } else if (item.status === 'new') {
+                        html += '<input type="text" id="new-name-' + item.id + '" value="' + (item.suggested_ingredient || item.invoice_name) + '" placeholder="Назва нового" style="width:200px; font-size:.85em;">';
+                    } else {
+                        html += '<span class="text-muted">—</span>';
+                    }
+                    html += '</div></td>';
+                    html += '<td><button class="btn btn-primary btn-sm" style="font-size:.75em;" onclick="confirmItem(' + item.id + ')">OK</button></td>';
+                } else {
+                    html += '<td colspan="3" class="text-muted" style="font-size:.85em;">' + item.status + ': ' + (item.ingredient_name || item.suggested_ingredient || '—') + conf + '</td>';
+                }
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            html += '<p style="margin-top:12px;"><button class="btn btn-primary" onclick="confirmAllItems()">✓ Підтвердити всі автоматично</button></p>';
+            document.getElementById('items-modal-content').innerHTML = html;
+            window._currentItems = items;
+        });
+}
+
+function onActionChange(itemId) {
+    const action = document.getElementById('action-' + itemId).value;
+    const div = document.getElementById('ing-input-' + itemId);
+    const item = (window._currentItems || []).find(i => i.id === itemId) || {};
+    if (action === 'match') {
+        div.innerHTML = '<input type="text" id="ing-search-' + itemId + '" value="' + (item.ingredient_name || '') + '" placeholder="Пошук інгредієнту..." style="width:200px; font-size:.85em;" data-id="' + (item.ingredient_id || '') + '">';
+    } else if (action === 'new') {
+        div.innerHTML = '<input type="text" id="new-name-' + itemId + '" value="' + (item.suggested_ingredient || item.invoice_name) + '" placeholder="Назва нового" style="width:200px; font-size:.85em;">';
+    } else {
+        div.innerHTML = '<span class="text-muted">—</span>';
+    }
+}
+
+function confirmItem(itemId) {
+    const action = document.getElementById('action-' + itemId).value;
+    const fd = new FormData();
+    fd.append('action', action);
+    if (action === 'match') {
+        const inp = document.getElementById('ing-search-' + itemId);
+        const id = inp.dataset.id;
+        if (!id) { alert('Виберіть інгредієнт'); return; }
+        fd.append('ingredient_id', id);
+    } else if (action === 'new') {
+        const name = document.getElementById('new-name-' + itemId).value.trim();
+        if (!name) { alert('Введіть назву'); return; }
+        fd.append('new_name', name);
+    }
+    fetch('/expenses/items/confirm/' + itemId, { method: 'POST', body: fd, credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(d => {
+            if (d.ok) document.getElementById('item-' + itemId).style.opacity = 0.5;
+            else alert('Error: ' + (d.error || 'unknown'));
+        });
+}
+
+function confirmAllItems() {
+    const items = window._currentItems || [];
+    let count = 0;
+    const promises = items.filter(i => i.status === 'pending').map(item => {
+        const fd = new FormData();
+        fd.append('action', item.status === 'match' && item.ingredient_id ? 'match' : item.status);
+        if (item.ingredient_id) fd.append('ingredient_id', item.ingredient_id);
+        if (item.suggested_ingredient) fd.append('new_name', item.suggested_ingredient);
+        return fetch('/expenses/items/confirm/' + item.id, { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(r => r.json()).then(() => count++);
+    });
+    Promise.all(promises).then(() => {
+        alert('Підтверджено: ' + count);
+        location.reload();
+    });
 }
 </script>
 {% endblock %}
