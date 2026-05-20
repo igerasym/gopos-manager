@@ -72,7 +72,7 @@ async def expenses_page(request: Request, month: str = ''):
         parsed_rows = db2.execute('SELECT file_id FROM parsed_invoices').fetchall()
         parsed_ids = set(r['file_id'] for r in parsed_rows)
         pending_invoices = db2.execute(
-            "SELECT * FROM parsed_invoices WHERE month = ? AND expense_status = 'pending' ORDER BY vendor",
+            "SELECT * FROM parsed_invoices WHERE month = ? AND expense_status = 'pending' AND parse_status = 'parsed' AND total > 0 ORDER BY vendor",
             (current_month,)
         ).fetchall()
         all_invoices = db2.execute(
