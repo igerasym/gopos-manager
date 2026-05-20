@@ -221,6 +221,7 @@ DEFAULT_VENDOR_RULES = [
     ('coffeeplant', 'Продукти', 'Кава Coffee Plant'),
     ('fresh black', 'Продукти', 'Кава Fresh Black'),
     ('coffeedesk', 'Продукти', 'Закуп Coffeedesk'),
+    ('coffee desk', 'Продукти', 'Закуп Coffeedesk'),
     ('ferment', 'Продукти', 'Випічка Ferment'),
     ('bakers house', 'Продукти', 'Випічка Bakers House'),
     ('merchant', 'Продукти', 'Лимонади Merchant'),

@@ -70,12 +70,21 @@ DO NOT use file names or generic OCR-extracted vendor strings — look at the it
 EXAMPLES:
 - Items "MLEKO, JAJA, MASLO" → "Закупка Makro" (Продукти)
 - Items "Foundation Kawa Kenya" → "Кава Foundation" (Продукти)
+- Items "Coffeedesk", coffee accessories, syrups → "Закуп Coffeedesk" (Продукти)
 - Items contain "Energia czynna" → "Електрика" (Комунальні)
 - Items "WKLAD INSTAX" → "Касети Instax" (Побут)
 - Items "Wydruk menu", "Plakat" → "Друк меню" (Побут)
 - Items "Wino", "Vinos" → "Закупка вина" (Продукти)
 - Items "Tort", "Cake" → "Торт / десерт" (Побут)
 - Items contain "Naprawa", repair → "Ремонт" (Побут)
+
+CONSISTENCY: Use the same expense_name for the same vendor. Do NOT invent new variations:
+- Coffeedesk supplier → ALWAYS "Закуп Coffeedesk" (not "Кава Coffeedesk", "Закупка Coffeedesk" etc.)
+- Makro → ALWAYS "Закупка Makro"
+- Foundation → ALWAYS "Кава Foundation"
+- Ferment bakery → ALWAYS "Випічка Ferment"
+- Bakers House → ALWAYS "Випічка Bakers House"
+- PGE/Tauron/Energa → ALWAYS "Електрика"
 
 IMPORTANT: 
 - NEVER use "Krajowy System e-Faktur", "KSeF", "Faktura VAT" or similar generic system text as expense_name. These are just headers, not vendors!

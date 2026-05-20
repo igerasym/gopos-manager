@@ -440,6 +440,13 @@ def _process_invoices_sync(current_month: str):
             "SELECT invoice_number FROM parsed_invoices WHERE invoice_number != ''"
         ).fetchall()
     )
+    # Known (total, month) for fuzzy duplicate detection
+    known_amounts = set(
+        (round(r['total'], 2), r['month'])
+        for r in db.execute(
+            "SELECT total, month FROM parsed_invoices WHERE total > 0 AND parse_status = 'parsed'"
+        ).fetchall()
+    )
 
     try:
         invoices = list_invoices_for_month(current_month)
@@ -486,6 +493,16 @@ def _process_invoices_sync(current_month: str):
                     db.commit()
                 continue
 
+            # Check fuzzy duplicate by amount + month
+            invoice_total = result.get('total', 0)
+            if invoice_total > 0 and (round(invoice_total, 2), current_month) in known_amounts:
+                log.info(f"Skipping fuzzy duplicate by amount {invoice_total}: {f['name']}")
+                if f['id'] in all_known:
+                    db.execute("UPDATE parsed_invoices SET parse_status = 'duplicate' WHERE id = ?",
+                               (all_known[f['id']],))
+                    db.commit()
+                continue
+
             category, expense_name = classify_vendor(result.get('vendor', ''), f['name'])
 
             invoice_db_id = all_known.get(f['id'])
@@ -515,6 +532,8 @@ def _process_invoices_sync(current_month: str):
             known_hashes.add(file_hash)
             if inv_num:
                 known_inv_numbers.add(inv_num)
+            if invoice_total > 0:
+                known_amounts.add((round(invoice_total, 2), current_month))
             db.commit()
 
             # LLM classification + item mapping
