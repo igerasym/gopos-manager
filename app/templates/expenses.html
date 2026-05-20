@@ -187,7 +187,7 @@
         <div class="card-title">📄 Фактури — {{ current_month }}</div>
         <div style="display:flex; gap:8px;">
             <button class="btn btn-outline btn-sm" onclick="scanDrive(this)" title="Перевірити папку на нові файли">🔍 Сканувати</button>
-            <form method="post" action="/expenses/process-invoices" style="display:inline;" onsubmit="return startProcess()">
+            <form method="post" action="/expenses/process-invoices" style="display:inline;">
                 <input type="hidden" name="month" value="{{ current_month }}">
                 <button class="btn btn-primary btn-sm" type="submit" title="Парсити нові фактури через Textract+AI">⚡ Обробити</button>
             </form>
@@ -299,13 +299,6 @@
 {% if has_processing > 0 %}
 setTimeout(() => location.reload(), 5000);
 {% endif %}
-
-function startProcess() {
-    showInfoModal('⏳ Обробка запущена',
-        'Парсинг фактур запущено у фоновому режимі. Це займе кілька хвилин (до 30 сек на фактуру).<br><br>' +
-        'Оновлюйте сторінку щоб бачити прогрес — фактури будуть з\'являтися по одній.');
-    return true;
-}
 
 function showInfoModal(title, html) {
     const modal = document.getElementById('confirm-modal');
