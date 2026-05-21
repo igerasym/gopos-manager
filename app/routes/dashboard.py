@@ -71,15 +71,14 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
         name = s['product_name']
         base_name = name
 
-        if name not in products_with_recipe:
-            # Try to find "Base Suffix" where Base has recipe AND Suffix is also a product name
-            for base in sorted(products_with_recipe, key=len, reverse=True):
-                if name.startswith(base + ' '):
-                    suffix = name[len(base) + 1:]
-                    # Merge only if suffix is itself a known product (redundant variant)
-                    if suffix in products_with_recipe or suffix == base:
-                        base_name = base
-                        break
+        # Try to find "Base Suffix" where Base has recipe AND Suffix is also a product name
+        for base in sorted(products_with_recipe, key=len, reverse=True):
+            if name != base and name.startswith(base + ' '):
+                suffix = name[len(base) + 1:]
+                # Merge only if suffix is itself a known product (redundant variant)
+                if suffix in products_with_recipe or suffix == base:
+                    base_name = base
+                    break
 
         if base_name in merged_sales:
             m = merged_sales[base_name]
