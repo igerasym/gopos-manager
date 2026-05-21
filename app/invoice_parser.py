@@ -61,21 +61,21 @@ Return ONLY valid JSON array, no markdown, no explanation:
 [{{"invoice_name": "...", "ingredient_id": ..., "ingredient_name": "...", "quantity": ..., "unit": "...", "price_brutto": ..., "price_per_unit_brutto": ..., "vat_pct": ..., "is_new": false}}]"""
 
     try:
-        client = boto3.client('bedrock-runtime', region_name='us-west-2')
-        resp = client.invoke_model(
-            modelId='anthropic.claude-3-5-haiku-20241022-v1:0',
-            contentType='application/json',
-            accept='application/json',
-            body=json.dumps({
-                'anthropic_version': 'bedrock-2023-05-31',
-                'max_tokens': 4096,
-                'messages': [{'role': 'user', 'content': prompt}]
-            })
+        from app.llm import get_client, MODEL_ID
+        client = get_client()
+        resp = client.converse(
+            modelId=MODEL_ID,
+            messages=[{'role': 'user', 'content': [{'text': prompt}]}],
+            inferenceConfig={'maxTokens': 4096, 'temperature': 0.1}
         )
-        result = json.loads(resp['body'].read())
-        text = result['content'][0]['text']
+        text = resp['output']['message']['content'][0]['text']
 
         # Parse JSON from response
+        if text.strip().startswith('```'):
+            text = text.split('```')[1]
+            if text.startswith('json'):
+                text = text[4:]
+            text = text.strip()
         items = json.loads(text)
         return {'success': True, 'items': items}
 

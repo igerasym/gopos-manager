@@ -9,7 +9,7 @@ import botocore.config
 
 log = logging.getLogger(__name__)
 
-MODEL_ID = os.getenv('BEDROCK_MODEL_ID', 'us.anthropic.claude-haiku-4-5-20251001-v1:0')
+MODEL_ID = os.getenv('BEDROCK_MODEL_ID', 'us.amazon.nova-2-lite-v1:0')
 REGION = os.getenv('BEDROCK_REGION', 'us-west-2')
 
 _client = None
@@ -24,7 +24,7 @@ def get_client():
 
 
 def call_llm(prompt: str, max_tokens: int = 1000) -> str:
-    """Call Bedrock Claude with a prompt, return text response."""
+    """Call Bedrock LLM with a prompt, return text response."""
     client = get_client()
     try:
         response = client.converse(
@@ -39,7 +39,7 @@ def call_llm(prompt: str, max_tokens: int = 1000) -> str:
 
 
 def parse_invoice_with_vision(file_bytes: bytes, file_name: str = '') -> dict:
-    """Parse invoice PDF/image directly with Claude vision.
+    """Parse invoice PDF/image directly with LLM vision.
 
     Returns: {
         'vendor': str, 'date': str, 'invoice_number': str,
@@ -47,7 +47,7 @@ def parse_invoice_with_vision(file_bytes: bytes, file_name: str = '') -> dict:
     }
     """
     import io
-    # Convert PDF to images first (Claude vision needs images)
+    # Convert PDF to images first (vision models need images)
     is_pdf = file_name.lower().endswith('.pdf') or file_bytes[:4] == b'%PDF'
 
     images = []
@@ -120,7 +120,7 @@ Reply with ONLY valid JSON (no markdown, no explanation):
     response = client.converse(
         modelId=MODEL_ID,
         messages=[{'role': 'user', 'content': content}],
-        inferenceConfig={'maxTokens': 4000, 'temperature': 0.0}
+        inferenceConfig={'maxTokens': 4000, 'temperature': 0.01}
     )
 
     text = response['output']['message']['content'][0]['text'].strip()
