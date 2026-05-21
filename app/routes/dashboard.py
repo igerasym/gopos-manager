@@ -59,6 +59,46 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
         ORDER BY total_money DESC
     ''', (date_from, date_to)).fetchall()
 
+    # Merge variants into base products
+    # GoPos exports "Product Variant" — merge only when variant = another product name
+    # e.g. "Cappuccino big Cappuccino" → base "Cappuccino big", variant "Cappuccino"
+    # but NOT "Cappuccino big Iced" (Iced is not a product name, it's a real variant)
+    products_with_recipe = set(
+        r[0] for r in db.execute("SELECT DISTINCT product_name FROM recipes").fetchall()
+    )
+    merged_sales = {}
+    for s in sales:
+        name = s['product_name']
+        base_name = name
+
+        if name not in products_with_recipe:
+            # Try to find "Base Suffix" where Base has recipe AND Suffix is also a product name
+            for base in sorted(products_with_recipe, key=len, reverse=True):
+                if name.startswith(base + ' '):
+                    suffix = name[len(base) + 1:]
+                    # Merge only if suffix is itself a known product (redundant variant)
+                    if suffix in products_with_recipe or suffix == base:
+                        base_name = base
+                        break
+
+        if base_name in merged_sales:
+            m = merged_sales[base_name]
+            m['quantity'] += s['quantity']
+            m['total_money'] += s['total_money']
+            m['net_total'] += s['net_total']
+            m['discount'] += s['discount']
+            m['net_profit'] += s['net_profit']
+        else:
+            merged_sales[base_name] = {
+                'product_name': base_name,
+                'quantity': s['quantity'],
+                'total_money': s['total_money'],
+                'net_total': s['net_total'],
+                'discount': s['discount'],
+                'net_profit': s['net_profit'],
+            }
+    sales = sorted(merged_sales.values(), key=lambda x: x['total_money'], reverse=True)
+
     # Totals
     totals = db.execute('''
         SELECT COALESCE(SUM(total_money),0) as revenue,
