@@ -130,7 +130,38 @@ Reply with ONLY valid JSON (no markdown, no explanation):
             text = text[4:]
         text = text.strip()
 
-    return json.loads(text)
+    result = json.loads(text)
+
+    # Validate: if total looks wrong (items sum differs by >30%), retry with Claude
+    items = result.get('items', [])
+    items_sum = sum(float(i.get('total', 0)) for i in items if i.get('total'))
+    declared_total = float(result.get('total', 0))
+
+    if declared_total > 0 and items_sum > 0:
+        ratio = items_sum / declared_total
+        if ratio > 1.5 or ratio < 0.5:
+            # Nova likely confused — try Claude Haiku as fallback
+            log.warning(f"Nova total mismatch: declared={declared_total}, items_sum={items_sum:.2f}. Trying Claude fallback.")
+            try:
+                fallback_model = 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
+                response2 = client.converse(
+                    modelId=fallback_model,
+                    messages=[{'role': 'user', 'content': content}],
+                    inferenceConfig={'maxTokens': 4000, 'temperature': 0.0}
+                )
+                text2 = response2['output']['message']['content'][0]['text'].strip()
+                if text2.startswith('```'):
+                    text2 = text2.split('```')[1]
+                    if text2.startswith('json'):
+                        text2 = text2[4:]
+                    text2 = text2.strip()
+                result2 = json.loads(text2)
+                log.info(f"Claude fallback total: {result2.get('total')}")
+                return result2
+            except Exception as e:
+                log.warning(f"Claude fallback also failed: {e}, using Nova result")
+
+    return result
 
 
 def classify_invoice(vendor: str, file_name: str, items: list) -> dict:
