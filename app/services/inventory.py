@@ -5,19 +5,25 @@ from app.db import get_db
 def get_all_ingredients(supplier: str = ''):
     """Get all ingredients with supplier and sub-recipe info."""
     db = get_db()
+    # Check if kind column exists
+    cols = [r[1] for r in db.execute("PRAGMA table_info(ingredients)").fetchall()]
+    kind_col = ", i.kind" if 'kind' in cols else ", 'raw' as kind"
+
     if supplier:
-        items = db.execute('''
+        items = db.execute(f'''
             SELECT i.*, s.name as supplier_name,
                    CASE WHEN sr.id IS NOT NULL THEN 1 ELSE 0 END as is_sub_recipe
+                   {kind_col}
             FROM ingredients i
             LEFT JOIN suppliers s ON i.supplier_id = s.id
             LEFT JOIN sub_recipes sr ON sr.ingredient_id = i.id
             WHERE s.name = ? ORDER BY is_sub_recipe, i.name
         ''', (supplier,)).fetchall()
     else:
-        items = db.execute('''
+        items = db.execute(f'''
             SELECT i.*, s.name as supplier_name,
                    CASE WHEN sr.id IS NOT NULL THEN 1 ELSE 0 END as is_sub_recipe
+                   {kind_col}
             FROM ingredients i
             LEFT JOIN suppliers s ON i.supplier_id = s.id
             LEFT JOIN sub_recipes sr ON sr.ingredient_id = i.id

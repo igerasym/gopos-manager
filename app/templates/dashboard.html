@@ -101,6 +101,61 @@
     </table>
 </div>
 
+<!-- Category COGS Breakdown -->
+{% if category_breakdown %}
+<div class="card" style="margin-bottom: 16px;">
+    <div class="card-header">
+        <div class="card-title">COGS по категоріях</div>
+        <div class="card-subtitle">{{ date_from }}{% if date_from != date_to %} → {{ date_to }}{% endif %}</div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Категорія</th>
+                <th class="text-right">Виручка</th>
+                <th class="text-right">COGS</th>
+                <th class="text-right">Прибуток</th>
+                <th class="text-right">Food Cost %</th>
+                <th class="text-right hide-mobile">К-сть</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in category_breakdown %}
+            <tr>
+                <td style="font-weight:500;">
+                    {% if c['category'] == 'Coffee' %}☕{% elif c['category'] == 'Kitchen' %}🍳{% elif c['category'] == 'Bakery' %}🥐{% elif c['category'] == 'Bar' %}🍷{% elif c['category'] == 'Beans' %}☕{% elif c['category'] == 'Ice Cream' %}🍦{% elif c['category'] == 'Soft Drinks' %}🥤{% elif c['category'] == 'Brewware' %}🫖{% else %}📦{% endif %}
+                    {{ c['category'] }}
+                </td>
+                <td class="text-right">{{ '{:,.0f}'.format(c['revenue']) }} zł</td>
+                <td class="text-right" style="color:var(--red);">{{ '{:,.0f}'.format(c['cogs']) }} zł</td>
+                <td class="text-right" style="color:var(--green);">{{ '{:,.0f}'.format(c['gross_profit']) }} zł</td>
+                <td class="text-right">
+                    <span style="font-weight:600; color:{{ 'var(--green)' if c['food_cost_pct'] <= 30 else 'var(--red)' if c['food_cost_pct'] > 50 else 'var(--orange)' }};">
+                        {{ '{:.1f}'.format(c['food_cost_pct']) }}%
+                    </span>
+                </td>
+                <td class="text-right hide-mobile text-muted">{{ c['quantity']|int }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr style="border-top: 2px solid var(--border); font-weight: 700;">
+                <td>Разом</td>
+                <td class="text-right">{{ '{:,.0f}'.format(category_breakdown|sum(attribute='revenue')) }} zł</td>
+                <td class="text-right" style="color:var(--red);">{{ '{:,.0f}'.format(category_breakdown|sum(attribute='cogs')) }} zł</td>
+                <td class="text-right" style="color:var(--green);">{{ '{:,.0f}'.format(category_breakdown|sum(attribute='gross_profit')) }} zł</td>
+                <td class="text-right">
+                    {% set total_rev = category_breakdown|sum(attribute='revenue') %}
+                    {% set total_cogs_cat = category_breakdown|sum(attribute='cogs') %}
+                    {{ '{:.1f}'.format(total_cogs_cat / total_rev * 100) if total_rev > 0 else '0' }}%
+                </td>
+                <td class="text-right hide-mobile text-muted">{{ category_breakdown|sum(attribute='quantity')|int }}</td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% endif %}
+
 <!-- ABC Analysis -->
 <div class="card" style="margin-bottom: 16px;">
     <div class="card-header">

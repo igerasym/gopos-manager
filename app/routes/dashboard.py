@@ -113,14 +113,37 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
     # ── Food Cost & P&L ──
     cost_lookup = get_cost_lookup()
 
+    # Get pos_products categories for breakdown
+    tables = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    pos_categories = {}
+    if 'pos_products' in tables:
+        for r in db.execute("SELECT product_name, category, pos_kind FROM pos_products").fetchall():
+            pos_categories[r['product_name']] = {'category': r['category'], 'pos_kind': r['pos_kind']}
+
     # Build sales with food cost
     sales_with_cost = []
     total_cogs = 0
+    category_breakdown = {}  # {category: {revenue, cogs, quantity}}
     for s in sales:
         unit_cost = cost_lookup.get(s['product_name'], 0)
         line_cost = unit_cost * s['quantity']
         food_cost_pct = (line_cost / s['total_money'] * 100) if s['total_money'] > 0 else 0
         total_cogs += line_cost
+
+        # Category from pos_products
+        pos_info = pos_categories.get(s['product_name'], {})
+        category = pos_info.get('category', 'Інше') or 'Інше'
+        pos_kind = pos_info.get('pos_kind', 'unclassified')
+
+        # Skip ignored products from breakdown
+        if pos_kind != 'ignore':
+            if category not in category_breakdown:
+                category_breakdown[category] = {'revenue': 0, 'cogs': 0, 'quantity': 0, 'products': 0}
+            category_breakdown[category]['revenue'] += s['total_money']
+            category_breakdown[category]['cogs'] += line_cost
+            category_breakdown[category]['quantity'] += s['quantity']
+            category_breakdown[category]['products'] += 1
+
         sales_with_cost.append({
             'product_name': s['product_name'],
             'quantity': s['quantity'],
@@ -133,6 +156,14 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
             'food_cost_pct': food_cost_pct,
             'has_recipe': s['product_name'] in cost_lookup,
         })
+
+    # Sort category breakdown by revenue desc
+    category_list = []
+    for cat, data in sorted(category_breakdown.items(), key=lambda x: x[1]['revenue'], reverse=True):
+        data['category'] = cat
+        data['gross_profit'] = data['revenue'] - data['cogs']
+        data['food_cost_pct'] = (data['cogs'] / data['revenue'] * 100) if data['revenue'] > 0 else 0
+        category_list.append(data)
 
     # P&L summary
     gross_profit = totals['revenue'] - total_cogs
@@ -170,4 +201,5 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
         'total_cogs': total_cogs, 'gross_profit': gross_profit,
         'gross_margin': gross_margin, 'avg_food_cost': avg_food_cost,
         'abc_counts': abc_counts, 'abc_revenue': abc_revenue,
+        'category_breakdown': category_list,
     })
