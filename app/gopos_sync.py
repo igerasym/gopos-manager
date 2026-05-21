@@ -135,9 +135,38 @@ def import_csv_to_db(csv_text: str, date: str):
             parse_num(values[5]) if len(values) > 5 else 0,
         ))
 
+    # Auto-register new products in pos_products table
+    _register_new_pos_products(db)
+
     db.commit()
     db.close()
     log.info(f'Imported sales for {date}')
+
+
+def _register_new_pos_products(db):
+    """Register any new product names from sales into pos_products as unclassified."""
+    tables = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    if 'pos_products' not in tables:
+        return
+
+    new_products = db.execute('''
+        SELECT DISTINCT s.product_name
+        FROM sales s
+        WHERE s.product_name NOT IN (SELECT product_name FROM pos_products)
+    ''').fetchall()
+
+    if not new_products:
+        return
+
+    for row in new_products:
+        db.execute(
+            "INSERT OR IGNORE INTO pos_products (product_name, pos_kind) VALUES (?, 'unclassified')",
+            (row['product_name'],)
+        )
+
+    if new_products:
+        log.info(f'Registered {len(new_products)} new POS products: '
+                 + ', '.join(r['product_name'] for r in new_products[:5]))
 
 
 def deduct_inventory(date: str):

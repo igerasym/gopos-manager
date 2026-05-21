@@ -67,6 +67,21 @@ def get_cost_lookup() -> dict:
         for r in resale:
             if r['product_name'] not in result:
                 result[r['product_name']] = r['unit_cost']
+
+        # Variant products: inherit cost from base product
+        # "Cappuccino big Cappuccino" → cost of "Cappuccino big"
+        all_pos = db.execute("SELECT product_name FROM pos_products WHERE pos_kind = 'prepared'").fetchall()
+        for row in all_pos:
+            name = row['product_name']
+            if name in result:
+                continue
+            # Find base: longest recipe product that is a prefix
+            for base in sorted(result.keys(), key=len, reverse=True):
+                if name != base and name.startswith(base + ' '):
+                    suffix = name[len(base) + 1:]
+                    if suffix in result or suffix == base:
+                        result[name] = result[base]
+                        break
     else:
         # Fallback: direct match (ingredient name = product name, no recipe)
         direct = db.execute('''
