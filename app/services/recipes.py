@@ -41,9 +41,14 @@ def get_selling_prices() -> dict:
 
 
 def get_cost_lookup() -> dict:
-    """Get unit cost per product from recipes + direct ingredient matches (resale items)."""
+    """Get unit cost per product using pos_products classification + recipes."""
     db = get_db()
-    # From recipes
+
+    # Check if pos_products table exists (backward compat)
+    tables = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    use_pos_products = 'pos_products' in tables
+
+    # From recipes (prepared items)
     recipe_costs = db.execute('''
         SELECT r.product_name, SUM(r.amount * COALESCE(i.unit_price, 0)) as unit_cost
         FROM recipes r JOIN ingredients i ON r.ingredient_id = i.id
@@ -51,16 +56,28 @@ def get_cost_lookup() -> dict:
     ''').fetchall()
     result = {r['product_name']: r['unit_cost'] for r in recipe_costs}
 
-    # Direct match: product name = ingredient name (resale items like ice cream, retail coffee)
-    direct = db.execute('''
-        SELECT i.name, COALESCE(i.unit_price, 0) as unit_cost
-        FROM ingredients i
-        JOIN (SELECT DISTINCT product_name FROM sales) s ON s.product_name = i.name
-        WHERE i.name NOT IN (SELECT DISTINCT product_name FROM recipes)
-    ''').fetchall()
-    for d in direct:
-        if d['name'] not in result:
-            result[d['name']] = d['unit_cost']
+    if use_pos_products:
+        # Resale items: explicit link via pos_products → ingredient unit_price
+        resale = db.execute('''
+            SELECT pp.product_name, COALESCE(i.unit_price, 0) as unit_cost
+            FROM pos_products pp
+            JOIN ingredients i ON pp.resale_ingredient_id = i.id
+            WHERE pp.pos_kind = 'resale'
+        ''').fetchall()
+        for r in resale:
+            if r['product_name'] not in result:
+                result[r['product_name']] = r['unit_cost']
+    else:
+        # Fallback: direct match (ingredient name = product name, no recipe)
+        direct = db.execute('''
+            SELECT i.name, COALESCE(i.unit_price, 0) as unit_cost
+            FROM ingredients i
+            JOIN (SELECT DISTINCT product_name FROM sales) s ON s.product_name = i.name
+            WHERE i.name NOT IN (SELECT DISTINCT product_name FROM recipes)
+        ''').fetchall()
+        for d in direct:
+            if d['name'] not in result:
+                result[d['name']] = d['unit_cost']
 
     db.close()
     return result
