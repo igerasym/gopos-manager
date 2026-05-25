@@ -142,6 +142,13 @@ def import_csv_to_db(csv_text: str, date: str):
     db.close()
     log.info(f'Imported sales for {date}')
 
+    # Sync products catalog from GoPos API (categories, prices)
+    try:
+        from app.gopos_api import sync_products_and_categories
+        sync_products_and_categories()
+    except Exception as e:
+        log.warning(f'API products sync failed (non-critical): {e}')
+
 
 def _register_new_pos_products(db):
     """Register any new product names from sales into pos_products as unclassified."""
