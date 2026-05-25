@@ -12,9 +12,9 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 
 ## Tech Stack
 - Python 3.11, FastAPI, Uvicorn, Jinja2, SQLite (`data/cafe.db`)
-- Playwright for GoPos scraping (headless Chromium)
+- GoPos REST API for sales sync (replaced Playwright in May 2026)
 - APScheduler for daily auto-sync at 21:00 UTC (23:00 CEST)
-- Google Drive API + AWS Textract for invoice parsing
+- Google Drive API + AWS Bedrock Claude for invoice parsing
 - Telegram bot for alerts
 - Docker container, nginx reverse proxy
 - No JS frameworks — vanilla JS only
@@ -24,19 +24,25 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - SSH key: `~/git/cafe-manager/catchmyaction-key.pem`, user `ec2-user`
 - Docker container on port 8000, nginx on port 80
 - Deploy: `git push` then SSH: `cd cafe-manager && git pull && docker compose up -d --build`
-- 4GB swap for Playwright
+- Docker image: ~380MB (python:3.11-slim + deps, no Chromium)
 - Auto-sync at 21:00 UTC, Telegram alerts on failure
 - **Never push DB to prod** — prod DB is source of truth
 - Admin password on prod: `TheFrame2025!`
 
 ## GoPos Integration
 - POS system: app.gopos.io
-- `gopos_sync.py` logs in via Playwright, sets date filter via base64-encoded URL param, downloads CSV, imports to DB
-- Date filter format: `_\xc3\xa7date_range|bt=DATE_FROM%2006%3A00%3A00\xc2\xa5DATE_TO%2005%3A00%3A00` (base64, raw bytes)
-- GoPos "business day" = 06:00 → next day 05:00
-- CSV delimiter is comma, columns: Product, Quantity sold, Value of sales, Net sales value, Value of discounts, Value without discounts, Profit, Cost
-- `sync_range(date_from, date_to)` for bulk historical sync
-- Auto-sync missing days on container start
+- **API-based sync** (replaced Playwright scraping in May 2026)
+- OAuth2: grant_type=organization, client_id + client_secret + organization_id=9388
+- Credentials in env: GOPOS_CLIENT_ID, GOPOS_CLIENT_SECRET, GOPOS_ORG_ID
+- `gopos_api.py` — token management, products sync, orders sync, inventory deduction
+- `GET /api/v3/{org}/orders?include=items,items.product` — daily sales with product names
+- `GET /api/v3/{org}/items` — product catalog with categories, prices, item_group_id
+- `GET /api/v3/{org}/categories` — GoPos categories (Coffee, Kitchen, Bakery, Bar, Beans, Ice Cream, Soft Drinks, Brewware)
+- Variant groups via `item_group_id` — "Cappuccino Cappuccino" + "Cappuccino Iced" = group 3
+- GoPos "business day" = 06:00 → next day 05:00 (closed_at_from/to filter)
+- Auto-sync at 21:00 UTC: sync_products() + sync_orders_for_date(today) + deduct_inventory()
+- Missing days auto-detected on container start
+- No Playwright, no Chromium, no swap needed
 
 ## Database Schema
 - **sales**: date, product_name, quantity, total_money, net_total, discount, net_profit. UNIQUE(date, product_name)
