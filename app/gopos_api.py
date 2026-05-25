@@ -13,10 +13,10 @@ from app.db import get_db, init_db
 load_dotenv(Path(__file__).parent.parent / '.env')
 log = logging.getLogger(__name__)
 
-# API credentials
-GOPOS_CLIENT_ID = os.getenv('GOPOS_CLIENT_ID', 'bf2a2942-ece7-4dcb-aed2-c2586e2d2bca')
-GOPOS_CLIENT_SECRET = os.getenv('GOPOS_CLIENT_SECRET', '454d0ef9-90c4-4e94-b6a6-f14f9547564e')
-GOPOS_ORG_ID = os.getenv('GOPOS_ORG_ID', '9388')
+# API credentials (from .env)
+GOPOS_CLIENT_ID = os.getenv('GOPOS_CLIENT_ID', '')
+GOPOS_CLIENT_SECRET = os.getenv('GOPOS_CLIENT_SECRET', '')
+GOPOS_ORG_ID = os.getenv('GOPOS_ORG_ID', '')
 GOPOS_BASE_URL = 'https://app.gopos.io'
 
 _token: Optional[str] = None
