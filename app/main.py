@@ -29,8 +29,8 @@ async def lifespan(app: FastAPI):
             loop = aio.new_event_loop()
             aio.set_event_loop(loop)
             try:
-                from app.gopos_sync import sync_today
-                loop.run_until_complete(sync_today())
+                from app.gopos_api import sync_today
+                sync_today()
                 from app.telegram_bot import daily_report
                 daily_report()
             except Exception:
@@ -61,14 +61,11 @@ async def lifespan(app: FastAPI):
         row = db.execute('SELECT COUNT(*) as c FROM sales WHERE date = ?', (yesterday,)).fetchone()
         db.close()
         if row['c'] == 0:
-            import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
             try:
-                from app.gopos_sync import sync_date
+                from app.gopos_api import sync_date
                 from app.telegram_bot import send_message
                 send_message(f'⚠️ Дані за {yesterday} відсутні. Запускаю синк...')
-                loop.run_until_complete(sync_date(yesterday))
+                sync_date(yesterday)
                 send_message(f'✅ Дані за {yesterday} синхронізовано.')
             except Exception as e:
                 try:
@@ -76,8 +73,6 @@ async def lifespan(app: FastAPI):
                     send_message(f'❌ Не вдалось синкнути {yesterday}: {str(e)[:100]}')
                 except Exception:
                     pass
-            finally:
-                loop.close()
     threading.Thread(target=check_missing_days, daemon=True).start()
 
     yield

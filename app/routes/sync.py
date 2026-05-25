@@ -14,21 +14,17 @@ async def trigger_sync(
     import threading
 
     def run_sync():
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
+            from app.gopos_api import sync_date, sync_range, sync_today
             if date_from and date_to:
-                from app.gopos_sync import sync_range
-                loop.run_until_complete(sync_range(date_from, date_to))
+                sync_range(date_from, date_to)
             elif date_from:
-                from app.gopos_sync import sync_date
-                loop.run_until_complete(sync_date(date_from))
+                sync_date(date_from)
             else:
-                from app.gopos_sync import sync_today
-                loop.run_until_complete(sync_today())
-        finally:
-            loop.close()
+                sync_today()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f'Sync failed: {e}')
 
     threading.Thread(target=run_sync, daemon=True).start()
     return JSONResponse({'status': 'started'})
