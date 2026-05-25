@@ -239,35 +239,53 @@ def sync_orders_for_date(date_str: str) -> int:
 
 def sync_today():
     """Sync today's sales + products."""
-    sync_products()
-    today = datetime.now().strftime('%Y-%m-%d')
-    count = sync_orders_for_date(today)
-    _deduct_inventory(today)
-    return count
+    sync_id = _start_sync_log('API sync today')
+    try:
+        sync_products()
+        today = datetime.now().strftime('%Y-%m-%d')
+        count = sync_orders_for_date(today)
+        _deduct_inventory(today)
+        _finish_sync_log(sync_id, 'done', f'Synced {today}: {count} products via API')
+        return count
+    except Exception as e:
+        _finish_sync_log(sync_id, 'error', str(e)[:200])
+        raise
 
 
 def sync_date(date_str: str):
     """Sync a single date."""
-    sync_products()
-    count = sync_orders_for_date(date_str)
-    _deduct_inventory(date_str)
-    return count
+    sync_id = _start_sync_log(f'API sync {date_str}')
+    try:
+        sync_products()
+        count = sync_orders_for_date(date_str)
+        _deduct_inventory(date_str)
+        _finish_sync_log(sync_id, 'done', f'Synced {date_str}: {count} products via API')
+        return count
+    except Exception as e:
+        _finish_sync_log(sync_id, 'error', str(e)[:200])
+        raise
 
 
 def sync_range(date_from: str, date_to: str):
     """Sync a range of dates."""
-    sync_products()
-    start = datetime.strptime(date_from, '%Y-%m-%d')
-    end = datetime.strptime(date_to, '%Y-%m-%d')
-    total = 0
-    current = start
-    while current <= end:
-        date_str = current.strftime('%Y-%m-%d')
-        count = sync_orders_for_date(date_str)
-        _deduct_inventory(date_str)
-        total += count
-        current += timedelta(days=1)
-    return total
+    sync_id = _start_sync_log(f'API sync {date_from} → {date_to}')
+    try:
+        sync_products()
+        start = datetime.strptime(date_from, '%Y-%m-%d')
+        end = datetime.strptime(date_to, '%Y-%m-%d')
+        total = 0
+        current = start
+        while current <= end:
+            date_str = current.strftime('%Y-%m-%d')
+            count = sync_orders_for_date(date_str)
+            _deduct_inventory(date_str)
+            total += count
+            current += timedelta(days=1)
+        _finish_sync_log(sync_id, 'done', f'Synced {date_from} → {date_to}: {total} products via API')
+        return total
+    except Exception as e:
+        _finish_sync_log(sync_id, 'error', str(e)[:200])
+        raise
 
 
 def _deduct_inventory(date_str: str):

@@ -85,7 +85,7 @@ if (document.getElementById('sync-btn')) {
                     btn.disabled = false;
                     btn.style.opacity = '1';
                     if (polling) { clearInterval(polling); polling = null; }
-                    window.location.reload();
+                    setTimeout(function() { window.location.reload(); }, 2000);
                 } else if (d.status === 'done' && !syncing) {
                     if (d.finished_at) {
                         el.innerHTML = '<span style="color:rgba(255,255,255,.4); font-size:.75em;">Останній синк: ' + d.finished_at.substring(5, 16) + '</span>';
