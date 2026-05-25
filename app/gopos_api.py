@@ -152,24 +152,128 @@ def _guess_pos_kind(category: str) -> str:
 
 
 # ─── Sales Sync ───
-# NOTE: GoPos API does not provide product-level daily sales data.
-# Order items don't include product names, and reports ignore date filters.
-# We keep Playwright CSV export for daily sales sync until GoPos fixes this.
-# This module handles: products catalog, categories, selling prices.
 
 
-def get_selling_prices() -> dict:
-    """Get current selling prices from GoPos API."""
-    items = api_get_all('items')
-    return {item['name']: item.get('price', {}).get('amount', 0) for item in items}
+def sync_orders_for_date(date_str: str) -> int:
+    """Sync all closed orders for a given date into sales table.
+
+    Uses closed_at filter with GoPos business day (06:00 → next day 05:00).
+    Returns number of products imported.
+    """
+    from datetime import datetime, timedelta
+
+    db = get_db()
+
+    # GoPos business day: 06:00 → next day 05:00
+    next_day = (datetime.strptime(date_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+    closed_from = f'{date_str}T06:00:00'
+    closed_to = f'{next_day}T05:00:00'
+
+    # Get all closed orders with product names
+    all_orders = []
+    page = 0
+    while page < 500:  # safety limit (~10k orders max)
+        data = api_get('orders', {
+            'closed_at_from': closed_from,
+            'closed_at_to': closed_to,
+            'status': 'CLOSED',
+            'include': 'items,items.product',
+            'size': 100,
+            'page': page,
+        })
+        orders = data.get('data', [])
+        if not orders:
+            break
+        all_orders.extend(orders)
+        page += 1
+
+    log.info(f'Got {len(all_orders)} orders for {date_str}')
+
+    # Aggregate sales by product name
+    sales_agg = {}  # product_name → {quantity, total_money, net_total, discount}
+    for order in all_orders:
+        for item in order.get('items', []):
+            if item.get('status') != 'ACTIVE':
+                continue
+            name = item.get('name')
+            if not name:
+                continue
+
+            qty = item.get('quantity', 1)
+            total = item.get('total_price', {}).get('amount', 0)
+            sub_total = item.get('sub_total_price', {}).get('amount', 0)
+            # sub_total_price = price after discount, total_price = original
+            # In GoPos: sub_total ≤ total (sub_total is after promotions)
+            discount = total - sub_total if total > sub_total else 0
+            net = sub_total  # net = after discount
+
+            if name not in sales_agg:
+                sales_agg[name] = {'quantity': 0, 'total_money': 0, 'net_total': 0, 'discount': 0}
+            sales_agg[name]['quantity'] += qty
+            sales_agg[name]['total_money'] += total
+            sales_agg[name]['net_total'] += net
+            sales_agg[name]['discount'] += discount
+
+    # Upsert into sales table
+    for product_name, s in sales_agg.items():
+        db.execute('''
+            INSERT INTO sales (date, product_name, quantity, total_money, net_total, discount, net_profit)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date, product_name) DO UPDATE SET
+                quantity=excluded.quantity,
+                total_money=excluded.total_money,
+                net_total=excluded.net_total,
+                discount=excluded.discount,
+                net_profit=excluded.net_profit
+        ''', (date_str, product_name, s['quantity'], s['total_money'],
+              s['net_total'], s['discount'], s['net_total']))
+
+    db.commit()
+    db.close()
+    log.info(f'Imported {len(sales_agg)} products for {date_str} ({len(all_orders)} orders)')
+    return len(sales_agg)
 
 
 # ─── High-level sync functions ───
 
 
-def sync_products_and_categories():
-    """Sync products and categories from GoPos API. Called during daily sync."""
-    return sync_products()
+def sync_today():
+    """Sync today's sales + products."""
+    sync_products()
+    today = datetime.now().strftime('%Y-%m-%d')
+    count = sync_orders_for_date(today)
+    _deduct_inventory(today)
+    return count
+
+
+def sync_date(date_str: str):
+    """Sync a single date."""
+    sync_products()
+    count = sync_orders_for_date(date_str)
+    _deduct_inventory(date_str)
+    return count
+
+
+def sync_range(date_from: str, date_to: str):
+    """Sync a range of dates."""
+    sync_products()
+    start = datetime.strptime(date_from, '%Y-%m-%d')
+    end = datetime.strptime(date_to, '%Y-%m-%d')
+    total = 0
+    current = start
+    while current <= end:
+        date_str = current.strftime('%Y-%m-%d')
+        count = sync_orders_for_date(date_str)
+        _deduct_inventory(date_str)
+        total += count
+        current += timedelta(days=1)
+    return total
+
+
+def _deduct_inventory(date_str: str):
+    """Deduct ingredients from inventory based on sales and recipes."""
+    from app.gopos_sync import deduct_inventory
+    deduct_inventory(date_str)
 
 
 def _start_sync_log(message=''):
@@ -192,3 +296,14 @@ def _finish_sync_log(sync_id, status='done', message=''):
     )
     db.commit()
     db.close()
+
+
+def sync_products_and_categories():
+    """Alias for sync_products — called from gopos_sync.py."""
+    return sync_products()
+
+
+def get_selling_prices() -> dict:
+    """Get current selling prices from GoPos API."""
+    items = api_get_all('items')
+    return {item['name']: item.get('price', {}).get('amount', 0) for item in items}
