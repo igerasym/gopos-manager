@@ -1,5 +1,8 @@
-"""GoPOS CSV export via Playwright headless browser."""
-import asyncio
+"""GoPOS sync utilities — inventory deduction and POS product registration.
+
+NOTE: Sales sync moved to gopos_api.py (uses GoPos REST API).
+This file retains deduct_inventory() which is called from gopos_api.py.
+"""
 import csv
 import io
 import logging
@@ -8,7 +11,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
-from playwright.async_api import async_playwright
 
 from app.db import get_db, init_db
 
