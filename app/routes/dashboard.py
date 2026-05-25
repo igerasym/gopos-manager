@@ -59,26 +59,45 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
         ORDER BY total_money DESC
     ''', (date_from, date_to)).fetchall()
 
-    # Merge variants into base products
-    # GoPos exports "Product Variant" — merge only when variant = another product name
-    # e.g. "Cappuccino big Cappuccino" → base "Cappuccino big", variant "Cappuccino"
-    # but NOT "Cappuccino big Iced" (Iced is not a product name, it's a real variant)
-    products_with_recipe = set(
-        r[0] for r in db.execute("SELECT DISTINCT product_name FROM recipes").fetchall()
-    )
+    # Merge variants into base products using GoPos item_group_id
+    # Products in the same group are variants (e.g. Cappuccino/Cappuccino Iced)
+    # We merge only redundant variants (name contains base name as prefix)
+    # but keep distinct variants like "Iced" separate
+    tables = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    group_map = {}  # product_name → base_product_name (for merging)
+    if 'pos_products' in tables:
+        # Get groups: find the "base" product in each group (shortest name or the one with recipe)
+        groups_raw = db.execute('''
+            SELECT product_name, gopos_group_id FROM pos_products
+            WHERE gopos_group_id IS NOT NULL
+        ''').fetchall()
+        groups = {}  # group_id → [product_names]
+        for r in groups_raw:
+            groups.setdefault(r['gopos_group_id'], []).append(r['product_name'])
+
+        products_with_recipe = set(
+            r[0] for r in db.execute("SELECT DISTINCT product_name FROM recipes").fetchall()
+        )
+
+        for gid, names in groups.items():
+            if len(names) <= 1:
+                continue
+            # Base = shortest name in group, or one with recipe
+            base = min(names, key=len)
+            for name in names:
+                if name == base:
+                    continue
+                # Only merge if name is "Base Suffix" where Suffix is also a known product
+                # This keeps "Cappuccino Iced" separate but merges "Cappuccino Cappuccino"
+                if name.startswith(base + ' '):
+                    suffix = name[len(base) + 1:]
+                    if suffix in products_with_recipe or suffix == base.split()[-1]:
+                        group_map[name] = base
+
     merged_sales = {}
     for s in sales:
         name = s['product_name']
-        base_name = name
-
-        # Try to find "Base Suffix" where Base has recipe AND Suffix is also a product name
-        for base in sorted(products_with_recipe, key=len, reverse=True):
-            if name != base and name.startswith(base + ' '):
-                suffix = name[len(base) + 1:]
-                # Merge only if suffix is itself a known product (redundant variant)
-                if suffix in products_with_recipe or suffix == base:
-                    base_name = base
-                    break
+        base_name = group_map.get(name, name)
 
         if base_name in merged_sales:
             m = merged_sales[base_name]

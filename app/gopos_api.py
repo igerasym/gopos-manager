@@ -98,6 +98,7 @@ def sync_products():
             classified_by TEXT,
             gopos_item_id INTEGER,
             gopos_price REAL,
+            gopos_group_id INTEGER,
             FOREIGN KEY (resale_ingredient_id) REFERENCES ingredients(id)
         )
     ''')
@@ -120,17 +121,17 @@ def sync_products():
         if existing:
             # Update category and price from API (don't override manual pos_kind)
             db.execute('''
-                UPDATE pos_products SET category = ?, gopos_item_id = ?, gopos_price = ?
+                UPDATE pos_products SET category = ?, gopos_item_id = ?, gopos_price = ?, gopos_group_id = ?
                 WHERE product_name = ?
-            ''', (category, item_id, price, name))
+            ''', (category, item_id, price, item.get('item_group_id'), name))
             updated_count += 1
         else:
             # Auto-classify based on category
             pos_kind = _guess_pos_kind(category)
             db.execute('''
-                INSERT INTO pos_products (product_name, pos_kind, category, classified_at, classified_by, gopos_item_id, gopos_price)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (name, pos_kind, category, now, 'api', item_id, price))
+                INSERT INTO pos_products (product_name, pos_kind, category, classified_at, classified_by, gopos_item_id, gopos_price, gopos_group_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (name, pos_kind, category, now, 'api', item_id, price, item.get('item_group_id')))
             new_count += 1
 
     db.commit()

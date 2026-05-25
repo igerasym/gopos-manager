@@ -29,15 +29,30 @@ def get_recipe_map_with_costs():
 
 
 def get_selling_prices() -> dict:
-    """Get average selling price per product (before discounts)."""
+    """Get selling price per product from GoPos API (stored in pos_products) or sales average."""
     db = get_db()
+    # Prefer API price (current menu price)
+    tables = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    if 'pos_products' in tables:
+        rows = db.execute('''
+            SELECT product_name, gopos_price FROM pos_products WHERE gopos_price > 0
+        ''').fetchall()
+        result = {r['product_name']: r['gopos_price'] for r in rows}
+    else:
+        result = {}
+
+    # Fallback: average from sales for products not in pos_products
     avg_prices = db.execute('''
         SELECT product_name, SUM(total_money + discount) / SUM(quantity) as avg_price
         FROM sales WHERE quantity > 0
         GROUP BY product_name
     ''').fetchall()
+    for r in avg_prices:
+        if r['product_name'] not in result:
+            result[r['product_name']] = r['avg_price']
+
     db.close()
-    return {r['product_name']: r['avg_price'] for r in avg_prices}
+    return result
 
 
 def get_cost_lookup() -> dict:
