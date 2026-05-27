@@ -173,6 +173,10 @@ CONSISTENCY: Use the same expense_name for the same vendor:
 - Bakers House → "Випічка Bakers House"
 - PGE/Tauron/Energa → "Електрика"
 - Orange/Play → "Інтернет [provider]"
+- Lody/Mr.Pops/ice cream → "Mr.Pops" (Продукти)
+- Pinta/beer → "Пиво Pinta" (Продукти)
+- Wino/wine → "Закупка вина" (Продукти)
+- Biuro rachunkowe/accounting → "Бухгалтерські послуги" (Бухгалтерія)
 
 EXAMPLES:
 - Items "MLEKO, JAJA" → "Закупка Makro"
