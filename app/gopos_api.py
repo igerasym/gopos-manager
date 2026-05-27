@@ -345,7 +345,8 @@ def register_webhook(callback_url: str):
     # Register new webhook
     payload = {
         'url': callback_url,
-        'events': ['ORDER', 'ITEM', 'CATEGORY'],
+        'name': 'The Frame Manager sync',
+        'resource_type': 'ORDER',
     }
     r = requests.post(url, headers={
         'Authorization': f'Bearer {token}',
