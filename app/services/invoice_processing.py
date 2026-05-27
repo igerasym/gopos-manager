@@ -278,7 +278,7 @@ def _handle_resale_mapping(db, m: dict, invoice_db_id: int) -> tuple:
 
 
 def _handle_match_mapping(db, m: dict, ing_id: int, invoice_db_id: int) -> tuple:
-    """Handle auto-confirmation of matched ingredient — update price only."""
+    """Handle auto-confirmation of matched ingredient — update price + create delivery."""
     db.execute(
         'INSERT OR REPLACE INTO ingredient_mappings (invoice_name, ingredient_id, action) VALUES (?, ?, ?)',
         (m['invoice_name'], ing_id, 'match')
@@ -296,6 +296,19 @@ def _handle_match_mapping(db, m: dict, ing_id: int, invoice_db_id: int) -> tuple
             )
         else:
             log.warning(f"Skipping price update for ingredient {ing_id}: {old_price} -> {new_price}")
+
+    # Auto-create delivery with LLM-converted quantity (in ingredient units)
+    converted_qty = m.get('converted_qty', 0)
+    if converted_qty > 0:
+        total_price = new_price * converted_qty if new_price > 0 else 0
+        db.execute(
+            'INSERT INTO deliveries (ingredient_id, quantity, price, note) VALUES (?, ?, ?, ?)',
+            (ing_id, converted_qty, total_price, f'Auto from invoice #{invoice_db_id}')
+        )
+        db.execute(
+            'UPDATE ingredients SET quantity = quantity + ? WHERE id = ?',
+            (converted_qty, ing_id)
+        )
 
     return ing_id, 'confirmed'
 

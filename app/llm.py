@@ -269,15 +269,24 @@ For each invoice item, decide:
 3. "new" — real ingredient but not in our list (suggest clean Polish name for inventory use)
 4. "skip" — not a food/inventory item (cash register paper, cleaning, packaging)
 
+IMPORTANT — QUANTITY CONVERSION:
+For "match" items, convert the invoice quantity to the ingredient's unit:
+- "MC JAJA WOLNY WYBIEG L 20 SZT" qty=12 → ingredient "Jaja (szt)" → converted_qty = 12 × 20 = 240
+- "LACIATE MLEKO UHT 3,2% 1L" qty=2 → ingredient "Mleko 3.2% (L)" → converted_qty = 2 × 1 = 2
+- "Łosoś filet" qty=5.9 (sold by kg) → ingredient "Łosoś filet (kg)" → converted_qty = 5.9
+- "MASLO EXTRA 200G" qty=8 → ingredient "Masło (kg)" → converted_qty = 8 × 0.2 = 1.6
+- "ALPRO KOKOS-SOJA 750ML" qty=10 → ingredient "Mleko kokos-soja (L)" → converted_qty = 10 × 0.75 = 7.5
+For "resale" items: converted_qty = invoice quantity (1 pack = 1 unit)
+
 For "resale" items: confidence should be high (>0.85). Use POS product list as authoritative source.
 For "match" items: confidence >= 0.7.
 
 Reply with ONLY valid JSON array:
 [
-  {{"item_index": 0, "action": "match", "ingredient_id": 5, "confidence": 0.95, "suggested_name": ""}},
-  {{"item_index": 1, "action": "resale", "ingredient_id": null, "confidence": 0.9, "suggested_name": "Foundation filter Kenia Kegwa AB 250g"}},
-  {{"item_index": 2, "action": "new", "ingredient_id": null, "confidence": 0.0, "suggested_name": "Mleko migdałowe Barista"}},
-  {{"item_index": 3, "action": "skip", "ingredient_id": null, "confidence": 1.0, "suggested_name": ""}}
+  {{"item_index": 0, "action": "match", "ingredient_id": 5, "confidence": 0.95, "suggested_name": "", "converted_qty": 240}},
+  {{"item_index": 1, "action": "resale", "ingredient_id": null, "confidence": 0.9, "suggested_name": "Foundation filter Kenia Kegwa AB 250g", "converted_qty": 6}},
+  {{"item_index": 2, "action": "new", "ingredient_id": null, "confidence": 0.0, "suggested_name": "Mleko migdałowe Barista", "converted_qty": 7.5}},
+  {{"item_index": 3, "action": "skip", "ingredient_id": null, "confidence": 1.0, "suggested_name": "", "converted_qty": 0}}
 ]"""
 
     response = call_llm(prompt, max_tokens=2000)
@@ -307,6 +316,7 @@ Reply with ONLY valid JSON array:
             'suggested_name': m.get('suggested_name', ''),
             'unit_price': item.get('unit_price', 0),
             'quantity': item.get('quantity', 0),
+            'converted_qty': m.get('converted_qty', item.get('quantity', 0)),
         })
 
     return results
