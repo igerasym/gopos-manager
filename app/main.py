@@ -22,58 +22,38 @@ async def lifespan(app: FastAPI):
     from apscheduler.triggers.cron import CronTrigger
     scheduler = AsyncIOScheduler()
 
-    async def scheduled_sync():
+    async def scheduled_daily():
+        """Daily at 21:00: send report + process invoices (no sales sync — webhook handles it)."""
         import threading
         def run():
-            import asyncio as aio
-            loop = aio.new_event_loop()
-            aio.set_event_loop(loop)
             try:
-                from app.gopos_api import sync_today
-                sync_today()
                 from app.telegram_bot import daily_report
                 daily_report()
             except Exception:
                 pass
             # Sync invoices from Google Drive
             try:
-                from app.gdrive_invoices import sync_invoices_for_current_month
-                sync_invoices_for_current_month()
+                from app.services.invoice_processing import process_invoices_for_month
+                from datetime import datetime
+                process_invoices_for_month(datetime.now().strftime('%Y-%m'))
             except Exception:
                 pass
-            finally:
-                loop.close()
         threading.Thread(target=run, daemon=True).start()
 
-    scheduler.add_job(scheduled_sync, CronTrigger(hour=21, minute=0))
+    scheduler.add_job(scheduled_daily, CronTrigger(hour=21, minute=0))
     scheduler.start()
 
-    # Check for missing days and sync them
+    # Sync products catalog on startup (categories, prices from API)
     import threading
-    def check_missing_days():
+    def startup_sync():
         import time
-        time.sleep(30)  # wait for app to fully start
-        from datetime import datetime, timedelta
-        from app.db import get_db
-        db = get_db()
-        today = datetime.now().strftime('%Y-%m-%d')
-        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        row = db.execute('SELECT COUNT(*) as c FROM sales WHERE date = ?', (yesterday,)).fetchone()
-        db.close()
-        if row['c'] == 0:
-            try:
-                from app.gopos_api import sync_date
-                from app.telegram_bot import send_message
-                send_message(f'⚠️ Дані за {yesterday} відсутні. Запускаю синк...')
-                sync_date(yesterday)
-                send_message(f'✅ Дані за {yesterday} синхронізовано.')
-            except Exception as e:
-                try:
-                    from app.telegram_bot import send_message
-                    send_message(f'❌ Не вдалось синкнути {yesterday}: {str(e)[:100]}')
-                except Exception:
-                    pass
-    threading.Thread(target=check_missing_days, daemon=True).start()
+        time.sleep(10)
+        try:
+            from app.gopos_api import sync_products
+            sync_products()
+        except Exception:
+            pass
+    threading.Thread(target=startup_sync, daemon=True).start()
 
     yield
     scheduler.shutdown()
