@@ -326,3 +326,35 @@ def get_selling_prices() -> dict:
     """Get current selling prices from GoPos API."""
     items = api_get_all('items')
     return {item['name']: item.get('price', {}).get('amount', 0) for item in items}
+
+
+def register_webhook(callback_url: str):
+    """Register a webhook in GoPos to receive real-time notifications."""
+    token = get_token()
+    url = f'{GOPOS_BASE_URL}/api/v3/{GOPOS_ORG_ID}/webhooks'
+
+    # Check if webhook already registered
+    r = requests.get(url, headers={'Authorization': f'Bearer {token}'}, timeout=15)
+    if r.status_code == 200:
+        existing = r.json().get('data', [])
+        for wh in existing:
+            if wh.get('url') == callback_url:
+                log.info(f'Webhook already registered: {callback_url}')
+                return wh
+
+    # Register new webhook
+    payload = {
+        'url': callback_url,
+        'events': ['ORDER', 'ITEM', 'CATEGORY'],
+    }
+    r = requests.post(url, headers={
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json',
+    }, json=payload, timeout=15)
+
+    if r.status_code in (200, 201):
+        log.info(f'Webhook registered: {callback_url}')
+        return r.json()
+    else:
+        log.warning(f'Webhook registration failed: {r.status_code} {r.text[:200]}')
+        return None

@@ -9,7 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.db import init_db
 from app.auth import get_current_user, can_access, create_default_admin
-from app.routes import auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync, expenses, invoices_gdrive
+from app.routes import auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync, expenses, invoices_gdrive, webhook
 
 BASE_DIR = Path(__file__).parent
 
@@ -86,7 +86,7 @@ app.mount('/static', StaticFiles(directory=BASE_DIR / 'static'), name='static')
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path in ('/login', '/logout', '/static') or path.startswith('/static/'):
+        if path in ('/login', '/logout', '/static') or path.startswith('/static/') or path.startswith('/api/webhook/'):
             return await call_next(request)
         user = get_current_user(request)
         if not user:
@@ -102,7 +102,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(AuthMiddleware)
 
-for r in (auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync, expenses, invoices_gdrive):
+for r in (auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync, expenses, invoices_gdrive, webhook):
     app.include_router(r.router)
 
 if __name__ == '__main__':
