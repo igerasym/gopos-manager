@@ -23,9 +23,16 @@ async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler()
 
     async def scheduled_daily():
-        """Daily at 21:00: send report + process invoices (no sales sync — webhook handles it)."""
+        """Daily at 21:00: full sync + report + process invoices."""
         import threading
         def run():
+            # Full API sync (overwrites webhook data — ensures nothing missed)
+            try:
+                from app.gopos_api import sync_today
+                sync_today()
+            except Exception:
+                pass
+            # Daily report
             try:
                 from app.telegram_bot import daily_report
                 daily_report()
@@ -40,7 +47,7 @@ async def lifespan(app: FastAPI):
                 pass
         threading.Thread(target=run, daemon=True).start()
 
-    scheduler.add_job(scheduled_daily, CronTrigger(hour=21, minute=0))
+    scheduler.add_job(scheduled_daily, CronTrigger(hour=19, minute=0))
     scheduler.start()
 
     # Sync products catalog on startup (categories, prices from API)
