@@ -83,12 +83,6 @@ def daily_report():
         for i, t in enumerate(top, 1):
             lines.append(f'  {i}. {t["product_name"]} — {int(t["qty"])} pcs ({t["rev"]:,.0f} zł)')
 
-    if low:
-        lines.append('')
-        lines.append('⚠️ <b>Low stock:</b>')
-        for l in low:
-            lines.append(f'  • {l["name"]} ({l["quantity"]:.0f} {l["unit"]})')
-
     send_message('\n'.join(lines))
     log.info('Daily report sent to Telegram')
 
