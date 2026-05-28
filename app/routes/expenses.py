@@ -497,7 +497,7 @@ async def confirm_item_mapping(item_id: int, action: str = Form(...), ingredient
 
 @router.get('/expenses/items/{invoice_id}')
 async def get_invoice_items(invoice_id: int):
-    """Get pending items for an invoice."""
+    """Get pending items for an invoice + ingredients list for autocomplete."""
     db = get_db()
     items = db.execute('''
         SELECT ip.*, i.name as ingredient_name
@@ -506,5 +506,10 @@ async def get_invoice_items(invoice_id: int):
         WHERE ip.parsed_invoice_id = ?
         ORDER BY ip.status, ip.confidence DESC
     ''', (invoice_id,)).fetchall()
+    # Ingredients for autocomplete
+    ingredients = db.execute('SELECT id, name FROM ingredients ORDER BY name').fetchall()
     db.close()
-    return JSONResponse({'items': [dict(r) for r in items]})
+    return JSONResponse({
+        'items': [dict(r) for r in items],
+        'ingredients': [{'id': r['id'], 'name': r['name']} for r in ingredients],
+    })

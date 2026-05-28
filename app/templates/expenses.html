@@ -480,7 +480,15 @@ function showItems(invoiceId, vendor) {
         .then(r => r.json())
         .then(data => {
             const items = data.items || [];
-            let html = '<table><thead><tr><th>Товар з фактури</th><th>К-сть</th><th>Ціна</th><th>Дія</th><th>Інгредієнт</th><th></th></tr></thead><tbody>';
+            const ingredients = data.ingredients || [];
+            // Build datalist for autocomplete
+            let datalistHtml = '<datalist id="ing-datalist">';
+            ingredients.forEach(ing => {
+                datalistHtml += '<option value="' + ing.name + '" data-id="' + ing.id + '">';
+            });
+            datalistHtml += '</datalist>';
+
+            let html = datalistHtml + '<table><thead><tr><th>Товар з фактури</th><th>К-сть</th><th>Ціна</th><th>Дія</th><th>Інгредієнт</th><th></th></tr></thead><tbody>';
             items.forEach(item => {
                 const isPending = item.status === 'pending';
                 const conf = item.confidence ? ' (' + Math.round(item.confidence * 100) + '%)' : '';
@@ -496,7 +504,7 @@ function showItems(invoiceId, vendor) {
                     html += '</select></td>';
                     html += '<td><div id="ing-input-' + item.id + '">';
                     if (item.status === 'match' || item.status === 'pending') {
-                        html += '<input type="text" id="ing-search-' + item.id + '" value="' + (item.ingredient_name || '') + '" placeholder="Пошук інгредієнту..." style="width:200px; font-size:.85em;" data-id="' + (item.ingredient_id || '') + '">';
+                        html += '<input type="text" id="ing-search-' + item.id + '" list="ing-datalist" value="' + (item.ingredient_name || '') + '" placeholder="Пошук інгредієнту..." style="width:200px; font-size:.85em;" data-id="' + (item.ingredient_id || '') + '">';
                     } else if (item.status === 'new') {
                         html += '<input type="text" id="new-name-' + item.id + '" value="' + (item.suggested_ingredient || item.invoice_name) + '" placeholder="Назва нового" style="width:200px; font-size:.85em;">';
                     } else {
@@ -535,7 +543,13 @@ function confirmItem(itemId) {
     fd.append('action', action);
     if (action === 'match') {
         const inp = document.getElementById('ing-search-' + itemId);
-        const id = inp.dataset.id;
+        // Find ingredient_id from datalist by name
+        let id = inp.dataset.id;
+        const name = inp.value.trim();
+        if (name && !id) {
+            const opt = document.querySelector('#ing-datalist option[value="' + name + '"]');
+            if (opt) id = opt.dataset.id;
+        }
         if (!id) { showInfoModal('⚠️ Увага', 'Виберіть інгредієнт зі списку'); return; }
         fd.append('ingredient_id', id);
     } else if (action === 'new') {
