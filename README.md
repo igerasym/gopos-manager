@@ -1,71 +1,99 @@
-# ☕ Cafe Manager
+# ☕ The Frame Manager
 
-Sales analytics from GoPOS + inventory management. Runs on Raspberry Pi 5.
+Internal management system for **The Frame Cafe** (Warsaw). FastAPI + SQLite + Jinja2.
 
 ## Features
 
-- **Sales Dashboard** — daily sales imported from GoPOS CSV export
-- **Inventory** — track ingredients, deliveries, low-stock alerts
-- **Recipes** — map menu products to ingredients, auto-deduct on sale
-- **GoPOS Sync** — Playwright scraper logs in and downloads reports
+- **Sales Dashboard** — daily sales from GoPOS with P&L, ABC analysis, food cost tracking
+- **Expenses** — invoice parsing from Google Drive, auto-classification with AI, P&L per month
+- **Inventory** — ingredients, deliveries, low-stock alerts, supplier management
+- **Recipes** — tech cards with cost calculations, sub-recipes, auto-match resale items
+- **Invoice AI** — Claude Haiku 4.5 (vision) parses PDF invoices, maps items to inventory
+- **GoPOS Sync** — Playwright scraper syncs sales daily at 21:00 UTC
+- **Telegram Bot** — daily reports, sync alerts, price change notifications
 
-## Quick Start
+## Deployment
 
-### 1. Configure
-
-Edit `.env` with your GoPOS credentials:
-
-```
-GOPOS_EMAIL=your-email@example.com
-GOPOS_PASSWORD=your-password
-GOPOS_VENUE_ID=your-venue-id
-```
-
-### 2. Run with Docker (recommended for Pi)
+Runs on **AWS EC2** (us-west-2) in Docker container with nginx reverse proxy.
 
 ```bash
-docker compose up -d --build
+# Deploy (from local)
+git push
+ssh -i catchmyaction-key.pem ec2-user@52.39.186.224 "cd cafe-manager && git pull && docker compose up -d --build"
 ```
 
-Open `http://<pi-ip>:8000` in your browser.
-
-### 3. Run locally (development)
+## Quick Start (local dev)
 
 ```bash
+# Download prod DB first (source of truth)
+scp -i catchmyaction-key.pem ec2-user@52.39.186.224:cafe-manager/data/cafe.db data/
+
+# Run
 pip install -r requirements.txt
 playwright install chromium
-cd app && python main.py
+uvicorn app.main:app --reload --port 8000
 ```
 
-## Usage
+## Configuration
 
-1. Click **Sync GoPOS** to import today's sales
-2. Go to **Inventory** → add your ingredients (coffee, milk, etc.) with units and min-alert levels
-3. Go to **Recipes** → map each GoPOS product to ingredients (e.g., Latte = 18g coffee + 200ml milk)
-4. After sync, inventory auto-deducts based on recipes
-5. Dashboard shows low-stock warnings
-
-## Auto-sync (cron)
-
-Add to Pi's crontab to sync daily at 23:00:
-
-```bash
-crontab -e
-# add:
-0 23 * * * cd /home/pi/git/cafe-manager && docker compose exec cafe python -m app.gopos_sync
+`.env` file (not in git):
 ```
+GOPOS_EMAIL=...
+GOPOS_PASSWORD=...
+GOPOS_VENUE_ID=...
+GOPOS_URL=https://app.gopos.io
+SESSION_SECRET=...
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+```
+
+Additional on prod:
+- `data/google-credentials.json` — Google Drive service account
+- `data/cafe.db` — SQLite database (source of truth on prod)
 
 ## Project Structure
 
 ```
 cafe-manager/
 ├── app/
-│   ├── main.py          # FastAPI server
-│   ├── db.py            # SQLite models
-│   ├── gopos_sync.py    # GoPOS Playwright scraper
-│   └── templates/       # HTML pages
-├── data/                # SQLite DB + CSV downloads
+│   ├── main.py              # FastAPI app + scheduler
+│   ├── db.py                # SQLite schema
+│   ├── auth.py              # Cookie auth + roles
+│   ├── gopos_sync.py        # GoPOS Playwright scraper
+│   ├── gdrive_invoices.py   # Google Drive + Textract
+│   ├── llm.py               # Claude Haiku 4.5 (vision + classification)
+│   ├── telegram_bot.py      # Telegram notifications
+│   ├── services/
+│   │   ├── recipes.py       # Cost calculations
+│   │   └── units.py         # Unit conversions (kg→g, L→ml)
+│   ├── routes/              # FastAPI routers
+│   │   ├── dashboard.py
+│   │   ├── expenses.py
+│   │   ├── inventory.py
+│   │   ├── recipes.py
+│   │   └── ...
+│   ├── templates/           # Jinja2 HTML
+│   └── static/              # CSS + JS
+├── data/                    # SQLite DB (gitignored)
+├── scripts/                 # One-off maintenance scripts
+├── .kiro/steering/          # Project context for AI
 ├── Dockerfile
 ├── docker-compose.yml
-└── .env                 # credentials (not in git)
+├── requirements.txt
+└── .env                     # Secrets (gitignored)
 ```
+
+## Key Integrations
+
+| Service | Purpose | Cost |
+|---------|---------|------|
+| GoPOS | POS sales data | included |
+| Google Drive | Invoice storage | free |
+| AWS Bedrock (Claude Haiku 4.5) | Invoice parsing + classification | ~$1-2/month |
+| AWS Textract | OCR fallback | pay-per-use |
+| Telegram | Alerts & reports | free |
+
+## Auth
+
+- Cookie-based, HMAC-signed sessions
+- Roles: `admin` (full access), `chef` (inventory+recipes), `barista` (inventory+recipes)

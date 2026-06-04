@@ -27,7 +27,7 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - Docker image: ~380MB (python:3.11-slim + deps, no Chromium)
 - Auto-sync at 21:00 UTC, Telegram alerts on failure
 - **Never push DB to prod** — prod DB is source of truth
-- Admin password on prod: `TheFrame2025!`
+- Admin password on prod: stored in `.env` (not in git)
 
 ## GoPos Integration
 - POS system: app.gopos.io
