@@ -118,7 +118,9 @@ def test_report_debug_footer_only_for_admin(tmp_path, monkeypatch):
     _report_db(tmp_path, monkeypatch)
     with patch.object(tb, 'CHAT_IDS', ['111', '222']), patch.object(tb, 'ADMIN_CHAT_ID', '111'), \
             patch.object(tb, 'send_message') as send, \
-            patch.object(gopos_api, 'fetch_closed_orders', return_value=SAMPLE_ORDERS):
+            patch.object(gopos_api, 'fetch_closed_orders', return_value=SAMPLE_ORDERS + [
+                # GoPOS has 50 zł the (empty) DB doesn't → mismatch → footer shown
+                {'closed_at': '2026-11-05T15:00:00', 'total_price': {'amount': 50}, 'items': []}]):
         tb.daily_report()
     sent = {c.args[1]: c.args[0] for c in send.call_args_list}
     assert set(sent) == {'111', '222'}
@@ -153,3 +155,20 @@ def test_invoice_errors_admin_only_summary_to_all():
     assert 'Чекають підтвердження: 1' in send.call_args.args[0]
     assert 'x.pdf: bad' in admin.call_args.args[0]
     assert 'x.pdf' not in send.call_args.args[0]
+
+
+def test_no_debug_footer_when_healthy(tmp_path, monkeypatch):
+    from app import gopos_api
+    _report_db(tmp_path, monkeypatch)  # empty DB: 0 zł revenue, no sync_log rows
+    with patch.object(tb, 'CHAT_IDS', ['111']), patch.object(tb, 'ADMIN_CHAT_ID', '111'), \
+            patch.object(tb, 'send_message') as send, \
+            patch.object(gopos_api, 'fetch_closed_orders', return_value=[]):
+        tb.daily_report()
+    assert 'debug' not in send.call_args.args[0]
+
+
+def test_debug_footer_on_failed_sync():
+    footer = tb._debug_footer(100, [{'total_price': {'amount': 100}}], None, 1.0,
+                              {'status': 'error', 'finished_at': '2026-11-05 19:00', 'started_at': '',
+                               'message': '401 token'}, {})
+    assert 'last sync: <b>error</b>' in footer and 'DB vs GoPOS' not in footer

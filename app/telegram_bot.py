@@ -203,24 +203,23 @@ def daily_report():
 
 
 def _debug_footer(db_revenue, orders, gopos_error, gopos_secs, last_sync, discounts) -> str:
-    """Admin-only tail: data consistency and pipeline health."""
-    d = ['', '', '🔧 <b>debug</b>']
+    """Admin-only tail, shown ONLY when something is wrong; empty string when all is healthy."""
+    problems = []
     if gopos_error is not None:
-        d.append(f'  GoPOS: <b>FAILED</b> after {gopos_secs:.1f}s — {escape(repr(gopos_error))[:200]}')
+        problems.append(f'GoPOS: <b>FAILED</b> after {gopos_secs:.1f}s — {escape(repr(gopos_error))[:200]}')
     else:
         paid = sum((o.get('total_price') or {}).get('amount', 0) for o in orders)
         diff = db_revenue - paid
-        flag = '✅' if abs(diff) < 1 else '⚠️'
-        d.append(f'  GoPOS: {len(orders)} orders, {paid:,.0f} zł paid, {gopos_secs:.1f}s')
-        d.append(f'  {flag} DB vs GoPOS: {db_revenue:,.0f} vs {paid:,.0f} (Δ {diff:+,.0f} zł)')
-        other = sorted(n for n in discounts if n not in STAFF_DISCOUNTS | WRITEOFF_DISCOUNTS)
-        if other:
-            d.append(f'  other discounts: {escape(", ".join(other))}')
-    if last_sync:
-        s = last_sync
-        d.append(f'  last sync: {s["status"]} @ {s["finished_at"] or s["started_at"]} — '
-                 f'{escape((s["message"] or "")[:120])}')
-    return '\n'.join(d)
+        if abs(diff) >= 1:
+            problems.append(f'⚠️ DB vs GoPOS: {db_revenue:,.0f} vs {paid:,.0f} zł (Δ {diff:+,.0f}) — '
+                            f'webhook/sync missed something')
+    if last_sync and last_sync['status'] != 'done':
+        problems.append(f'last sync: <b>{escape(str(last_sync["status"]))}</b> @ '
+                        f'{last_sync["finished_at"] or last_sync["started_at"]} — '
+                        f'{escape((last_sync["message"] or "")[:150])}')
+    if not problems:
+        return ''
+    return '\n\n🔧 <b>debug</b>\n' + '\n'.join(f'  {p}' for p in problems)
 
 
 def handle_command(text: str, chat_id: str):
