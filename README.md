@@ -16,10 +16,25 @@ Internal management system for **The Frame Cafe** (Warsaw). FastAPI + SQLite + J
 
 Runs on **AWS EC2** (us-west-2) in Docker container with nginx reverse proxy.
 
+**Auto-deploy:** merge to `main` → within ~5 min the host deploys it. `deploy/auto-deploy.sh`
+(installed as `~/bin/cafe-auto-deploy.sh`, systemd user timer `cafe-autodeploy.timer`) builds the
+image in `~/cafe-build`, swaps only the `cafe` container, health-checks `:8000`, auto-rolls back on
+failure and sends a Telegram alert to the first `TELEGRAM_CHAT_ID`. It shares `~/.deploy.lock` with
+the CatchMyAction deploy so two builds never run at once on the 2 GB host.
+
 ```bash
-# Deploy (from local)
-git push
-ssh -i catchmyaction-key.pem ec2-user@52.39.186.224 "cd cafe-manager && git pull && docker compose up -d --build"
+tail ~/cafe-deploy.log                          # history
+systemctl --user stop cafe-autodeploy.timer     # pause
+systemctl --user start cafe-autodeploy.timer    # resume
+rm ~/.cafe-deploy-failed-sha                    # retry a commit that failed
+docker tag cafe-manager-cafe:rollback-<sha> cafe-manager-cafe:latest && docker compose up -d --no-build cafe  # manual rollback
+```
+
+Install / update the deployer on the host (after `git pull` in `~/cafe-manager`):
+```bash
+install -m 755 deploy/auto-deploy.sh ~/bin/cafe-auto-deploy.sh
+cp deploy/cafe-autodeploy.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now cafe-autodeploy.timer
 ```
 
 ## Quick Start (local dev)

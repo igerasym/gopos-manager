@@ -1,0 +1,9 @@
+[Unit]
+Description=Check gopos-manager main for new commits every 5 min
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
