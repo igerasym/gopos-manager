@@ -128,6 +128,7 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 
 ## Telegram Bot
 - Token and chat_id in `.env` on prod (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
+- TELEGRAM_CHAT_ID accepts several comma-separated ids; reports/alerts go to each one's DM
 - Daily report after sync: revenue, top 5, low stock
 - Sync failure alerts
 - Invoice processing notifications
