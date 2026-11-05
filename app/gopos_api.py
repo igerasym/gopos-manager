@@ -136,6 +136,8 @@ def sync_products():
 
     db.commit()
     db.close()
+    global _tax_rates_cache
+    _tax_rates_cache = None  # catalog changed → re-read VAT rates on next order sync
     log.info(f'Products sync: {new_count} new, {updated_count} updated')
     return {'new': new_count, 'updated': updated_count, 'total': len(items)}
 
@@ -153,6 +155,64 @@ def _guess_pos_kind(category: str) -> str:
 
 
 # ─── Sales Sync ───
+
+_tax_rates_cache: Optional[dict] = None
+
+
+def get_item_tax_rates(refresh: bool = False) -> dict:
+    """{catalog item_id: VAT rate in %} — from GoPos items.tax_id → taxes.rate. Cached per process."""
+    global _tax_rates_cache
+    if _tax_rates_cache is None or refresh:
+        rates = {t['id']: t.get('rate', 0) or 0 for t in api_get('taxes').get('data', [])}
+        _tax_rates_cache = {i['id']: rates.get(i.get('tax_id'), 0) for i in api_get_all('items')}
+    return _tax_rates_cache
+
+
+def item_amounts(item: dict, order: dict, tax_rates: dict) -> dict:
+    """Money fields for one order item, in the same meaning the sales table always had
+    (and the old GoPos export used):
+
+      total_money — paid, gross (incl. VAT), after discount
+      net_total   — paid, net (excl. VAT)
+      discount    — how much was discounted (gross)
+      net_profit  — gross price before discount (legacy name, kept for consistency)
+
+    NB: in the GoPos API `sub_total_price` is the price BEFORE discount and
+    `total_price` the price AFTER it.
+    """
+    paid = (item.get('total_price') or {}).get('amount', 0)
+    before = (item.get('sub_total_price') or {}).get('amount', 0)
+    rate = tax_rates.get(item.get('item_id'))
+    if rate is not None:
+        net = paid / (1 + rate / 100)
+    else:  # unknown catalog item: use the order's own net/gross ratio
+        o_gross = (order.get('total_price') or {}).get('amount', 0)
+        o_net = (order.get('total_price_net') or {}).get('amount', 0)
+        net = paid * (o_net / o_gross) if o_gross else paid
+    return {
+        'total_money': paid,
+        'net_total': round(net, 2),
+        'discount': max(before - paid, 0),
+        'net_profit': max(before, paid),
+    }
+
+
+def order_item_amounts(order: dict, tax_rates: dict) -> list:
+    """[(item, amounts)] for the order's ACTIVE items, with net values that add up to the
+    order's own total_price_net: items whose VAT rate is unknown (variants/modifiers not in
+    the catalog) share whatever net is left after the known items, pro rata to what was paid.
+    """
+    active = [it for it in order.get('items', []) if it.get('status') == 'ACTIVE']
+    rows = [(it, item_amounts(it, order, tax_rates)) for it in active]
+    unknown = [(it, a) for it, a in rows if it.get('item_id') not in tax_rates]
+    order_net = (order.get('total_price_net') or {}).get('amount')
+    if unknown and order_net is not None:
+        known_net = sum(a['net_total'] for it, a in rows if it.get('item_id') in tax_rates)
+        unknown_paid = sum(a['total_money'] for _, a in unknown)
+        residual = max(order_net - known_net, 0)
+        for _, a in unknown:
+            a['net_total'] = round(residual * a['total_money'] / unknown_paid, 2) if unknown_paid else 0
+    return rows
 
 
 def sync_orders_for_date(date_str: str) -> int:
@@ -190,30 +250,21 @@ def sync_orders_for_date(date_str: str) -> int:
 
     log.info(f'Got {len(all_orders)} orders for {date_str}')
 
+    tax_rates = get_item_tax_rates()
+
     # Aggregate sales by product name
-    sales_agg = {}  # product_name → {quantity, total_money, net_total, discount}
+    sales_agg = {}  # product_name → {quantity, total_money, net_total, discount, net_profit}
     for order in all_orders:
-        for item in order.get('items', []):
-            if item.get('status') != 'ACTIVE':
-                continue
+        for item, a in order_item_amounts(order, tax_rates):
             name = item.get('name')
             if not name:
                 continue
 
-            qty = item.get('quantity', 1)
-            total = item.get('total_price', {}).get('amount', 0)
-            sub_total = item.get('sub_total_price', {}).get('amount', 0)
-            # sub_total_price = price after discount, total_price = original
-            # In GoPos: sub_total ≤ total (sub_total is after promotions)
-            discount = total - sub_total if total > sub_total else 0
-            net = sub_total  # net = after discount
-
-            if name not in sales_agg:
-                sales_agg[name] = {'quantity': 0, 'total_money': 0, 'net_total': 0, 'discount': 0}
-            sales_agg[name]['quantity'] += qty
-            sales_agg[name]['total_money'] += total
-            sales_agg[name]['net_total'] += net
-            sales_agg[name]['discount'] += discount
+            s = sales_agg.setdefault(name, {'quantity': 0, 'total_money': 0, 'net_total': 0,
+                                            'discount': 0, 'net_profit': 0})
+            s['quantity'] += item.get('quantity', 1)
+            for k, v in a.items():
+                s[k] += v
 
     # Upsert into sales table
     for product_name, s in sales_agg.items():
@@ -227,7 +278,7 @@ def sync_orders_for_date(date_str: str) -> int:
                 discount=excluded.discount,
                 net_profit=excluded.net_profit
         ''', (date_str, product_name, s['quantity'], s['total_money'],
-              s['net_total'], s['discount'], s['net_total']))
+              round(s['net_total'], 2), s['discount'], s['net_profit']))
 
     db.commit()
     db.close()
@@ -284,6 +335,28 @@ def sync_range(date_from: str, date_to: str):
             current += timedelta(days=1)
         _finish_sync_log(sync_id, 'done', f'Synced {date_from} → {date_to}: {total} products via API')
         return total
+    except Exception as e:
+        _finish_sync_log(sync_id, 'error', str(e)[:200])
+        raise
+
+
+def resync_sales(date_from: str, date_to: str) -> int:
+    """Re-import sales money fields for a date range WITHOUT touching inventory.
+
+    Safe to re-run: rows are upserted per (date, product). Unlike sync_range() it does
+    not call deduct_inventory, so stock is not deducted a second time.
+    """
+    sync_id = _start_sync_log(f'API resync sales {date_from} → {date_to}')
+    try:
+        current = datetime.strptime(date_from, '%Y-%m-%d')
+        end = datetime.strptime(date_to, '%Y-%m-%d')
+        days = 0
+        while current <= end:
+            sync_orders_for_date(current.strftime('%Y-%m-%d'))
+            days += 1
+            current += timedelta(days=1)
+        _finish_sync_log(sync_id, 'done', f'Resynced sales {date_from} → {date_to}: {days} days via API')
+        return days
     except Exception as e:
         _finish_sync_log(sync_id, 'error', str(e)[:200])
         raise
