@@ -10,7 +10,15 @@ from fastapi.responses import RedirectResponse
 
 from app.db import get_db
 
+_KNOWN_DEFAULT_SECRETS = {'', 'the-frame-cafe-secret-2026', 'change-me-in-production'}
 SECRET = os.getenv('SESSION_SECRET', 'the-frame-cafe-secret-2026')
+
+
+def check_session_secret():
+    """Called at app startup. With a public/default secret anyone can forge an admin
+    cookie (the cookie is just username + HMAC), so refuse to run."""
+    if os.getenv('SESSION_SECRET', '') in _KNOWN_DEFAULT_SECRETS:
+        raise RuntimeError('SESSION_SECRET is unset or a known default; set a random value in .env')
 
 # Simple user cache (username -> (user_dict, timestamp))
 _user_cache = {}
@@ -83,7 +91,9 @@ def can_access(user: dict, path: str) -> bool:
     if not user:
         return False
     role = user['role']
-    allowed = ROLE_ACCESS.get(role)
+    if role not in ROLE_ACCESS:  # e.g. legacy default 'staff': no access, NOT admin
+        return False
+    allowed = ROLE_ACCESS[role]
     if allowed is None:  # admin
         return True
     return any(path.startswith(p) for p in allowed)

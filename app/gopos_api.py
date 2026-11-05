@@ -22,6 +22,30 @@ GOPOS_BASE_URL = 'https://app.gopos.io'
 _token: Optional[str] = None
 _token_expires: Optional[datetime] = None
 
+# Business day: orders closed before 05:00 belong to the previous day. GoPOS
+# closed_at is Warsaw local time. Used by the full sync AND the webhook.
+BUSINESS_DAY_START_HOUR = 5
+
+
+def business_date(closed_at: str) -> str:
+    """'2026-11-06T01:30:00' -> '2026-11-05' (closed after midnight = previous day)."""
+    dt = datetime.fromisoformat(closed_at)
+    if dt.tzinfo is not None:
+        from zoneinfo import ZoneInfo
+        dt = dt.astimezone(ZoneInfo('Europe/Warsaw')).replace(tzinfo=None)
+    if dt.hour < BUSINESS_DAY_START_HOUR:
+        dt -= timedelta(days=1)
+    return dt.strftime('%Y-%m-%d')
+
+
+def warsaw_today() -> str:
+    """Current business day in Warsaw (the container runs in UTC)."""
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo('Europe/Warsaw')).replace(tzinfo=None)
+    if now.hour < BUSINESS_DAY_START_HOUR:
+        now -= timedelta(days=1)
+    return now.strftime('%Y-%m-%d')
+
 
 def get_token() -> str:
     """Get OAuth2 token (cached until expiry)."""
@@ -56,11 +80,16 @@ def api_get(path: str, params: dict = None) -> dict:
 
 
 def api_get_all(path: str, params: dict = None) -> list:
-    """Get all pages from a paginated endpoint."""
-    params = params or {}
+    """Get all pages from a paginated endpoint.
+
+    GoPOS pages are 0-based (verified: page=0 and page=1 return different items;
+    starting at 1 silently dropped the first 20 catalog items). The API rejects
+    page >= 50 with 422, so stop before that.
+    """
+    params = dict(params or {})
     all_data = []
-    page = 1
-    while page < 100:  # safety limit
+    page = 0
+    while page < 50:
         params['page'] = page
         data = api_get(path, params)
         items = data.get('data', [])
@@ -218,22 +247,21 @@ def order_item_amounts(order: dict, tax_rates: dict) -> list:
 def sync_orders_for_date(date_str: str) -> int:
     """Sync all closed orders for a given date into sales table.
 
-    Uses closed_at filter with GoPos business day (06:00 → next day 05:00).
+    Uses closed_at filter with the business day (05:00 → next day 05:00, the same
+    cutoff as business_date()). The day's rows are REPLACED, not merged, so orders
+    voided/refunded after the webhook counted them drop out.
     Returns number of products imported.
     """
     from datetime import datetime, timedelta
 
-    db = get_db()
-
-    # GoPos business day: 06:00 → next day 05:00
     next_day = (datetime.strptime(date_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
-    closed_from = f'{date_str}T06:00:00'
-    closed_to = f'{next_day}T05:00:00'
+    closed_from = f'{date_str}T{BUSINESS_DAY_START_HOUR:02d}:00:00'
+    closed_to = f'{next_day}T{BUSINESS_DAY_START_HOUR:02d}:00:00'
 
     # Get all closed orders with product names
     all_orders = []
     page = 0
-    while page < 500:  # safety limit (~10k orders max)
+    while page < 50:  # GoPos rejects page >= 50 (422); 50 x 100 = 5000 orders/day
         data = api_get('orders', {
             'closed_at_from': closed_from,
             'closed_at_to': closed_to,
@@ -266,22 +294,36 @@ def sync_orders_for_date(date_str: str) -> int:
             for k, v in a.items():
                 s[k] += v
 
-    # Upsert into sales table
-    for product_name, s in sales_agg.items():
-        db.execute('''
-            INSERT INTO sales (date, product_name, quantity, total_money, net_total, discount, net_profit)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(date, product_name) DO UPDATE SET
-                quantity=excluded.quantity,
-                total_money=excluded.total_money,
-                net_total=excluded.net_total,
-                discount=excluded.discount,
-                net_profit=excluded.net_profit
-        ''', (date_str, product_name, s['quantity'], s['total_money'],
-              round(s['net_total'], 2), s['discount'], s['net_profit']))
-
-    db.commit()
-    db.close()
+    # Replace the whole day atomically. processed_orders is rewritten too, so a
+    # late/retried webhook for any of these orders is ignored.
+    db = get_db()
+    if not all_orders:
+        had = db.execute('SELECT COUNT(*) FROM sales WHERE date = ?', (date_str,)).fetchone()[0]
+        if had:
+            # An empty answer for a day that already has sales is far more likely an
+            # API hiccup than a day with zero orders: keep what we have.
+            db.close()
+            log.warning(f'GoPos returned no orders for {date_str} but DB has {had} rows; kept')
+            return 0
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        db.execute('DELETE FROM sales WHERE date = ?', (date_str,))
+        db.execute('DELETE FROM processed_orders WHERE date = ?', (date_str,))
+        for product_name, s in sales_agg.items():
+            db.execute('''
+                INSERT INTO sales (date, product_name, quantity, total_money, net_total, discount, net_profit)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (date_str, product_name, s['quantity'], s['total_money'],
+                  round(s['net_total'], 2), s['discount'], s['net_profit']))
+        db.executemany(
+            'INSERT OR REPLACE INTO processed_orders (order_id, date) VALUES (?, ?)',
+            [(str(o['id']), date_str) for o in all_orders if o.get('id') is not None])
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
     log.info(f'Imported {len(sales_agg)} products for {date_str} ({len(all_orders)} orders)')
     return len(sales_agg)
 
@@ -294,7 +336,7 @@ def sync_today():
     sync_id = _start_sync_log('API sync today')
     try:
         sync_products()
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = warsaw_today()
         count = sync_orders_for_date(today)
         _deduct_inventory(today)
         _finish_sync_log(sync_id, 'done', f'Synced {today}: {count} products via API')
@@ -391,14 +433,14 @@ def _finish_sync_log(sync_id, status='done', message=''):
 
 
 def fetch_closed_orders(date_str: str, include: str) -> list:
-    """All closed orders of a GoPos business day (06:00 → next day 05:00)."""
+    """All closed orders of a business day (05:00 → next day 05:00)."""
     next_day = (datetime.strptime(date_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
     result = []
     page = 0
     while page < 50:  # GoPos rejects page >= 50 (422)
         orders = api_get('orders', {
-            'closed_at_from': f'{date_str}T06:00:00',
-            'closed_at_to': f'{next_day}T05:00:00',
+            'closed_at_from': f'{date_str}T{BUSINESS_DAY_START_HOUR:02d}:00:00',
+            'closed_at_to': f'{next_day}T{BUSINESS_DAY_START_HOUR:02d}:00:00',
             'status': 'CLOSED',
             'include': include,
             'size': 100,

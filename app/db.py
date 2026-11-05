@@ -5,10 +5,21 @@ DB_PATH = Path(__file__).parent.parent / 'data' / 'cafe.db'
 
 
 def get_db() -> sqlite3.Connection:
-    db = sqlite3.connect(DB_PATH)
+    # Web requests, the scheduler and webhook threads all write here: wait for
+    # a lock instead of failing with "database is locked".
+    db = sqlite3.connect(DB_PATH, timeout=15)
     db.row_factory = sqlite3.Row
     db.execute('PRAGMA foreign_keys = ON')
+    db.execute('PRAGMA busy_timeout = 15000')
     return db
+
+
+def enable_wal():
+    """WAL lets readers work while a sync writes. Persistent, so set once at startup.
+    Back up with `sqlite3 .backup` (or copy cafe.db together with -wal/-shm)."""
+    db = sqlite3.connect(DB_PATH, timeout=15)
+    db.execute('PRAGMA journal_mode = WAL')
+    db.close()
 
 
 def init_db():
@@ -194,9 +205,44 @@ def init_db():
             status TEXT NOT NULL DEFAULT 'running',
             message TEXT DEFAULT ''
         );
+
+        -- GoPOS orders already counted in `sales` (webhook + full sync), so a
+        -- retried or replayed webhook can't add the same order twice.
+        CREATE TABLE IF NOT EXISTS processed_orders (
+            order_id TEXT PRIMARY KEY,
+            date TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_processed_orders_date ON processed_orders(date);
+
+        CREATE TABLE IF NOT EXISTS pos_products (
+            product_name TEXT PRIMARY KEY,
+            pos_kind TEXT NOT NULL DEFAULT 'unclassified',
+            resale_ingredient_id INTEGER,
+            category TEXT,
+            classified_at TEXT,
+            classified_by TEXT,
+            gopos_item_id INTEGER,
+            gopos_price REAL,
+            gopos_group_id INTEGER,
+            FOREIGN KEY (resale_ingredient_id) REFERENCES ingredients(id)
+        );
     ''')
+    # Columns added after the original schema. Prod already has them (added by
+    # hand / scripts/migrate_resale.py); a fresh DB needs them too.
+    _add_column(db, 'ingredients', 'kind', "TEXT NOT NULL DEFAULT 'raw'")
+    _add_column(db, 'deliveries', 'supplier_id', 'INTEGER REFERENCES suppliers(id)')
+    _add_column(db, 'pos_products', 'gopos_item_id', 'INTEGER')
+    _add_column(db, 'pos_products', 'gopos_price', 'REAL')
+    _add_column(db, 'pos_products', 'gopos_group_id', 'INTEGER')
     db.commit()
     db.close()
+
+
+def _add_column(db: sqlite3.Connection, table: str, column: str, ddl: str):
+    """Idempotent ALTER TABLE ADD COLUMN (table/column names are code constants)."""
+    cols = {r[1] for r in db.execute(f'PRAGMA table_info({table})')}
+    if column not in cols:
+        db.execute(f'ALTER TABLE {table} ADD COLUMN {column} {ddl}')
 
 
 if __name__ == '__main__':

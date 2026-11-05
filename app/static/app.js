@@ -1,3 +1,8 @@
+// Escape text before inserting it as HTML (server messages, invoice data).
+function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 /* Universal confirmation modal */
 function openModal(options) {
     const modal = document.getElementById('confirm-modal');
@@ -44,7 +49,7 @@ function openDeleteModal(ingredientId) {
             const all = [...d.recipes, ...d.sub_recipes.map(s => '🔧 ' + s)];
             if (all.length > 0) {
                 document.getElementById('modal-details').innerHTML =
-                    '<strong>Використовується в:</strong><br>' + all.map(n => '<span>' + n + '</span>').join(' ');
+                    '<strong>Використовується в:</strong><br>' + all.map(n => '<span>' + esc(n) + '</span>').join(' ');
                 document.getElementById('modal-details').style.display = 'block';
                 document.getElementById('modal-warning').textContent =
                     'Цей інгредієнт буде видалений з усіх рецептів і напівфабрикатів!';
@@ -81,7 +86,7 @@ if (document.getElementById('sync-btn')) {
                     if (!polling) polling = setInterval(check, 3000);
                 } else if (d.status === 'done' && syncing) {
                     syncing = false;
-                    el.innerHTML = '<span style="color:#34d399;">✓ ' + d.message + '</span>';
+                    el.innerHTML = '<span style="color:#34d399;">✓ ' + esc(d.message) + '</span>';
                     btn.disabled = false;
                     btn.style.opacity = '1';
                     if (polling) { clearInterval(polling); polling = null; }
@@ -92,7 +97,7 @@ if (document.getElementById('sync-btn')) {
                     }
                 } else if (d.status === 'error') {
                     syncing = false;
-                    el.innerHTML = '<span style="color:#f87171;">✗ ' + d.message.substring(0, 60) + '</span>';
+                    el.innerHTML = '<span style="color:#f87171;">✗ ' + esc(d.message.substring(0, 60)) + '</span>';
                     btn.disabled = false;
                     btn.style.opacity = '1';
                     if (polling) { clearInterval(polling); polling = null; }

@@ -2,10 +2,11 @@ services:
   cafe:
     build: .
     ports:
-      - "8000:8000"
+      # Host nginx proxies to 127.0.0.1:8000; never publish on 0.0.0.0
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./data:/app/data
       - ./.env:/app/.env:ro
     restart: unless-stopped
     environment:
-      - SESSION_SECRET=${SESSION_SECRET:-change-me-in-production}
+      - SESSION_SECRET=${SESSION_SECRET:?set SESSION_SECRET in .env}
