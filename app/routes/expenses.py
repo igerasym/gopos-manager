@@ -305,6 +305,15 @@ async def approve_invoice(invoice_id: int, category: str = Form('Продукт�
     vendor = inv['vendor'] or inv['file_name']
     amount = inv['total']
 
+    # Claim the invoice first: a double click / repeated POST must not add a
+    # second expense. Only the request that flips 'pending' proceeds.
+    claimed = db.execute(
+        "UPDATE parsed_invoices SET expense_status = 'adding' WHERE id = ? AND expense_status = 'pending'",
+        (invoice_id,)).rowcount
+    if not claimed:
+        db.close()
+        return RedirectResponse('/expenses', status_code=303)
+
     # Add to expenses
     cur = db.execute(
         'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, 0, ?)',

@@ -470,6 +470,7 @@ function llmClassify(invoiceId, btn) {
         .catch(() => { btn.textContent = '🤖'; btn.disabled = false; });
 }
 
+// esc() lives in /static/app.js: invoice text comes from vendor PDFs via the LLM
 function showItems(invoiceId, vendor) {
     const modal = document.getElementById('items-modal-overlay');
     document.getElementById('items-modal-title').textContent = 'Товари: ' + vendor;
@@ -484,7 +485,7 @@ function showItems(invoiceId, vendor) {
             // Build datalist for autocomplete
             let datalistHtml = '<datalist id="ing-datalist">';
             ingredients.forEach(ing => {
-                datalistHtml += '<option value="' + ing.name + '" data-id="' + ing.id + '">';
+                datalistHtml += '<option value="' + esc(ing.name) + '" data-id="' + esc(ing.id) + '">';
             });
             datalistHtml += '</datalist>';
 
@@ -493,7 +494,7 @@ function showItems(invoiceId, vendor) {
                 const isPending = item.status === 'pending';
                 const conf = item.confidence ? ' (' + Math.round(item.confidence * 100) + '%)' : '';
                 html += '<tr id="item-' + item.id + '" style="' + (isPending ? '' : 'opacity:.5;') + '">';
-                html += '<td style="font-size:.85em;">' + item.invoice_name + '</td>';
+                html += '<td style="font-size:.85em;">' + esc(item.invoice_name) + '</td>';
                 html += '<td class="text-right">' + (item.quantity || '') + '</td>';
                 html += '<td class="text-right">' + (item.unit_price ? item.unit_price.toFixed(2) : '') + '</td>';
                 if (isPending) {
@@ -504,16 +505,16 @@ function showItems(invoiceId, vendor) {
                     html += '</select></td>';
                     html += '<td><div id="ing-input-' + item.id + '">';
                     if (item.status === 'match' || item.status === 'pending') {
-                        html += '<input type="text" id="ing-search-' + item.id + '" list="ing-datalist" value="' + (item.ingredient_name || '') + '" placeholder="Пошук інгредієнту..." style="width:200px; font-size:.85em;" data-id="' + (item.ingredient_id || '') + '">';
+                        html += '<input type="text" id="ing-search-' + item.id + '" list="ing-datalist" value="' + esc(item.ingredient_name || '') + '" placeholder="Пошук інгредієнту..." style="width:200px; font-size:.85em;" data-id="' + esc(item.ingredient_id || '') + '">';
                     } else if (item.status === 'new') {
-                        html += '<input type="text" id="new-name-' + item.id + '" value="' + (item.suggested_ingredient || item.invoice_name) + '" placeholder="Назва нового" style="width:200px; font-size:.85em;">';
+                        html += '<input type="text" id="new-name-' + item.id + '" value="' + esc(item.suggested_ingredient || item.invoice_name) + '" placeholder="Назва нового" style="width:200px; font-size:.85em;">';
                     } else {
                         html += '<span class="text-muted">—</span>';
                     }
                     html += '</div></td>';
                     html += '<td><button class="btn btn-primary btn-sm" style="font-size:.75em;" onclick="confirmItem(' + item.id + ')">OK</button></td>';
                 } else {
-                    html += '<td colspan="3" class="text-muted" style="font-size:.85em;">' + item.status + ': ' + (item.ingredient_name || item.suggested_ingredient || '—') + conf + '</td>';
+                    html += '<td colspan="3" class="text-muted" style="font-size:.85em;">' + esc(item.status) + ': ' + esc(item.ingredient_name || item.suggested_ingredient || '—') + conf + '</td>';
                 }
                 html += '</tr>';
             });
@@ -529,9 +530,9 @@ function onActionChange(itemId) {
     const div = document.getElementById('ing-input-' + itemId);
     const item = (window._currentItems || []).find(i => i.id === itemId) || {};
     if (action === 'match') {
-        div.innerHTML = '<input type="text" id="ing-search-' + itemId + '" value="' + (item.ingredient_name || '') + '" placeholder="Пошук інгредієнту..." style="width:200px; font-size:.85em;" data-id="' + (item.ingredient_id || '') + '">';
+        div.innerHTML = '<input type="text" id="ing-search-' + itemId + '" value="' + esc(item.ingredient_name || '') + '" placeholder="Пошук інгредієнту..." style="width:200px; font-size:.85em;" data-id="' + esc(item.ingredient_id || '') + '">';
     } else if (action === 'new') {
-        div.innerHTML = '<input type="text" id="new-name-' + itemId + '" value="' + (item.suggested_ingredient || item.invoice_name) + '" placeholder="Назва нового" style="width:200px; font-size:.85em;">';
+        div.innerHTML = '<input type="text" id="new-name-' + itemId + '" value="' + esc(item.suggested_ingredient || item.invoice_name) + '" placeholder="Назва нового" style="width:200px; font-size:.85em;">';
     } else {
         div.innerHTML = '<span class="text-muted">—</span>';
     }

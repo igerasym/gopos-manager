@@ -7,8 +7,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.db import init_db
-from app.auth import get_current_user, can_access, create_default_admin
+from app.db import init_db, enable_wal
+from app.auth import get_current_user, can_access, create_default_admin, check_session_secret
 from app.routes import auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync, expenses, invoices_gdrive, webhook
 
 BASE_DIR = Path(__file__).parent
@@ -16,6 +16,8 @@ BASE_DIR = Path(__file__).parent
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    enable_wal()
+    check_session_secret()
     init_db()
     create_default_admin()
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -42,13 +44,33 @@ async def lifespan(app: FastAPI):
             # Sync invoices from Google Drive
             try:
                 from app.services.invoice_processing import process_invoices_for_month
-                from datetime import datetime
-                process_invoices_for_month(datetime.now().strftime('%Y-%m'))
+                from app.gopos_api import warsaw_today
+                process_invoices_for_month(warsaw_today()[:7])
             except Exception as e:
                 alert_admin('Invoice processing', e)
         threading.Thread(target=run, daemon=True).start()
 
     scheduler.add_job(scheduled_daily, CronTrigger(hour=19, minute=0))
+
+    async def scheduled_close_yesterday():
+        """After the business day ends (05:00 Warsaw): re-sync yesterday in full.
+        The 19:00 UTC sync misses everything sold later that evening, which so far
+        only reached `sales` via webhook and never got deducted from stock."""
+        import threading
+        def run():
+            try:
+                from datetime import datetime, timedelta
+                from app.gopos_api import sync_date, warsaw_today
+                yesterday = (datetime.strptime(warsaw_today(), '%Y-%m-%d')
+                             - timedelta(days=1)).strftime('%Y-%m-%d')
+                sync_date(yesterday)
+            except Exception as e:
+                from app.telegram_bot import alert_admin
+                alert_admin('Morning re-sync of yesterday', e)
+        threading.Thread(target=run, daemon=True).start()
+
+    # 04:30 UTC = 05:30/06:30 Warsaw: after the 05:00 cutoff in both CET and CEST
+    scheduler.add_job(scheduled_close_yesterday, CronTrigger(hour=4, minute=30))
 
     async def scheduled_monthly():
         """1st of the month: last month vs the month before, numbers + AI summary."""

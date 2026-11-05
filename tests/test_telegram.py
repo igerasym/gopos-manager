@@ -85,8 +85,7 @@ def test_daily_report_blocks_and_survives_api_failure(tmp_path, monkeypatch):
     monkeypatch.setattr('app.db.DB_PATH', tmp_path / 'test.db')
     init_db()
     db = get_db()
-    db.execute('CREATE TABLE pos_products (product_name TEXT PRIMARY KEY, category TEXT)')
-    db.executemany('INSERT INTO pos_products VALUES (?, ?)',
+    db.executemany('INSERT INTO pos_products (product_name, category) VALUES (?, ?)',
                    [('Cappuccino', 'Coffee'), ('Milk oatmeal', 'Coffee'), ('Brownie', 'Bakery')])
     db.commit()
     db.close()

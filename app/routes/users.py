@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
-from app.auth import hash_password
+from app.auth import hash_password, ROLE_ACCESS, _user_cache
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 
@@ -24,8 +24,10 @@ async def users_page(request: Request):
 @router.post('/users/add')
 async def add_user(
     username: str = Form(...), password: str = Form(...),
-    role: str = Form('staff'), display_name: str = Form(''),
+    role: str = Form('barista'), display_name: str = Form(''),
 ):
+    if role not in ROLE_ACCESS:
+        return RedirectResponse('/users', status_code=303)
     db = get_db()
     db.execute(
         'INSERT OR IGNORE INTO users (username, password_hash, role, display_name) VALUES (?, ?, ?, ?)',
@@ -38,10 +40,13 @@ async def add_user(
 
 @router.post('/users/role/{user_id}')
 async def change_role(user_id: int, role: str = Form(...)):
+    if role not in ROLE_ACCESS:
+        return RedirectResponse('/users', status_code=303)
     db = get_db()
     db.execute('UPDATE users SET role = ? WHERE id = ?', (role, user_id))
     db.commit()
     db.close()
+    _user_cache.clear()  # role change takes effect now, not after the 5-min cache
     return RedirectResponse('/users', status_code=303)
 
 

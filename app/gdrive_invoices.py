@@ -275,7 +275,9 @@ def check_price_alerts(ingredient_id: int, new_price: float, old_price: float) -
         db.close()
         if ing:
             direction = '📈' if change_pct > 0 else '📉'
-            return f"{direction} <b>{ing['name']}</b>: {old_price:.2f} → {new_price:.2f} zł/{ing['unit']} ({change_pct:+.0f}%)"
+            from html import escape  # Telegram parse_mode=HTML rejects a raw '&' or '<'
+            return (f"{direction} <b>{escape(ing['name'])}</b>: {old_price:.2f} → {new_price:.2f} "
+                    f"zł/{escape(ing['unit'])} ({change_pct:+.0f}%)")
     return None
 
 
