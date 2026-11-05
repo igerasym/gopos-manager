@@ -13,31 +13,37 @@ load_dotenv(Path(__file__).parent.parent / '.env')
 log = logging.getLogger(__name__)
 
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
-CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '')
+# One or more recipients, comma-separated: TELEGRAM_CHAT_ID=111111,222222
+CHAT_IDS = [c.strip() for c in os.getenv('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
 API = f'https://api.telegram.org/bot{TOKEN}'
 
 
-def send_message(text: str, chat_id: str = ''):
-    """Send a message via Telegram bot."""
-    if not TOKEN:
-        log.warning('Telegram bot token not set')
-        return
-    cid = chat_id or CHAT_ID
-    if not cid:
-        log.warning('Telegram chat ID not set')
-        return
+def _send_one(text: str, cid: str):
     try:
-        url = f'{API}/sendMessage'
         data = json.dumps({
             'chat_id': cid,
             'text': text,
             'parse_mode': 'HTML',
             'disable_web_page_preview': True,
         }).encode()
-        req = Request(url, data=data, headers={'Content-Type': 'application/json'})
+        req = Request(f'{API}/sendMessage', data=data, headers={'Content-Type': 'application/json'})
         urlopen(req, timeout=10)
     except Exception as e:
-        log.error(f'Telegram send failed: {e}')
+        # One failing recipient (e.g. blocked the bot) must not stop the others
+        log.error(f'Telegram send to {cid} failed: {e}')
+
+
+def send_message(text: str, chat_id: str = ''):
+    """Send a message to chat_id, or to every TELEGRAM_CHAT_ID recipient if not given."""
+    if not TOKEN:
+        log.warning('Telegram bot token not set')
+        return
+    recipients = [chat_id] if chat_id else CHAT_IDS
+    if not recipients:
+        log.warning('Telegram chat ID not set')
+        return
+    for cid in recipients:
+        _send_one(text, cid)
 
 
 def daily_report():
