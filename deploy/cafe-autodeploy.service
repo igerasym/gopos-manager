@@ -1,0 +1,7 @@
+[Unit]
+Description=The Frame Manager (cafe) auto-deploy
+
+[Service]
+Type=oneshot
+ExecStart=%h/bin/cafe-auto-deploy.sh
+TimeoutStartSec=1800
