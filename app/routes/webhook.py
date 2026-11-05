@@ -72,18 +72,15 @@ def _process_order_webhook(order_id: str):
         date_str = dt.strftime('%Y-%m-%d')
 
         # Extract items and update sales
+        from app.gopos_api import get_item_tax_rates, order_item_amounts
+        tax_rates = get_item_tax_rates()
         db = get_db()
-        for item in order.get('items', []):
-            if item.get('status') != 'ACTIVE':
-                continue
+        for item, a in order_item_amounts(order, tax_rates):
             name = item.get('name')
             if not name:
                 continue
 
             qty = item.get('quantity', 1)
-            total = item.get('total_price', {}).get('amount', 0)
-            sub_total = item.get('sub_total_price', {}).get('amount', 0)
-            discount = total - sub_total if total > sub_total else 0
 
             # Upsert: add to existing sales for this date+product
             db.execute('''
@@ -95,7 +92,7 @@ def _process_order_webhook(order_id: str):
                     net_total = net_total + excluded.net_total,
                     discount = discount + excluded.discount,
                     net_profit = net_profit + excluded.net_profit
-            ''', (date_str, name, qty, total, sub_total, discount, sub_total))
+            ''', (date_str, name, qty, a['total_money'], a['net_total'], a['discount'], a['net_profit']))
 
         db.commit()
         db.close()
