@@ -7,6 +7,7 @@ from urllib.request import urlopen, Request
 from urllib.parse import quote
 import json
 import sqlite3
+import time
 from html import escape
 
 from dotenv import load_dotenv
@@ -17,6 +18,8 @@ log = logging.getLogger(__name__)
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 # One or more recipients, comma-separated: TELEGRAM_CHAT_ID=111111,222222
 CHAT_IDS = [c.strip() for c in os.getenv('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
+# Who gets debug info and error alerts. Defaults to the first TELEGRAM_CHAT_ID (the owner).
+ADMIN_CHAT_ID = os.getenv('TELEGRAM_ADMIN_CHAT_ID', '').strip() or (CHAT_IDS[0] if CHAT_IDS else '')
 API = f'https://api.telegram.org/bot{TOKEN}'
 
 
@@ -46,6 +49,18 @@ def send_message(text: str, chat_id: str = ''):
         return
     for cid in recipients:
         _send_one(text, cid)
+
+
+def send_admin(text: str):
+    """Debug / technical message — admin only, never the other recipients."""
+    if ADMIN_CHAT_ID:
+        send_message(text, ADMIN_CHAT_ID)
+
+
+def alert_admin(where: str, exc: BaseException):
+    """Log an exception and tell the admin, instead of swallowing it silently."""
+    log.error(f'{where} failed: {exc!r}')
+    send_admin(f'🔧 <b>{escape(where)} failed</b>\n<code>{escape(repr(exc))[:600]}</code>')
 
 
 TOP_N = 7
@@ -113,6 +128,13 @@ def daily_report():
         FROM ingredients WHERE quantity <= min_quantity AND min_quantity > 0
     ''').fetchall()
 
+    try:
+        last_sync = db.execute(
+            'SELECT started_at, finished_at, status, message FROM sync_log ORDER BY id DESC LIMIT 1'
+        ).fetchone()
+    except sqlite3.OperationalError:
+        last_sync = None
+
     db.close()
 
     # Build message
@@ -125,7 +147,8 @@ def daily_report():
     ]
 
     # Shift + discounts — live from GoPOS; the report must still go out if this fails
-    staff, discounts = None, {}
+    staff, discounts, orders, gopos_error = None, {}, None, None
+    t0 = time.monotonic()
     try:
         from app import gopos_api
         orders = gopos_api.fetch_closed_orders(today, 'employee,promotions,items,items.product')
@@ -133,6 +156,8 @@ def daily_report():
         discounts = gopos_api.discounted_items(orders)
     except Exception as e:
         log.warning(f'GoPOS shift/discount lookup failed: {e}')
+        gopos_error = e
+    gopos_secs = time.monotonic() - t0
 
     if staff:
         lines.append('')
@@ -168,8 +193,33 @@ def daily_report():
         for i, t in enumerate(top, 1):
             lines.append(f'  {i}. {t["product_name"]} — {int(t["qty"])} pcs ({t["rev"]:,.0f} zł)')
 
-    send_message('\n'.join(lines))
+    text = '\n'.join(lines)
+    debug = _debug_footer(totals['revenue'], orders, gopos_error, gopos_secs, last_sync, discounts)
+    if not CHAT_IDS:
+        send_message(text)  # logs 'chat ID not set'
+    for cid in CHAT_IDS:
+        send_message(text + debug if cid == ADMIN_CHAT_ID else text, cid)
     log.info('Daily report sent to Telegram')
+
+
+def _debug_footer(db_revenue, orders, gopos_error, gopos_secs, last_sync, discounts) -> str:
+    """Admin-only tail, shown ONLY when something is wrong; empty string when all is healthy."""
+    problems = []
+    if gopos_error is not None:
+        problems.append(f'GoPOS: <b>FAILED</b> after {gopos_secs:.1f}s — {escape(repr(gopos_error))[:200]}')
+    else:
+        paid = sum((o.get('total_price') or {}).get('amount', 0) for o in orders)
+        diff = db_revenue - paid
+        if abs(diff) >= 1:
+            problems.append(f'⚠️ DB vs GoPOS: {db_revenue:,.0f} vs {paid:,.0f} zł (Δ {diff:+,.0f}) — '
+                            f'webhook/sync missed something')
+    if last_sync and last_sync['status'] != 'done':
+        problems.append(f'last sync: <b>{escape(str(last_sync["status"]))}</b> @ '
+                        f'{last_sync["finished_at"] or last_sync["started_at"]} — '
+                        f'{escape((last_sync["message"] or "")[:150])}')
+    if not problems:
+        return ''
+    return '\n\n🔧 <b>debug</b>\n' + '\n'.join(f'  {p}' for p in problems)
 
 
 def handle_command(text: str, chat_id: str):

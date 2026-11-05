@@ -26,25 +26,26 @@ async def lifespan(app: FastAPI):
         """Daily at 21:00: full sync + report + process invoices."""
         import threading
         def run():
+            from app.telegram_bot import alert_admin
             # Full API sync (overwrites webhook data — ensures nothing missed)
             try:
                 from app.gopos_api import sync_today
                 sync_today()
-            except Exception:
-                pass
+            except Exception as e:
+                alert_admin('Daily GoPOS sync', e)
             # Daily report
             try:
                 from app.telegram_bot import daily_report
                 daily_report()
-            except Exception:
-                pass
+            except Exception as e:
+                alert_admin('Daily report', e)
             # Sync invoices from Google Drive
             try:
                 from app.services.invoice_processing import process_invoices_for_month
                 from datetime import datetime
                 process_invoices_for_month(datetime.now().strftime('%Y-%m'))
-            except Exception:
-                pass
+            except Exception as e:
+                alert_admin('Invoice processing', e)
         threading.Thread(target=run, daemon=True).start()
 
     scheduler.add_job(scheduled_daily, CronTrigger(hour=19, minute=0))
@@ -58,8 +59,9 @@ async def lifespan(app: FastAPI):
         try:
             from app.gopos_api import sync_products
             sync_products()
-        except Exception:
-            pass
+        except Exception as e:
+            from app.telegram_bot import alert_admin
+            alert_admin('Startup product sync', e)
     threading.Thread(target=startup_sync, daemon=True).start()
 
     yield

@@ -316,18 +316,20 @@ def _handle_match_mapping(db, m: dict, ing_id: int, invoice_db_id: int) -> tuple
 def _send_summary_notification(current_month, new_parsed, auto_approved, errors):
     """Send Telegram notification with processing summary."""
     try:
-        from app.telegram_bot import send_message
-        if new_parsed or errors:
+        from html import escape
+        from app.telegram_bot import send_message, send_admin
+        if new_parsed:
             msg = f"📄 <b>Фактури ({current_month})</b>\n\n"
             if auto_approved:
                 msg += f"✅ Авто-додано у витрати: {len(auto_approved)}\n"
                 for p in auto_approved[:10]:
-                    msg += f"  • {p['vendor']} — {p['total']:.0f} zł\n"
+                    msg += f"  • {escape(str(p['vendor']))} — {p['total']:.0f} zł\n"
             pending_count = len(new_parsed) - len(auto_approved)
             if pending_count > 0:
                 msg += f"\n⏳ Чекають підтвердження: {pending_count}\n"
-            if errors:
-                msg += f"\n❌ Помилки: {len(errors)}\n"
             send_message(msg)
-    except Exception:
-        pass
+        if errors:  # technical — admin only, with details
+            send_admin(f"🔧 <b>Фактури ({current_month}): {len(errors)} помилок парсингу</b>\n"
+                       + "\n".join(f"  • {escape(e)}" for e in errors[:10]))
+    except Exception as e:
+        log.error(f'Invoice summary notification failed: {e!r}')
