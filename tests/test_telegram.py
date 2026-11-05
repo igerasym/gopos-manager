@@ -105,3 +105,51 @@ def test_daily_report_blocks_and_survives_api_failure(tmp_path, monkeypatch):
         tb.daily_report()
     text = send.call_args.args[0]
     assert send.called and 'Shift' not in text and 'Staff' not in text
+
+
+def _report_db(tmp_path, monkeypatch):
+    from app.db import init_db
+    monkeypatch.setattr('app.db.DB_PATH', tmp_path / 'test.db')
+    init_db()
+
+
+def test_report_debug_footer_only_for_admin(tmp_path, monkeypatch):
+    from app import gopos_api
+    _report_db(tmp_path, monkeypatch)
+    with patch.object(tb, 'CHAT_IDS', ['111', '222']), patch.object(tb, 'ADMIN_CHAT_ID', '111'), \
+            patch.object(tb, 'send_message') as send, \
+            patch.object(gopos_api, 'fetch_closed_orders', return_value=SAMPLE_ORDERS):
+        tb.daily_report()
+    sent = {c.args[1]: c.args[0] for c in send.call_args_list}
+    assert set(sent) == {'111', '222'}
+    assert '🔧 <b>debug</b>' in sent['111'] and 'DB vs GoPOS' in sent['111']
+    assert '🔧' not in sent['222'] and 'DB vs GoPOS' not in sent['222']
+    assert sent['111'].startswith(sent['222'])  # same report, admin just has the tail
+
+
+def test_report_debug_shows_gopos_failure(tmp_path, monkeypatch):
+    from app import gopos_api
+    _report_db(tmp_path, monkeypatch)
+    with patch.object(tb, 'CHAT_IDS', ['111']), patch.object(tb, 'ADMIN_CHAT_ID', '111'), \
+            patch.object(tb, 'send_message') as send, \
+            patch.object(gopos_api, 'fetch_closed_orders', side_effect=RuntimeError('422')):
+        tb.daily_report()
+    assert 'GoPOS: <b>FAILED</b>' in send.call_args.args[0]
+
+
+def test_alert_admin_goes_to_admin_only():
+    with patch.object(tb, 'TOKEN', 'x'), patch.object(tb, 'CHAT_IDS', ['111', '222']), \
+            patch.object(tb, 'ADMIN_CHAT_ID', '111'), patch.object(tb, 'urlopen') as m:
+        tb.alert_admin('Daily GoPOS sync', ValueError('<boom>'))
+    assert _sent_ids(m) == ['111']
+    body = json.loads(m.call_args.args[0].data)['text']
+    assert 'Daily GoPOS sync failed' in body and '&lt;boom&gt;' in body
+
+
+def test_invoice_errors_admin_only_summary_to_all():
+    from app.services import invoice_processing as ip
+    with patch.object(tb, 'send_message') as send, patch.object(tb, 'send_admin') as admin:
+        ip._send_summary_notification('2026-11', [{'vendor': 'A', 'total': 10}], [], ['x.pdf: bad'])
+    assert 'Чекають підтвердження: 1' in send.call_args.args[0]
+    assert 'x.pdf: bad' in admin.call_args.args[0]
+    assert 'x.pdf' not in send.call_args.args[0]

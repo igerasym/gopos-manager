@@ -482,18 +482,18 @@ def sync_invoices_for_current_month():
     # Telegram notification
     if new_parsed or errors:
         try:
-            from app.telegram_bot import send_message
-            msg = f"📄 <b>Фактури ({current_month})</b>\n\n"
+            from html import escape
+            from app.telegram_bot import send_message, send_admin
             if new_parsed:
+                msg = f"📄 <b>Фактури ({current_month})</b>\n\n"
                 msg += f"🆕 Нові: {len(new_parsed)} (чекають підтвердження)\n"
                 for p in new_parsed[:10]:
-                    msg += f"  • {p['vendor'] or p['name']} — {p['total']:.0f} zł ({p['items_count']} товарів)\n"
-            if errors:
-                msg += f"\n❌ Помилки: {len(errors)}\n"
-                for e in errors[:5]:
-                    msg += f"  • {e}\n"
-            send_message(msg)
-        except Exception:
-            pass
+                    msg += f"  • {escape(str(p['vendor'] or p['name']))} — {p['total']:.0f} zł ({p['items_count']} товарів)\n"
+                send_message(msg)
+            if errors:  # technical — admin only, with details
+                send_admin(f"🔧 <b>Фактури ({current_month}): {len(errors)} помилок парсингу</b>\n"
+                           + "\n".join(f"  • {escape(e)}" for e in errors[:10]))
+        except Exception as e:
+            log.error(f'Invoice sync notification failed: {e!r}')
 
     log.info(f"Invoice sync done: {len(new_parsed)} new, {len(errors)} errors")
