@@ -317,6 +317,80 @@ def _finish_sync_log(sync_id, status='done', message=''):
     db.close()
 
 
+def fetch_closed_orders(date_str: str, include: str) -> list:
+    """All closed orders of a GoPos business day (06:00 → next day 05:00)."""
+    next_day = (datetime.strptime(date_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+    result = []
+    page = 0
+    while page < 50:  # GoPos rejects page >= 50 (422)
+        orders = api_get('orders', {
+            'closed_at_from': f'{date_str}T06:00:00',
+            'closed_at_to': f'{next_day}T05:00:00',
+            'status': 'CLOSED',
+            'include': include,
+            'size': 100,
+            'page': page,
+        }).get('data', [])
+        if not orders:
+            break
+        result.extend(orders)
+        page += 1
+    return result
+
+
+def shift_staff(orders: list) -> list:
+    """Who worked, from the employee logged in on each order.
+
+    Returns [{'name', 'orders', 'first', 'last'}] sorted by first order time,
+    'first'/'last' = HH:MM of the first/last closed order.
+    """
+    staff = {}
+    for o in orders:
+        name = (o.get('employee') or {}).get('name') or '—'
+        t = (o.get('closed_at') or '')[11:16]
+        s = staff.setdefault(name, {'name': name, 'orders': 0, 'first': t, 'last': t})
+        s['orders'] += 1
+        if t and (not s['first'] or t < s['first']):
+            s['first'] = t
+        if t > s['last']:
+            s['last'] = t
+    return sorted(staff.values(), key=lambda s: s['first'] or '99:99')
+
+
+def discounted_items(orders: list) -> dict:
+    """Items sold under each discount: {discount_name_lower: {item_name: {'qty', 'value', 'unit_price'}}}.
+
+    Only items whose price was actually reduced count. 'value' = zł given away
+    (sub_total_price − total_price; in GoPos sub_total is the pre-discount price).
+    """
+    result = {}
+    for o in orders:
+        names = {(p.get('name') or '').strip().lower() for p in o.get('promotions') or []}
+        names.discard('')
+        if not names:
+            continue
+        for it in o.get('items', []):
+            if it.get('status') != 'ACTIVE':
+                continue
+            full = (it.get('sub_total_price') or {}).get('amount', 0)
+            paid = (it.get('total_price') or {}).get('amount', 0)
+            if paid >= full:
+                continue
+            item_name = it.get('name') or (it.get('product') or {}).get('name') or '?'
+            for n in names:
+                e = result.setdefault(n, {}).setdefault(
+                    item_name, {'qty': 0, 'value': 0.0,
+                                'unit_price': (it.get('base_unit_price') or {}).get('amount', 0)})
+                e['qty'] += it.get('quantity', 1)
+                e['value'] += full - paid
+    return result
+
+
+def get_shift_staff(date_str: str) -> list:
+    """Who worked on a business day (see shift_staff)."""
+    return shift_staff(fetch_closed_orders(date_str, 'employee'))
+
+
 def sync_products_and_categories():
     """Alias for sync_products — called from gopos_sync.py."""
     return sync_products()

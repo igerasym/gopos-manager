@@ -6,6 +6,8 @@ from pathlib import Path
 from urllib.request import urlopen, Request
 from urllib.parse import quote
 import json
+import sqlite3
+from html import escape
 
 from dotenv import load_dotenv
 
@@ -46,6 +48,39 @@ def send_message(text: str, chat_id: str = ''):
         _send_one(text, cid)
 
 
+TOP_N = 7
+# GoPOS discount names (case-insensitive) that mark staff drinks / spoiled items
+STAFF_DISCOUNTS = {'staff'}
+WRITEOFF_DISCOUNTS = {'write-off'}
+DRINK_CATEGORY = 'Coffee'
+# Add-ons in the Coffee category (milk swaps, cups) cost less than this and aren't drinks
+MIN_DRINK_PRICE = 5
+
+
+def _merge(discounts: dict, names: set) -> dict:
+    """Combine item stats of several discount names into one {item: {'qty','value',...}}."""
+    merged = {}
+    for n in names:
+        for item, e in discounts.get(n, {}).items():
+            m = merged.setdefault(item, {'qty': 0, 'value': 0.0, 'unit_price': e['unit_price']})
+            m['qty'] += e['qty']
+            m['value'] += e['value']
+    return merged
+
+
+def _is_drink(name: str, e: dict, categories: dict) -> bool:
+    return categories.get(name) == DRINK_CATEGORY and e['unit_price'] >= MIN_DRINK_PRICE
+
+
+def _item_list(items: dict) -> str:
+    """'Cappuccino ×2, Brownie' — biggest first."""
+    parts = []
+    for name, e in sorted(items.items(), key=lambda kv: -kv[1]['qty']):
+        q = int(e['qty']) if float(e['qty']).is_integer() else e['qty']
+        parts.append(escape(name) + (f' ×{q}' if q != 1 else ''))
+    return ', '.join(parts)
+
+
 def daily_report():
     """Generate and send daily sales report."""
     from app.db import get_db
@@ -63,8 +98,14 @@ def daily_report():
     top = db.execute('''
         SELECT product_name, SUM(quantity) as qty, SUM(total_money) as rev
         FROM sales WHERE date = ?
-        GROUP BY product_name ORDER BY rev DESC LIMIT 5
-    ''', (today,)).fetchall()
+        GROUP BY product_name ORDER BY rev DESC LIMIT ?
+    ''', (today, TOP_N)).fetchall()
+
+    try:  # pos_products is created by the first GoPOS product sync, not init_db
+        categories = {r['product_name']: r['category']
+                      for r in db.execute('SELECT product_name, category FROM pos_products')}
+    except sqlite3.OperationalError:
+        categories = {}
 
     # Low stock
     low = db.execute('''
@@ -83,9 +124,47 @@ def daily_report():
         f'🍽 Products: {totals["products"]}',
     ]
 
+    # Shift + discounts — live from GoPOS; the report must still go out if this fails
+    staff, discounts = None, {}
+    try:
+        from app import gopos_api
+        orders = gopos_api.fetch_closed_orders(today, 'employee,promotions,items,items.product')
+        staff = gopos_api.shift_staff(orders)
+        discounts = gopos_api.discounted_items(orders)
+    except Exception as e:
+        log.warning(f'GoPOS shift/discount lookup failed: {e}')
+
+    if staff:
+        lines.append('')
+        lines.append('👤 <b>Shift:</b>')
+        for s in staff:
+            lines.append(f'  {escape(s["name"])} — {s["first"]}–{s["last"]}, {s["orders"]} orders')
+
+    staff_items = _merge(discounts, STAFF_DISCOUNTS)
+    if staff_items:
+        drinks = {n: e for n, e in staff_items.items() if _is_drink(n, e, categories)}
+        n_drinks = int(sum(e['qty'] for e in drinks.values()))
+        value = sum(e['value'] for e in staff_items.values())
+        lines.append('')
+        lines.append(f'☕ <b>Staff drinks:</b> {n_drinks} — {value:,.0f} zł')
+        if drinks:
+            lines.append(f'  {_item_list(drinks)}')
+        other = {n: e for n, e in staff_items.items()
+                 if n not in drinks and categories.get(n) != DRINK_CATEGORY}
+        if other:
+            lines.append(f'  + {_item_list(other)}')
+
+    writeoff = _merge(discounts, WRITEOFF_DISCOUNTS)
+    if writeoff:
+        qty = int(sum(e['qty'] for e in writeoff.values()))
+        value = sum(e['value'] for e in writeoff.values())
+        lines.append('')
+        lines.append(f'🗑 <b>Write-off:</b> {qty} pcs — {value:,.0f} zł')
+        lines.append(f'  {_item_list(writeoff)}')
+
     if top:
         lines.append('')
-        lines.append('🏆 <b>Top 5:</b>')
+        lines.append(f'🏆 <b>Top {TOP_N}:</b>')
         for i, t in enumerate(top, 1):
             lines.append(f'  {i}. {t["product_name"]} — {int(t["qty"])} pcs ({t["rev"]:,.0f} zł)')
 
