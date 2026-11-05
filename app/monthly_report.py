@@ -93,11 +93,17 @@ def collect_gopos(month: str) -> dict:
     n, paid = 0, 0.0
     hours, emp = Counter(), Counter()
     disc = defaultdict(lambda: {'orders': 0, 'value': 0.0})
+    vat = defaultdict(lambda: {'net': 0.0, 'tax': 0.0, 'gross': 0.0})  # by VAT rate, straight from the POS
     d = first
     while d <= last:
-        for o in fetch_closed_orders(d.isoformat(), 'employee,promotions'):
+        for o in fetch_closed_orders(d.isoformat(), 'employee,promotions,tax_items'):
             n += 1
             paid += (o.get('total_price') or {}).get('amount', 0)
+            for t in o.get('tax_items') or []:
+                v = vat[f'{t.get("tax_amount", 0):g}%']
+                v['net'] += (t.get('total_price_net') or {}).get('amount', 0)
+                v['tax'] += (t.get('total_price_tax') or {}).get('amount', 0)
+                v['gross'] += (t.get('total_price_gross') or {}).get('amount', 0)
             h = int((o.get('closed_at') or '00T00')[11:13] or 0)
             hours[next(lbl for lbl, lo, hi in HOUR_BUCKETS if lo <= h < hi)] += 1
             emp[(o.get('employee') or {}).get('name') or '—'] += 1
@@ -107,7 +113,8 @@ def collect_gopos(month: str) -> dict:
                 e['value'] += (p.get('used') or {}).get('amount', 0)
         d += timedelta(days=1)
     return {'orders': n, 'avg_ticket': paid / n if n else 0, 'hours': dict(hours),
-            'employees': dict(emp), 'discounts': {k: dict(v) for k, v in disc.items()}}
+            'employees': dict(emp), 'discounts': {k: dict(v) for k, v in disc.items()},
+            'vat': {k: dict(v) for k, v in vat.items()}}
 
 
 def collect(month: str) -> dict:
@@ -174,8 +181,18 @@ def format_numbers(cur_m: str, prev_m: str, cur: dict, prev: dict, cmp: dict) ->
     if cur.get('gopos_ok') and prev.get('gopos_ok'):
         L.append(f'🧾 Замовлень: {zl(cur["orders"])} ({fmt_pct(pct(cur["orders"], prev["orders"]))}) · '
                  f'чек {cur["avg_ticket"]:.2f} zł ({fmt_pct(pct(cur["avg_ticket"], prev["avg_ticket"]))})')
-    L.append(f'🏷 Знижки: {zl(cur["discount"])} zł ({fmt_pct(pct(cur["discount"], prev["discount"]))}) · '
-             f'нетто без ПДВ {zl(cur["net"])} zł')
+    L.append(f'🏷 Знижки: {zl(cur["discount"])} zł ({fmt_pct(pct(cur["discount"], prev["discount"]))})')
+    if cur.get('vat'):  # from the POS receipts (exact); falls back to DB net otherwise
+        tax = sum(v['tax'] for v in cur['vat'].values())
+        net = sum(v['net'] for v in cur['vat'].values())
+        ptax = sum(v['tax'] for v in (prev.get('vat') or {}).values())
+        rates = ' · '.join(f'{k} {zl(v["tax"])}' for k, v in
+                           sorted(cur['vat'].items(), key=lambda kv: -kv[1]['tax']) if v['tax'] >= 1)
+        L.append(f'🏛 ПДВ з продажів: <b>{zl(tax)} zł</b> ({fmt_pct(pct(tax, ptax))}) · нетто {zl(net)} zł')
+        if rates:
+            L.append(f'   за ставками: {rates}')
+    else:
+        L.append(f'🏛 Нетто без ПДВ: {zl(cur["net"])} zł · ПДВ ≈ {zl(cur["revenue"] - cur["net"])} zł')
 
     L += ['', '<b>Дні тижня</b> (середнє за день):']
     for wd in range(7):

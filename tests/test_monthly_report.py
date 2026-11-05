@@ -13,7 +13,9 @@ def _stats(revenue, days, weekday_avg, products, discount=0, expenses=None, gopo
         s.update(orders=days * 100, avg_ticket=revenue / (days * 100),
                  hours={'ранок до 10': 10, 'обід 10–15': 50, 'вечір 15+': 20},
                  employees={'Alina': 70, 'Barista': 30},
-                 discounts={'Staff': {'orders': 10, 'value': 500.0}, 'write-off': {'orders': 2, 'value': 40.0}})
+                 discounts={'Staff': {'orders': 10, 'value': 500.0}, 'write-off': {'orders': 2, 'value': 40.0}},
+                 vat={'23%': {'net': revenue * 0.5 / 1.23, 'tax': revenue * 0.5 * 0.23 / 1.23, 'gross': revenue * 0.5},
+                      '8%': {'net': revenue * 0.5 / 1.08, 'tax': revenue * 0.5 * 0.08 / 1.08, 'gross': revenue * 0.5}})
     return s
 
 
@@ -48,6 +50,8 @@ def test_format_has_key_lines_and_expense_note():
     text = mr.format_numbers('2026-10', '2026-09', cur, prev, mr.compare('2026-10', cur, prev))
     assert 'Жовтень 2026' in text and '137 000 zł' in text and 'З поправкою на календар' in text
     assert 'Staff: 10×' in text and 'Barista 30' in text
+    # 137 000: 68 500 @23% → 12 809 tax, 68 500 @8% → 5 074 tax
+    assert '🏛 ПДВ з продажів: <b>17 883 zł</b>' in text and 'за ставками: 23% 12 809 · 8% 5 074' in text
     assert 'немає даних за Жовтень 2026, Вересень 2026' in text
     assert '<1' not in text  # no raw '<' that would break Telegram HTML
 
