@@ -11,6 +11,9 @@ Internal management system for **The Frame Cafe** (Warsaw). FastAPI + SQLite + J
 - **Invoice AI** — Claude Haiku 4.5 (vision) parses PDF invoices, maps items to inventory
 - **GoPOS Sync** — Playwright scraper syncs sales daily at 21:00 UTC
 - **Telegram Bot** — daily reports, sync alerts, price change notifications
+- **Monthly report** — 1st of the month 06:30 UTC: last month vs the month before (calendar-adjusted
+  like-for-like, weekdays, hours, categories, movers, discounts, staff) + AI summary (Claude Sonnet 4.5,
+  `MONTHLY_REPORT_MODEL_ID`). Manual: `docker exec cafe-manager-cafe-1 python3 scripts/monthly_report.py 2026-10 --admin`
 
 ## Deployment
 

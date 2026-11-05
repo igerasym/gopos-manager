@@ -49,6 +49,21 @@ async def lifespan(app: FastAPI):
         threading.Thread(target=run, daemon=True).start()
 
     scheduler.add_job(scheduled_daily, CronTrigger(hour=19, minute=0))
+
+    async def scheduled_monthly():
+        """1st of the month: last month vs the month before, numbers + AI summary."""
+        import threading
+        def run():
+            try:
+                from app.monthly_report import send_monthly_report
+                send_monthly_report()
+            except Exception as e:
+                from app.telegram_bot import alert_admin
+                alert_admin('Monthly report', e)
+        threading.Thread(target=run, daemon=True).start()
+
+    # 06:30 UTC = 07:30/08:30 Warsaw; last month's sales are complete after the 19:00 daily sync
+    scheduler.add_job(scheduled_monthly, CronTrigger(day=1, hour=6, minute=30))
     scheduler.start()
 
     # Sync products catalog on startup (categories, prices from API)
