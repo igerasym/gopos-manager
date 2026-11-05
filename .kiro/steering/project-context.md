@@ -13,20 +13,29 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 ## Tech Stack
 - Python 3.11, FastAPI, Uvicorn, Jinja2, SQLite (`data/cafe.db`)
 - GoPos REST API for sales sync (replaced Playwright in May 2026)
-- APScheduler for daily auto-sync at 21:00 UTC (23:00 CEST)
+- APScheduler (`app/main.py`): daily job at **19:00 UTC** (sync → daily report → invoices), monthly report on the 1st at 06:30 UTC
 - Google Drive API + AWS Bedrock Claude for invoice parsing
 - Telegram bot for alerts
 - Docker container, nginx reverse proxy
 - No JS frameworks — vanilla JS only
 
 ## Deployment
-- EC2 instance: us-west-2, 52.39.186.224 (shared with catchmyactions.com)
-- SSH key: `~/git/cafe-manager/catchmyaction-key.pem`, user `ec2-user`
-- Docker container on port 8000, nginx on port 80
-- Deploy: `git push` then SSH: `cd cafe-manager && git pull && docker compose up -d --build`
-- Docker image: ~380MB (python:3.11-slim + deps, no Chromium)
-- Auto-sync at 21:00 UTC, Telegram alerts on failure
-- **Never push DB to prod** — prod DB is source of truth
+- EC2 instance: us-west-2, 52.39.186.224, AWS account 923917779583 — **shared with catchmyactions.com**
+  (containers `app-app-1`, `app-postgres-1`). Never touch those; cafe is `cafe-manager-cafe-1` only.
+- SSH as `ec2-user`. Agent key: `~/.ssh/kiro-cma-deploy` on Yaroslav's Mac (use `-o IdentitiesOnly=yes`).
+  Port 22 is open only to the owner's IP.
+- Repo on host: `~/cafe-manager` (live checkout, untracked `.env` + `data/` mounted into the container).
+  Docker container on port 8000 (localhost only via nginx), nginx on port 80.
+- **Auto-deploy**: merge to `main` → within ~5 min live. `deploy/auto-deploy.sh` (installed as
+  `~/bin/cafe-auto-deploy.sh`, systemd user timer `cafe-autodeploy.timer`) builds in `~/cafe-build`,
+  swaps only `cafe`, health-checks `:8000` (302 = up), auto-rollback, Telegram alert to admin.
+  Log `~/cafe-deploy.log`. Shares `~/.deploy.lock` with the CatchMyAction deployer (2 GB RAM — never two builds).
+  Do NOT deploy by hand with `docker compose up --build` after a merge — let the timer do it.
+- Disk is tight (~85% of 20 GB): keep only 2 rollback images, delete backups you no longer need.
+- Docker image: ~380MB (python:3.11-slim + deps, no Chromium). Image contains `app/` and `scripts/` only.
+- Run code in prod context: `docker compose exec -T cafe python -c "..."` (cwd `/app`, `.env` loaded).
+- **Never push DB to prod** — prod DB is source of truth. Back up before bulk writes:
+  sqlite `backup()` into `/app/data/backups/` (host `~/cafe-manager/data/backups/`).
 - Admin password on prod: stored in `.env` (not in git)
 
 ## GoPos Integration
@@ -40,12 +49,34 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - `GET /api/v3/{org}/categories` — GoPos categories (Coffee, Kitchen, Bakery, Bar, Beans, Ice Cream, Soft Drinks, Brewware)
 - Variant groups via `item_group_id` — "Cappuccino Cappuccino" + "Cappuccino Iced" = group 3
 - GoPos "business day" = 06:00 → next day 05:00 (closed_at_from/to filter)
-- Auto-sync at 21:00 UTC: sync_products() + sync_orders_for_date(today) + deduct_inventory()
+- Daily job 19:00 UTC: sync_products() + sync_orders_for_date(today) + deduct_inventory()
+- Real-time: GoPos webhook `POST /api/webhook/gopos` adds each closed order to `sales` (incremental);
+  the daily full sync overwrites the day, so a missed/double webhook is fixed by evening
 - Missing days auto-detected on container start
 - No Playwright, no Chromium, no swap needed
 
+### GoPos API gotchas (verified 2026-11)
+- **`sub_total_price` = price BEFORE discount, `total_price` = AFTER** (counter-intuitive). Staff drink: sub 22, total 0.
+- Max **page < 50** per query (page 50 → 422). Fetch per business day — `fetch_closed_orders(date, include)`.
+- Order item names need `include=items,items.product`; items carry `item_id` → catalog `items.tax_id` →
+  `GET taxes` (23/8/5/0%). ~30 items/day have an item_id NOT in the catalog (variants) → `order_item_amounts()`
+  gives them the order's residual net so per-order net matches `total_price_net` exactly.
+- Useful includes: `employee` (who was logged in on the POS), `promotions` (discount name + `used` amount),
+  `tax_items` (exact net/tax/gross per VAT rate per receipt).
+- Discount (promotion) names: `Staff` (staff drinks), `write-off` (spoiled goods), `Owner`, `Friends/Staff`,
+  `50% Cookie Countdown` (end-of-day half price), `Apology treat`, `15`.
+- Employees: Alina, Alya, Nastia + shared account **`Barista`** (can't attribute those orders to a person).
+- `work_times` (clock-in) exists but is barely used (last entry Aug 2026) — don't rely on it for shifts.
+- No to-go flag: every order is `type=DINE_IN`.
+- `sync_date()` / `sync_range()` also DEDUCT INVENTORY. To re-import money fields only, use
+  **`resync_sales(from, to)`** (no inventory side effects). History was resynced 2026-05-25 → 2026-11-05.
+
 ## Database Schema
-- **sales**: date, product_name, quantity, total_money, net_total, discount, net_profit. UNIQUE(date, product_name)
+- **sales**: date, product_name, quantity, total_money, net_total, discount, net_profit. UNIQUE(date, product_name).
+  Meaning (same as the old GoPos export, fixed for API data in Nov 2026):
+  `total_money` = paid gross (incl. VAT, after discount) — this is "Revenue";
+  `net_total` = paid net (excl. VAT); `discount` = discount amount gross;
+  `net_profit` = gross price BEFORE discount (legacy name — it is NOT profit).
 - **ingredients**: name, unit, quantity, min_quantity, unit_price (BRUTTO), supplier_id
 - **recipes**: product_name, ingredient_id, amount. UNIQUE(product_name, ingredient_id)
 - **recipe_cards**: product_name (PK), category, portion_weight, description
@@ -125,14 +156,30 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - Then second call for classification + ingredient mapping
 - IAM role `CatchMyActions-EC2-Role` has `AmazonBedrockFullAccess` and `AmazonTextractFullAccess`
 - Note: Claude 3 Haiku and 3.5 Haiku are marked Legacy by Anthropic for new accounts — use Haiku 4.5
+- **Monthly report summary:** Claude Sonnet 4.5 (`us.anthropic.claude-sonnet-4-5-20250929-v1:0`,
+  env `MONTHLY_REPORT_MODEL_ID`), ~5k tokens/month ≈ $0.03. Sonnet 4 is not enabled in this account.
+- ⚠️ **The first call to any not-yet-used Bedrock model auto-creates an AWS Marketplace agreement**
+  (Anthropic) on account 923917779583. Ask the owner BEFORE calling a new model, even for a quick test.
 
-## Telegram Bot
-- Token and chat_id in `.env` on prod (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
-- TELEGRAM_CHAT_ID accepts several comma-separated ids; reports/alerts go to each one's DM
-- Daily report after sync: revenue, top 5, low stock
-- Sync failure alerts
-- Invoice processing notifications
-- Price change alerts (≥10%)
+## Telegram Bot (`app/telegram_bot.py`)
+- Token and chat ids in `.env` on prod: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` = comma-separated
+  (Yaroslav first, his partner 380004220 second). Each recipient gets it in their own DM.
+- **Admin vs functional**: `ADMIN_CHAT_ID` = `TELEGRAM_ADMIN_CHAT_ID` or the first id. Partner gets only
+  functional messages; admin also gets technical ones. Use `send_message()` for functional, `send_admin()` /
+  `alert_admin(where, exc)` for technical. Never `except: pass` in jobs — call `alert_admin`.
+- Daily report: revenue, items, 👤 Shift (employee per order), ☕ Staff drinks (Coffee items ≥5 zł under
+  `Staff` discount), 🗑 Write-off, 🏆 Top 7. Blocks appear only when non-empty. Admin gets a 🔧 debug
+  footer ONLY when something is wrong (GoPos failed, DB revenue ≠ GoPos paid, last sync not `done`) —
+  the owner explicitly doesn't want healthy debug noise.
+- Monthly report (`app/monthly_report.py`): last month vs month before — calendar-adjusted like-for-like
+  (prev weekday averages × current calendar), weekdays + weekend trend, hours, categories, movers, new/gone,
+  discounts by type, POS accounts, VAT by rate (from `tax_items`), expenses/P&L if invoices exist; plus an
+  AI summary written ONLY from precomputed numbers (model must not compute its own %).
+  Manual: `docker compose exec -T cafe python3 scripts/monthly_report.py 2026-10 --admin|--print`.
+- Invoice summaries (functional) / parse errors (admin), price change alerts ≥10% (functional),
+  deploy alerts (admin).
+- The bot does NOT read incoming messages yet (`handle_command` is unwired) — interactive chat is planned:
+  long polling (no public webhook), allowlist = TELEGRAM_CHAT_ID, read-only tools, Haiku, no message text in logs.
 
 ## Pages & Features
 
@@ -199,7 +246,17 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - Signature Coffee Sunset Espresso Tonic (espresso + lavender syrup + OJ + tonic)
 - Signature Coffee Cherry Ice Latte (espresso + cherry syrup + milk)
 
+## Sep vs Oct 2026 snapshot (for context)
+- Revenue Sep 130.2k → Oct 137.1k zł (+5.3%) but calendar-adjusted ≈ 0%; avg ticket flat ~37.5 zł.
+- Lunch 10–15 up, mornings (<10) −10%, Mondays −14%, weekends weakening in the 2nd half of October.
+- Autumn signatures (Pumpkin Spice Latte, Mulled Filter, Napar) ~9k; iced summer drinks collapsed.
+- VAT on sales ~20k/month, ~85% of it at 23% (worth checking coffee VAT rates with the accountant).
+- October invoices not uploaded to Drive yet → no October P&L.
+
 ## What's Next (backlog)
+- Interactive Telegram chat with read-only tools (planned next)
+- Staff hygiene (not code): personal POS logins instead of `Barista`; record every write-off via `write-off`
+- VAT payable = sales VAT − invoice VAT (needs VAT split from invoices)
 - Try Nova 2 Lite to reduce LLM costs (~6x cheaper than Claude Haiku 4.5)
 - Auto-delivery creation on invoice approve
 - Waste tracking

@@ -44,7 +44,7 @@ systemctl --user daemon-reload && systemctl --user enable --now cafe-autodeploy.
 
 ```bash
 # Download prod DB first (source of truth)
-scp -i catchmyaction-key.pem ec2-user@52.39.186.224:cafe-manager/data/cafe.db data/
+scp -i ~/.ssh/kiro-cma-deploy ec2-user@52.39.186.224:cafe-manager/data/cafe.db data/
 
 # Run
 pip install -r requirements.txt
