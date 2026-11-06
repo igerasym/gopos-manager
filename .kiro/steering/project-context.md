@@ -177,8 +177,10 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - Then second call for classification + ingredient mapping
 - IAM role `CatchMyActions-EC2-Role` has `AmazonBedrockFullAccess` and `AmazonTextractFullAccess`
 - Note: Claude 3 Haiku and 3.5 Haiku are marked Legacy by Anthropic for new accounts — use Haiku 4.5
-- **Monthly report summary:** Claude Sonnet 4.5 (`us.anthropic.claude-sonnet-4-5-20250929-v1:0`,
-  env `MONTHLY_REPORT_MODEL_ID`), ~5k tokens/month ≈ $0.03. Sonnet 4 is not enabled in this account.
+- **Monthly report summary:** Claude Haiku 4.5 (same default as invoices, env
+  `MONTHLY_REPORT_MODEL_ID`), ~5k tokens/month, well under $0.01. It was Sonnet 4.5 until 2026-11-06;
+  Sonnet 4.5 is Legacy (EOL 2027-04-08) and nothing in the repo calls it any more. Its Marketplace
+  agreement can be cancelled by the owner. Sonnet 4 is not enabled in this account.
 - ⚠️ **The first call to any not-yet-used Bedrock model auto-creates an AWS Marketplace agreement**
   (Anthropic) on account 923917779583. Ask the owner BEFORE calling a new model, even for a quick test.
 
