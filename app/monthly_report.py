@@ -15,7 +15,8 @@ from app.db import get_db
 
 log = logging.getLogger(__name__)
 
-SUMMARY_MODEL_ID = os.getenv('MONTHLY_REPORT_MODEL_ID', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0')
+# Haiku 4.5 (same model as invoices): Sonnet 4.5 is Legacy, end-of-life 2027-04-08.
+SUMMARY_MODEL_ID = os.getenv('MONTHLY_REPORT_MODEL_ID', 'us.anthropic.claude-haiku-4-5-20251001-v1:0')
 MONTHS_UA = ['', 'Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень',
              'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень']
 WEEKDAYS_UA = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд']
