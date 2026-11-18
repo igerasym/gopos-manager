@@ -99,6 +99,9 @@ async def edit_ingredient(
         db.execute('UPDATE ingredients SET min_quantity = ? WHERE id = ?', (min_quantity, ingredient_id))
     if unit_price is not None:
         db.execute('UPDATE ingredients SET unit_price = ? WHERE id = ?', (unit_price, ingredient_id))
+        # Recalculate any sub-recipes that use this ingredient
+        from app.services.recipes import recalc_sub_recipes_for_ingredient
+        recalc_sub_recipes_for_ingredient(db, ingredient_id)
     if supplier_id is not None:
         db.execute('UPDATE ingredients SET supplier_id = ? WHERE id = ?', (supplier_id if supplier_id else None, ingredient_id))
     db.commit()

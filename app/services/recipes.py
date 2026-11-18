@@ -127,3 +127,19 @@ def recalc_sub_recipe_cost(db, sub_id):
     cost_per_unit = total_cost / sr['yield_amount'] if sr['yield_amount'] > 0 else 0
     db.execute('UPDATE ingredients SET unit_price = ? WHERE id = ?',
                (round(cost_per_unit, 4), sr['ingredient_id']))
+
+
+def recalc_sub_recipes_for_ingredient(db, ingredient_id: int):
+    """After updating ingredient unit_price, recalculate all sub-recipes that use it.
+
+    A sub-recipe's cost is derived from its raw ingredient prices (recalc_sub_recipe_cost).
+    When an invoice updates a raw ingredient's price, any sub-recipe that includes that
+    ingredient gets a stale cost until the next manual edit — this fixes it automatically.
+    """
+    affected = db.execute('''
+        SELECT DISTINCT sri.sub_recipe_id
+        FROM sub_recipe_items sri
+        WHERE sri.ingredient_id = ?
+    ''', (ingredient_id,)).fetchall()
+    for row in affected:
+        recalc_sub_recipe_cost(db, row['sub_recipe_id'])
