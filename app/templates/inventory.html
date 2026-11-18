@@ -78,10 +78,12 @@
                 <label>К-сть (<span id="delivery-unit">{{ items[0]['unit'] if items else '' }}</span>)</label>
                 <input name="quantity" type="number" step="0.01" class="form-control" required>
             </div>
+            {% if is_admin %}
             <div class="form-group" style="flex:0 0 100px;">
                 <label>Ціна zł</label>
                 <input name="price" type="number" step="0.01" value="0" class="form-control">
             </div>
+            {% endif %}
             <div class="form-group" style="flex:1;">
                 <label>Постачальник</label>
                 <select name="supplier_id" class="form-control">
@@ -115,7 +117,7 @@
                 <th style="width:25%;">Назва</th>
                 <th class="text-right" style="width:10%;">Запас</th>
                 <th style="width:6%;">Од.</th>
-                <th class="text-right hide-mobile" style="width:10%;">Ціна/од.</th>
+                {% if is_admin %}<th class="text-right hide-mobile" style="width:10%;">Ціна/од.</th>{% endif %}
                 <th class="text-right hide-mobile" style="width:9%;">Мін.</th>
                 <th class="hide-mobile" style="width:18%;">Постачальник</th>
                 <th style="width:6%;">Статус</th>
@@ -158,12 +160,14 @@
                         <button class="btn btn-primary save-btn" type="submit">✓</button>
                     </form>
                 </td>
+                {% if is_admin %}
                 <td class="text-right hide-mobile">
                     <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
                         <input type="number" name="unit_price" value="{{ i['unit_price'] or 0 }}" step="any">
                         <button class="btn btn-primary save-btn" type="submit">✓</button>
                     </form>
                 </td>
+                {% endif %}
                 <td class="text-right hide-mobile">
                     <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
                         <input type="number" name="min_quantity" value="{{ i['min_quantity'] }}" step="any">
@@ -189,7 +193,7 @@
                     {% endif %}
                 </td>
                 <td class="text-right">
-                    {% if i['unit_price'] and i['unit_price'] > 0 %}
+                    {% if is_admin and i['unit_price'] and i['unit_price'] > 0 %}
                     <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--accent);"
                             onclick="showPriceHistory({{ i['id'] }}, '{{ i['name']|e }}')">📈</button>
                     {% endif %}

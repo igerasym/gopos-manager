@@ -138,7 +138,12 @@ tr:hover td { background: #f8fafc; }
 @media (max-width: 768px) {
     .grid-4, .grid-5 { grid-template-columns: repeat(2, 1fr); }
     .grid-2, .grid-3 { grid-template-columns: 1fr; }
-    .form-row { flex-direction: column; }
+    /* Stack form fields full width. `align-items: end` (desktop) would push them to the
+       right edge, and inline `flex: 0 0 100px` would become a 100px *height* in a column. */
+    .form-row { flex-direction: column; align-items: stretch; }
+    .form-row > .form-group { flex: 0 0 auto !important; width: 100%; }
+    /* Wide tables scroll inside their card instead of widening the whole page. */
+    .card { overflow-x: auto; }
     .bar-label { width: 100px; }
 
     /* Mobile nav */
