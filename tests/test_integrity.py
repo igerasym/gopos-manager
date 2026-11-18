@@ -179,3 +179,82 @@ def test_api_get_all_starts_at_page_zero_and_stops_before_50():
     with patch.object(ga, 'api_get', side_effect=fake):
         rows = ga.api_get_all('items')
     assert calls[0] == 0 and max(calls) == 49 and len(rows) == 50
+
+
+# ─── sub-recipe cost cascade ───
+
+def test_sub_recipe_cost_updates_when_ingredient_price_changes():
+    """Updating a raw ingredient price must cascade to sub-recipes that use it."""
+    from app.services.recipes import recalc_sub_recipes_for_ingredient
+    db = get_db()
+    # Set up: ingredient Молоко priced at 2.00 per L
+    db.execute("INSERT INTO ingredients (id, name, unit, quantity, unit_price) VALUES (1, 'Молоко', 'L', 10, 2.0)")
+    # Sub-recipe: Вершки (yield 0.5 L from 1 L молока)
+    db.execute("INSERT INTO ingredients (id, name, unit, quantity, unit_price) VALUES (2, 'Вершки', 'L', 0, 0)")
+    db.execute("INSERT INTO sub_recipes (id, ingredient_id, yield_amount, yield_unit) VALUES (1, 2, 0.5, 'L')")
+    db.execute("INSERT INTO sub_recipe_items (sub_recipe_id, ingredient_id, amount) VALUES (1, 1, 1.0)")
+    db.commit()
+    # Recalc initial cost: 1.0 L × 2.0 / 0.5 yield = 4.0 per L
+    recalc_sub_recipes_for_ingredient(db, 1)
+    db.commit()
+    cost_before = db.execute("SELECT unit_price FROM ingredients WHERE id=2").fetchone()['unit_price']
+    assert cost_before == 4.0
+
+    # Supplier raises price to 3.00
+    db.execute("UPDATE ingredients SET unit_price = 3.0 WHERE id = 1")
+    recalc_sub_recipes_for_ingredient(db, 1)
+    db.commit()
+    cost_after = db.execute("SELECT unit_price FROM ingredients WHERE id=2").fetchone()['unit_price']
+    # Expected: 1.0 × 3.0 / 0.5 = 6.0
+    assert cost_after == 6.0
+
+
+def test_sub_recipe_not_affected_when_unrelated_ingredient_changes():
+    """Changing price of an ingredient not in a sub-recipe must not alter it."""
+    from app.services.recipes import recalc_sub_recipes_for_ingredient
+    db = get_db()
+    db.execute("INSERT INTO ingredients (id, name, unit, quantity, unit_price) VALUES (1, 'Молоко', 'L', 10, 2.0)")
+    db.execute("INSERT INTO ingredients (id, name, unit, quantity, unit_price) VALUES (2, 'Вершки', 'L', 0, 4.0)")
+    db.execute("INSERT INTO ingredients (id, name, unit, quantity, unit_price) VALUES (3, 'Цукор', 'kg', 5, 1.0)")
+    db.execute("INSERT INTO sub_recipes (id, ingredient_id, yield_amount, yield_unit) VALUES (1, 2, 0.5, 'L')")
+    db.execute("INSERT INTO sub_recipe_items (sub_recipe_id, ingredient_id, amount) VALUES (1, 1, 1.0)")
+    db.commit()
+    # Update unrelated ingredient
+    db.execute("UPDATE ingredients SET unit_price = 5.0 WHERE id=3")
+    recalc_sub_recipes_for_ingredient(db, 3)
+    db.commit()
+    cost = db.execute("SELECT unit_price FROM ingredients WHERE id=2").fetchone()['unit_price']
+    assert cost == 4.0  # unchanged
+
+
+# ─── stock count clears deductions ───
+
+def test_stock_count_clears_todays_deductions():
+    """After saving a stock count the deductions for today must be cleared
+    so the next 04:30 re-sync deducts from the counted (real) stock."""
+    from app.gopos_sync import deduct_inventory
+    from app.main import app
+    db = get_db()
+    db.execute("INSERT INTO users (id, username, password_hash, role) VALUES (1,'admin','x:y','admin')")
+    db.execute("INSERT INTO ingredients (id, name, unit, quantity, min_quantity) VALUES (1,'Молоко','L',5,0)")
+    db.execute("INSERT INTO recipes (product_name, ingredient_id, amount) VALUES ('Latte', 1, 0.3)")
+    db.execute("INSERT INTO sales (date, product_name, quantity) VALUES ('2026-11-18', 'Latte', 2)")
+    db.commit()
+    deduct_inventory('2026-11-18')
+    before = db.execute("SELECT COUNT(*) FROM inventory_deductions WHERE date='2026-11-18'").fetchone()[0]
+    assert before == 1
+
+    client = TestClient(app)
+    from app.auth import sign_cookie
+    # POST the stock count with the actual quantity
+    r = client.post(
+        '/inventory/count',
+        data={'qty_1': '4.4'},
+        cookies={'session': sign_cookie('admin')},
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 303)
+    after = db.execute("SELECT COUNT(*) FROM inventory_deductions WHERE date='2026-11-18'").fetchone()[0]
+    assert after == 0, "deductions for today must be wiped after a stock count"
+    stock = db.execute("SELECT quantity FROM ingredients WHERE id=1").fetchone()['quantity']
+    assert stock == 4.4

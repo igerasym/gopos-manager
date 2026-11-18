@@ -263,6 +263,8 @@ def _handle_resale_mapping(db, m: dict, invoice_db_id: int) -> tuple:
                     'INSERT INTO ingredient_price_history (ingredient_id, price, invoice_id) VALUES (?, ?, ?)',
                     (ing_id, new_price, invoice_db_id)
                 )
+                from app.services.recipes import recalc_sub_recipes_for_ingredient
+                recalc_sub_recipes_for_ingredient(db, ing_id)
     else:
         cur = db.execute(
             "INSERT INTO ingredients (name, unit, quantity, min_quantity, unit_price, kind) VALUES (?, 'szt', 0, 1, ?, 'resale')",
@@ -294,6 +296,8 @@ def _handle_match_mapping(db, m: dict, ing_id: int, invoice_db_id: int) -> tuple
                 'INSERT INTO ingredient_price_history (ingredient_id, price, invoice_id) VALUES (?, ?, ?)',
                 (ing_id, new_price, invoice_db_id)
             )
+            from app.services.recipes import recalc_sub_recipes_for_ingredient
+            recalc_sub_recipes_for_ingredient(db, ing_id)
         else:
             log.warning(f"Skipping price update for ingredient {ing_id}: {old_price} -> {new_price}")
 

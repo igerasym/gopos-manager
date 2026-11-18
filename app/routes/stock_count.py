@@ -58,6 +58,12 @@ async def save_stock_count(request: Request):
         )
         db.execute('UPDATE ingredients SET quantity = ? WHERE id = ?', (actual, item['id']))
 
+    # After a stock count we know the real on-hand quantity as of now.
+    # Clear today's inventory_deductions so that the next scheduled re-sync
+    # (04:30 UTC) re-applies deductions from scratch against the counted stock,
+    # rather than reversing and re-adding on top of an already-adjusted quantity.
+    db.execute('DELETE FROM inventory_deductions WHERE date = ?', (today,))
+
     db.commit()
     db.close()
     return RedirectResponse(f'/inventory/count/{count_id}', status_code=303)

@@ -351,6 +351,9 @@ async def approve_invoice(invoice_id: int, category: str = Form('Продукт�
                 (ing_id, new_price, invoice_id)
             )
             db.execute('UPDATE ingredients SET unit_price = ? WHERE id = ?', (new_price, ing_id))
+            # Recalculate any sub-recipes (напівфабрикати) that use this ingredient
+            from app.services.recipes import recalc_sub_recipes_for_ingredient
+            recalc_sub_recipes_for_ingredient(db, ing_id)
 
             from app.gdrive_invoices import check_price_alerts
             alert = check_price_alerts(ing_id, new_price, old_price)
@@ -471,6 +474,9 @@ async def confirm_item_mapping(item_id: int, action: str = Form(...), ingredient
                 'INSERT INTO ingredient_price_history (ingredient_id, price, invoice_id) VALUES (?, ?, ?)',
                 (ingredient_id, item['unit_price'], item['parsed_invoice_id'])
             )
+            # Recalculate any sub-recipes (напівфабрикати) that use this ingredient
+            from app.services.recipes import recalc_sub_recipes_for_ingredient
+            recalc_sub_recipes_for_ingredient(db, ingredient_id)
             # Price alert
             try:
                 from app.gdrive_invoices import check_price_alerts
