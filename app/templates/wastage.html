@@ -17,7 +17,9 @@
     <div class="card kpi">
         <div class="kpi-label">Всього списань</div>
         <div class="kpi-value">{{ rows|length }}</div>
-        <div class="kpi-change neutral">{{ current_month }}</div>
+        <div class="kpi-change neutral">
+            🤖 {{ gopos_count }} GoPos · ✋ {{ manual_count }} вручну
+        </div>
     </div>
     <div class="card kpi">
         <div class="kpi-label">Вартість списань</div>
@@ -85,7 +87,12 @@
             {% for r in rows %}
             <tr>
                 <td class="text-muted" style="font-size:.85em; white-space:nowrap;">{{ r['date'] }}</td>
-                <td style="font-weight:500;">{{ r['ingredient'] }}</td>
+                <td style="font-weight:500;">
+                    {{ r['label'] }}
+                    {% if r['source'] == 'gopos' %}
+                    <span class="badge" style="background:#dbeafe; color:#1d4ed8; font-size:.65em; vertical-align:middle; margin-left:4px;">GoPos</span>
+                    {% endif %}
+                </td>
                 <td class="text-right">{{ '{:.2f}'.format(r['quantity']) }}</td>
                 <td class="text-muted" style="font-size:.85em;">{{ r['unit'] }}</td>
                 <td class="text-right hide-mobile" style="color:var(--red); font-weight:500;">
@@ -96,10 +103,12 @@
                 </td>
                 <td class="hide-mobile text-muted" style="font-size:.82em;">{{ r['note'] or '' }}</td>
                 <td class="text-right">
+                    {% if r['source'] == 'manual' %}
                     <form method="post" action="/wastage/delete/{{ r['id'] }}">
                         <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
                                 onclick="if(confirm('Видалити запис і відновити запас?'))this.form.submit()">✕</button>
                     </form>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}
@@ -141,7 +150,7 @@
             <div class="form-group" style="margin-bottom:12px;">
                 <label>Причина</label>
                 <select name="reason" class="form-control">
-                    {% for r in reasons %}
+                    {% for r in manual_reasons %}
                     <option value="{{ r }}">{{ reason_ua[r] }}</option>
                     {% endfor %}
                 </select>

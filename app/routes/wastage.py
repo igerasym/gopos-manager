@@ -13,8 +13,9 @@ from app.db import get_db
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 router = APIRouter()
 
-REASONS = ['spoiled', 'broken', 'expired', 'overproduction', 'other']
+REASONS = ['write-off', 'spoiled', 'broken', 'expired', 'overproduction', 'other']
 REASON_UA = {
+    'write-off': 'Списання (GoPos)',
     'spoiled': 'Зіпсовано',
     'broken': 'Розбито/розлито',
     'expired': 'Прострочено',
@@ -31,20 +32,25 @@ async def wastage_page(request: Request, month: str = ''):
     month_end = f'{year + 1 if mon == 12 else year}-{1 if mon == 12 else mon + 1:02d}-01'
 
     db = get_db()
+
+    # Combined view: GoPos write-offs (by product) + manual (by ingredient)
     rows = db.execute('''
-        SELECT w.id, w.date, w.quantity, w.reason, w.note,
-               i.name as ingredient, i.unit, COALESCE(i.unit_price, 0) as unit_price,
+        SELECT w.id, w.date, w.quantity, w.reason, w.note, w.source,
+               COALESCE(i.name, w.product_name, '—') as label,
+               COALESCE(i.unit, '—') as unit,
+               COALESCE(i.unit_price, 0) as unit_price,
                w.quantity * COALESCE(i.unit_price, 0) as cost,
                u.display_name as user_name
         FROM wastage w
-        JOIN ingredients i ON w.ingredient_id = i.id
+        LEFT JOIN ingredients i ON w.ingredient_id = i.id
         LEFT JOIN users u ON w.user_id = u.id
         WHERE w.date >= ? AND w.date < ?
         ORDER BY w.date DESC, w.id DESC
     ''', (month_start, month_end)).fetchall()
 
-    # Totals
     total_cost = sum(r['cost'] for r in rows)
+    gopos_count = sum(1 for r in rows if r['source'] == 'gopos')
+    manual_count = len(rows) - gopos_count
 
     # By reason
     by_reason = {}
@@ -54,14 +60,14 @@ async def wastage_page(request: Request, month: str = ''):
         by_reason[key]['count'] += 1
         by_reason[key]['cost'] += r['cost']
 
-    # By ingredient (top losers)
-    by_ingredient = {}
+    # By product/ingredient (top losers — only where cost is known)
+    by_item = {}
     for r in rows:
-        key = r['ingredient']
-        by_ingredient.setdefault(key, {'qty': 0.0, 'cost': 0.0, 'unit': r['unit']})
-        by_ingredient[key]['qty'] += r['quantity']
-        by_ingredient[key]['cost'] += r['cost']
-    top_losers = sorted(by_ingredient.items(), key=lambda x: x[1]['cost'], reverse=True)[:10]
+        key = r['label']
+        by_item.setdefault(key, {'qty': 0.0, 'cost': 0.0, 'unit': r['unit']})
+        by_item[key]['qty'] += r['quantity']
+        by_item[key]['cost'] += r['cost']
+    top_losers = sorted(by_item.items(), key=lambda x: x[1]['cost'], reverse=True)[:10]
 
     ingredients = db.execute('SELECT id, name, unit FROM ingredients ORDER BY name').fetchall()
     months = db.execute('''
@@ -71,8 +77,10 @@ async def wastage_page(request: Request, month: str = ''):
 
     return templates.TemplateResponse(request, 'wastage.html', context={
         'rows': rows, 'total_cost': total_cost, 'current_month': current_month,
-        'by_reason': by_reason, 'reason_ua': REASON_UA, 'reasons': REASONS,
+        'by_reason': by_reason, 'reason_ua': REASON_UA,
+        'manual_reasons': [r for r in REASONS if r != 'write-off'],
         'top_losers': top_losers, 'ingredients': ingredients, 'months': months,
+        'gopos_count': gopos_count, 'manual_count': manual_count,
         'now_date': datetime.now().strftime('%Y-%m-%d'),
     })
 
@@ -97,7 +105,8 @@ async def add_wastage(
         (quantity, ingredient_id)
     )
     db.execute(
-        'INSERT INTO wastage (date, ingredient_id, quantity, reason, note, user_id) VALUES (?,?,?,?,?,?)',
+        'INSERT INTO wastage (date, ingredient_id, quantity, reason, note, source, user_id) '
+        'VALUES (?,?,?,?,?,\'manual\',?)',
         (today, ingredient_id, quantity, reason, note, user['id'])
     )
     db.commit()
@@ -108,13 +117,17 @@ async def add_wastage(
 @router.post('/wastage/delete/{wastage_id}')
 async def delete_wastage(wastage_id: int):
     db = get_db()
-    row = db.execute('SELECT ingredient_id, quantity, date FROM wastage WHERE id = ?', (wastage_id,)).fetchone()
+    row = db.execute(
+        'SELECT ingredient_id, quantity, date, source FROM wastage WHERE id = ?',
+        (wastage_id,)
+    ).fetchone()
     if row:
-        # Restore stock
-        db.execute(
-            'UPDATE ingredients SET quantity = quantity + ? WHERE id = ?',
-            (row['quantity'], row['ingredient_id'])
-        )
+        # Only restore stock for manual entries (GoPos entries don't double-deduct)
+        if row['source'] == 'manual' and row['ingredient_id']:
+            db.execute(
+                'UPDATE ingredients SET quantity = quantity + ? WHERE id = ?',
+                (row['quantity'], row['ingredient_id'])
+            )
         db.execute('DELETE FROM wastage WHERE id = ?', (wastage_id,))
         db.commit()
         month = row['date'][:7]
@@ -133,10 +146,12 @@ async def export_wastage_csv(month: str = ''):
 
     db = get_db()
     rows = db.execute('''
-        SELECT w.date, i.name, w.quantity, i.unit,
+        SELECT w.date, COALESCE(i.name, w.product_name, '—') as label,
+               w.quantity, COALESCE(i.unit, '—') as unit,
                w.quantity * COALESCE(i.unit_price, 0) as cost,
-               w.reason, w.note
-        FROM wastage w JOIN ingredients i ON w.ingredient_id = i.id
+               w.reason, w.note, w.source
+        FROM wastage w
+        LEFT JOIN ingredients i ON w.ingredient_id = i.id
         WHERE w.date >= ? AND w.date < ?
         ORDER BY w.date DESC
     ''', (month_start, month_end)).fetchall()
@@ -144,10 +159,11 @@ async def export_wastage_csv(month: str = ''):
 
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(['Дата', 'Інгредієнт', 'К-сть', 'Од.', 'Вартість (zł)', 'Причина', 'Примітка'])
+    w.writerow(['Дата', 'Позиція', 'К-сть', 'Од.', 'Вартість (zł)', 'Причина', 'Джерело', 'Примітка'])
     for r in rows:
-        w.writerow([r['date'], r['name'], r['quantity'], r['unit'],
-                    round(r['cost'], 2), REASON_UA.get(r['reason'], r['reason']), r['note'] or ''])
+        w.writerow([r['date'], r['label'], r['quantity'], r['unit'],
+                    round(r['cost'], 2), REASON_UA.get(r['reason'], r['reason']),
+                    'GoPos' if r['source'] == 'gopos' else 'Вручну', r['note'] or ''])
     buf.seek(0)
     return StreamingResponse(
         iter([buf.getvalue()]),
