@@ -13,12 +13,18 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates'
 router = APIRouter()
 
 
+def _is_admin(request: Request) -> bool:
+    user = getattr(request.state, 'user', None)
+    return bool(user and user['role'] == 'admin')
+
+
 @router.get('/inventory', response_class=HTMLResponse)
 async def inventory_page(request: Request, supplier: str = ''):
     items = get_all_ingredients(supplier)
     suppliers = get_suppliers()
     return templates.TemplateResponse(request, 'inventory.html', context={
         'items': items, 'suppliers': suppliers, 'active_supplier': supplier,
+        'is_admin': _is_admin(request),
     })
 
 
@@ -39,10 +45,13 @@ async def add_ingredient(
 
 @router.post('/inventory/delivery')
 async def add_delivery(
+    request: Request,
     ingredient_id: int = Form(...), quantity: float = Form(...),
     price: float = Form(0), note: str = Form(''),
     supplier_id: int = Form(None),
 ):
+    if not _is_admin(request):
+        price = 0  # chef/barista don't see or set prices
     db = get_db()
     db.execute(
         'INSERT INTO deliveries (ingredient_id, quantity, price, note, supplier_id) '
@@ -82,12 +91,15 @@ async def update_ingredient_unit(ingredient_id: int, unit: str = Form(...)):
 
 @router.post('/ingredients/edit/{ingredient_id}')
 async def edit_ingredient(
+    request: Request,
     ingredient_id: int,
     name: str = Form(None), quantity: float = Form(None),
     unit: str = Form(None), min_quantity: float = Form(None),
     unit_price: float = Form(None), supplier_id: int = Form(None),
     redirect: str = Form('/inventory'),
 ):
+    if not _is_admin(request):
+        unit_price = None  # only admin edits prices
     db = get_db()
     if name is not None:
         db.execute('UPDATE ingredients SET name = ? WHERE id = ?', (name, ingredient_id))

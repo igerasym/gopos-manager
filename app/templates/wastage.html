@@ -13,7 +13,7 @@
 </div>
 
 <!-- KPI -->
-<div class="grid-3" style="margin-bottom:16px;">
+<div class="{{ 'grid-3' if is_admin else 'grid-2' }}" style="margin-bottom:16px;">
     <div class="card kpi">
         <div class="kpi-label">Всього списань</div>
         <div class="kpi-value">{{ rows|length }}</div>
@@ -21,18 +21,20 @@
             🤖 {{ gopos_count }} GoPos · ✋ {{ manual_count }} вручну
         </div>
     </div>
+    {% if is_admin %}
     <div class="card kpi">
         <div class="kpi-label">Вартість списань</div>
         <div class="kpi-value" style="color:var(--red);">{{ '{:,.2f}'.format(total_cost) }} zł</div>
         <div class="kpi-change neutral">збитки місяця</div>
     </div>
+    {% endif %}
     <div class="card kpi">
         <div class="kpi-label">По причинах</div>
         <div style="margin-top:6px;">
             {% for r, data in by_reason.items() %}
             <div style="display:flex; justify-content:space-between; font-size:.82em; margin-bottom:3px;">
                 <span>{{ reason_ua.get(r, r) }}</span>
-                <span style="font-weight:600;">{{ '{:.2f}'.format(data['cost']) }} zł</span>
+                <span style="font-weight:600;">{% if is_admin %}{{ '{:.2f}'.format(data['cost']) }} zł{% else %}{{ data['count'] }}{% endif %}</span>
             </div>
             {% else %}
             <span class="text-muted" style="font-size:.85em;">Немає записів</span>
@@ -42,7 +44,7 @@
 </div>
 
 <!-- Top losers -->
-{% if top_losers %}
+{% if top_losers and is_admin %}
 <div class="card" style="margin-bottom:16px;">
     <div class="card-header">
         <div class="card-title">Топ-10 інгредієнтів за втратами</div>
@@ -77,7 +79,7 @@
                 <th>Інгредієнт</th>
                 <th class="text-right">К-сть</th>
                 <th style="width:6%;">Од.</th>
-                <th class="text-right hide-mobile">Вартість</th>
+                {% if is_admin %}<th class="text-right hide-mobile">Вартість</th>{% endif %}
                 <th>Причина</th>
                 <th class="hide-mobile">Примітка</th>
                 <th style="width:40px;"></th>
@@ -95,9 +97,11 @@
                 </td>
                 <td class="text-right">{{ '{:.2f}'.format(r['quantity']) }}</td>
                 <td class="text-muted" style="font-size:.85em;">{{ r['unit'] }}</td>
+                {% if is_admin %}
                 <td class="text-right hide-mobile" style="color:var(--red); font-weight:500;">
                     {% if r['cost'] > 0 %}{{ '{:.2f}'.format(r['cost']) }} zł{% else %}—{% endif %}
                 </td>
+                {% endif %}
                 <td>
                     <span class="badge" style="background:#fef3c7; color:#92400e; font-size:.75em;">{{ reason_ua.get(r['reason'], r['reason']) }}</span>
                 </td>

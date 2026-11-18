@@ -24,6 +24,11 @@ REASON_UA = {
 }
 
 
+def _is_admin(request: Request) -> bool:
+    user = getattr(request.state, 'user', None)
+    return bool(user and user['role'] == 'admin')
+
+
 @router.get('/wastage', response_class=HTMLResponse)
 async def wastage_page(request: Request, month: str = ''):
     current_month = month or datetime.now().strftime('%Y-%m')
@@ -81,6 +86,7 @@ async def wastage_page(request: Request, month: str = ''):
         'manual_reasons': [r for r in REASONS if r != 'write-off'],
         'top_losers': top_losers, 'ingredients': ingredients, 'months': months,
         'gopos_count': gopos_count, 'manual_count': manual_count,
+        'is_admin': _is_admin(request),
         'now_date': datetime.now().strftime('%Y-%m-%d'),
     })
 
@@ -138,7 +144,7 @@ async def delete_wastage(wastage_id: int):
 
 
 @router.get('/export/wastage.csv')
-async def export_wastage_csv(month: str = ''):
+async def export_wastage_csv(request: Request, month: str = ''):
     current_month = month or datetime.now().strftime('%Y-%m')
     month_start = current_month + '-01'
     year, mon = int(current_month[:4]), int(current_month[5:7])
@@ -159,11 +165,17 @@ async def export_wastage_csv(month: str = ''):
 
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(['Дата', 'Позиція', 'К-сть', 'Од.', 'Вартість (zł)', 'Причина', 'Джерело', 'Примітка'])
+    show_cost = _is_admin(request)
+    header = ['Дата', 'Позиція', 'К-сть', 'Од.']
+    if show_cost:
+        header.append('Вартість (zł)')
+    w.writerow(header + ['Причина', 'Джерело', 'Примітка'])
     for r in rows:
-        w.writerow([r['date'], r['label'], r['quantity'], r['unit'],
-                    round(r['cost'], 2), REASON_UA.get(r['reason'], r['reason']),
-                    'GoPos' if r['source'] == 'gopos' else 'Вручну', r['note'] or ''])
+        row = [r['date'], r['label'], r['quantity'], r['unit']]
+        if show_cost:
+            row.append(round(r['cost'], 2))
+        w.writerow(row + [REASON_UA.get(r['reason'], r['reason']),
+                          'GoPos' if r['source'] == 'gopos' else 'Вручну', r['note'] or ''])
     buf.seek(0)
     return StreamingResponse(
         iter([buf.getvalue()]),
