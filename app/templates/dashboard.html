@@ -59,6 +59,25 @@
     </div>
 </div>
 
+<!-- Recipe coverage alert -->
+{% if recipe_coverage and recipe_coverage['without_recipe'] > 0 %}
+<div style="margin-bottom:16px; padding:12px 16px; border-radius:8px; background:{% if recipe_coverage['pct'] < 50 %}#fff3cd{% elif recipe_coverage['pct'] < 80 %}#fff8e6{% else %}#f0fdf4{% endif %}; border:1px solid {% if recipe_coverage['pct'] < 50 %}#ffc107{% elif recipe_coverage['pct'] < 80 %}#f59e0b{% else %}#86efac{% endif %}; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+    <div style="display:flex; align-items:center; gap:10px;">
+        <span style="font-size:1.3em;">{% if recipe_coverage['pct'] < 50 %}⚠️{% elif recipe_coverage['pct'] < 80 %}📋{% else %}✅{% endif %}</span>
+        <div>
+            <span style="font-weight:600;">Покриття техкартами: {{ recipe_coverage['pct'] }}%</span>
+            <span style="color:#666; font-size:.85em; margin-left:8px;">({{ recipe_coverage['with_recipe'] }} з {{ recipe_coverage['total'] }} продуктів)</span>
+            <div style="font-size:.82em; color:#666; margin-top:2px;">
+                Без рецепту: <strong>{{ recipe_coverage['without_recipe'] }} продуктів</strong> —
+                виручка <strong>{{ '{:,.0f}'.format(recipe_coverage['uncovered_revenue']) }} zł</strong>
+                ({{ recipe_coverage['uncovered_pct'] }}% від загального) без обліку food cost
+            </div>
+        </div>
+    </div>
+    <a href="/recipes" class="btn btn-sm btn-outline" style="white-space:nowrap; flex-shrink:0;">Заповнити рецепти →</a>
+</div>
+{% endif %}
+
 <!-- P&L Summary -->
 <div class="card" style="margin-bottom: 16px;">
     <div class="card-header">
@@ -249,6 +268,8 @@
             <div class="card-title">Всі продукти</div>
             <div class="card-subtitle">{{ sales|length }} продуктів · {{ date_from }}{% if date_from != date_to %} → {{ date_to }}{% endif %}</div>
         </div>
+        <a href="/export/sales.csv?date_from={{ date_from }}&date_to={{ date_to }}"
+           class="btn btn-sm btn-outline" download>⬇ CSV</a>
     </div>
     {% if sales %}
     <table id="products-table">

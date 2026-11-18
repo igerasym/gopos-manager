@@ -130,3 +130,24 @@ async def delete_ingredient(ingredient_id: int):
 @router.get('/api/ingredient/{ingredient_id}/deps')
 async def ingredient_deps_api(ingredient_id: int):
     return JSONResponse(get_ingredient_deps(ingredient_id))
+
+
+@router.get('/api/ingredient/{ingredient_id}/price-history')
+async def ingredient_price_history_api(ingredient_id: int):
+    """Last 20 price points for an ingredient (for sparkline chart)."""
+    db = get_db()
+    rows = db.execute('''
+        SELECT iph.price, iph.date, COALESCE(pi.vendor, pi.file_name, '') as source
+        FROM ingredient_price_history iph
+        LEFT JOIN parsed_invoices pi ON iph.invoice_id = pi.id
+        WHERE iph.ingredient_id = ?
+        ORDER BY iph.date DESC, iph.id DESC
+        LIMIT 20
+    ''', (ingredient_id,)).fetchall()
+    current = db.execute('SELECT unit_price, name FROM ingredients WHERE id = ?', (ingredient_id,)).fetchone()
+    db.close()
+    return JSONResponse({
+        'name': current['name'] if current else '',
+        'current_price': current['unit_price'] if current else 0,
+        'history': [{'price': r['price'], 'date': r['date'], 'source': r['source']} for r in reversed(rows)],
+    })

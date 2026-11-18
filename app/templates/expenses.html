@@ -83,6 +83,8 @@
 <div class="card">
     <div class="card-header">
         <div class="card-title">💰 Всі витрати — {{ current_month }}</div>
+        <a href="/export/expenses.csv?month={{ current_month }}"
+           class="btn btn-sm btn-outline" download>⬇ CSV</a>
     </div>
     {% if expenses %}
     <table>

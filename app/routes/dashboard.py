@@ -1,9 +1,11 @@
 """Dashboard route."""
+import csv
+import io
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
@@ -247,6 +249,21 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
         abc_counts[item['abc']] += 1
         abc_revenue[item['abc']] += item['total_money']
 
+    # ── Recipe coverage ──
+    total_products = len(sales_with_cost)
+    with_recipe = sum(1 for s in sales_with_cost if s['has_recipe'])
+    without_recipe = total_products - with_recipe
+    # Revenue that has no cost tracking
+    uncovered_revenue = sum(s['total_money'] for s in sales_with_cost if not s['has_recipe'])
+    recipe_coverage = {
+        'total': total_products,
+        'with_recipe': with_recipe,
+        'without_recipe': without_recipe,
+        'pct': round(with_recipe / total_products * 100) if total_products else 0,
+        'uncovered_revenue': uncovered_revenue,
+        'uncovered_pct': round(uncovered_revenue / totals['revenue'] * 100) if totals['revenue'] else 0,
+    }
+
     db.close()
     return templates.TemplateResponse(request, 'dashboard.html', context={
         'date_from': date_from, 'date_to': date_to,
@@ -260,4 +277,39 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
         'gross_margin': gross_margin, 'avg_food_cost': avg_food_cost,
         'abc_counts': abc_counts, 'abc_revenue': abc_revenue,
         'category_breakdown': category_list,
+        'recipe_coverage': recipe_coverage,
     })
+
+
+@router.get('/export/sales.csv')
+async def export_sales_csv(date_from: str = '', date_to: str = ''):
+    """Download sales as CSV for the given date range."""
+    today = datetime.now().strftime('%Y-%m-%d')
+    date_from = date_from or today
+    date_to = date_to or today
+    db = get_db()
+    rows = db.execute('''
+        SELECT date, product_name,
+               SUM(quantity) as quantity,
+               SUM(total_money) as total_money,
+               SUM(net_total) as net_total,
+               SUM(discount) as discount
+        FROM sales WHERE date >= ? AND date <= ?
+        GROUP BY date, product_name
+        ORDER BY date, product_name
+    ''', (date_from, date_to)).fetchall()
+    db.close()
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(['Дата', 'Продукт', 'К-сть', 'Виручка (брутто)', 'Виручка (нетто)', 'Знижка'])
+    for r in rows:
+        w.writerow([r['date'], r['product_name'], r['quantity'],
+                    round(r['total_money'], 2), round(r['net_total'], 2), round(r['discount'], 2)])
+    buf.seek(0)
+    fname = f'sales_{date_from}_{date_to}.csv'
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type='text/csv; charset=utf-8-sig',
+        headers={'Content-Disposition': f'attachment; filename="{fname}"'},
+    )

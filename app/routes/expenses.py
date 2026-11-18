@@ -1,4 +1,6 @@
 """Expenses routes (admin only)."""
+import csv
+import io
 import json
 import logging
 from datetime import datetime
@@ -6,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
@@ -528,3 +530,28 @@ async def get_invoice_items(invoice_id: int):
         'items': [dict(r) for r in items],
         'ingredients': [{'id': r['id'], 'name': r['name']} for r in ingredients],
     })
+
+
+@router.get('/export/expenses.csv')
+async def export_expenses_csv(month: str = ''):
+    """Download expenses as CSV for the given month."""
+    current_month = month or datetime.now().strftime('%Y-%m')
+    db = get_db()
+    rows = db.execute(
+        'SELECT name, category, amount, month, note FROM expenses WHERE month = ? ORDER BY category, amount DESC',
+        (current_month,)
+    ).fetchall()
+    db.close()
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(['Місяць', 'Категорія', 'Назва', 'Сума (zł)', 'Примітка'])
+    for r in rows:
+        w.writerow([r['month'], r['category'], r['name'], round(r['amount'], 2), r['note'] or ''])
+    buf.seek(0)
+    fname = f'expenses_{current_month}.csv'
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type='text/csv; charset=utf-8-sig',
+        headers={'Content-Disposition': f'attachment; filename="{fname}"'},
+    )
