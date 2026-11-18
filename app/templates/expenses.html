@@ -5,6 +5,7 @@
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; gap:12px; flex-wrap:wrap;">
     <h2 style="margin:0;">Витрати</h2>
     <div style="display:flex; gap:8px; align-items:center;">
+        <a href="/suppliers/history" class="btn btn-sm btn-outline">📄 По постачальниках</a>
         <form method="get" action="/expenses" style="display:inline;">
             <input type="month" name="month" value="{{ current_month }}" class="form-control" style="font-size:.85em;" onchange="this.form.submit()">
         </form>
