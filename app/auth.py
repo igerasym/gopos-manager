@@ -28,9 +28,9 @@ _CACHE_TTL = 300  # 5 minutes
 ROLE_ACCESS = {
     'admin': None,  # None = access to everything
     'chef': ['/inventory', '/recipes', '/api/sync-status',
-             '/ingredients/', '/recipes/'],
+             '/ingredients/', '/recipes/', '/wastage', '/export/wastage.csv'],
     'barista': ['/inventory', '/recipes', '/api/sync-status',
-                '/ingredients/', '/recipes/'],
+                '/ingredients/', '/recipes/', '/wastage', '/export/wastage.csv'],
 }
 
 

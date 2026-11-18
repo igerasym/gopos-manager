@@ -555,3 +555,37 @@ async def export_expenses_csv(month: str = ''):
         media_type='text/csv; charset=utf-8-sig',
         headers={'Content-Disposition': f'attachment; filename="{fname}"'},
     )
+
+
+@router.get('/suppliers/history', response_class=HTMLResponse)
+async def supplier_history(request: Request, vendor: str = ''):
+    """Invoice history grouped by vendor with totals and trend."""
+    db = get_db()
+
+    # All approved invoices grouped by vendor
+    vendors = db.execute('''
+        SELECT vendor, COUNT(*) as count,
+               SUM(total) as total_sum,
+               MIN(month) as first_month,
+               MAX(month) as last_month
+        FROM parsed_invoices
+        WHERE expense_status = 'added' AND vendor != ''
+        GROUP BY vendor ORDER BY total_sum DESC
+    ''').fetchall()
+
+    invoices = []
+    if vendor:
+        invoices = db.execute('''
+            SELECT pi.id, pi.file_name, pi.invoice_number, pi.month, pi.total,
+                   pi.category, pi.vendor, pi.file_id,
+                   e.amount as expense_amount
+            FROM parsed_invoices pi
+            LEFT JOIN expenses e ON pi.expense_id = e.id
+            WHERE pi.expense_status = 'added' AND pi.vendor = ?
+            ORDER BY pi.month DESC, pi.total DESC
+        ''', (vendor,)).fetchall()
+
+    db.close()
+    return templates.TemplateResponse(request, 'supplier_history.html', context={
+        'vendors': vendors, 'selected_vendor': vendor, 'invoices': invoices,
+    })

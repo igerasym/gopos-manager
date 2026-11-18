@@ -214,6 +214,20 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_processed_orders_date ON processed_orders(date);
 
+        -- Wastage log: manual writeoffs for spoiled / broken / expired items
+        CREATE TABLE IF NOT EXISTS wastage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL DEFAULT (date('now')),
+            ingredient_id INTEGER NOT NULL REFERENCES ingredients(id),
+            quantity REAL NOT NULL,
+            reason TEXT NOT NULL DEFAULT 'spoiled',
+            note TEXT DEFAULT '',
+            user_id INTEGER REFERENCES users(id),
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_wastage_date ON wastage(date);
+        CREATE INDEX IF NOT EXISTS idx_wastage_ingredient ON wastage(ingredient_id);
+
         CREATE TABLE IF NOT EXISTS pos_products (
             product_name TEXT PRIMARY KEY,
             pos_kind TEXT NOT NULL DEFAULT 'unclassified',
