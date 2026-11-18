@@ -339,6 +339,7 @@ def sync_today():
         today = warsaw_today()
         count = sync_orders_for_date(today)
         _deduct_inventory(today)
+        sync_writeoffs_for_date(today)
         _finish_sync_log(sync_id, 'done', f'Synced {today}: {count} products via API')
         return count
     except Exception as e:
@@ -353,6 +354,7 @@ def sync_date(date_str: str):
         sync_products()
         count = sync_orders_for_date(date_str)
         _deduct_inventory(date_str)
+        sync_writeoffs_for_date(date_str)
         _finish_sync_log(sync_id, 'done', f'Synced {date_str}: {count} products via API')
         return count
     except Exception as e:
@@ -373,6 +375,7 @@ def sync_range(date_from: str, date_to: str):
             date_str = current.strftime('%Y-%m-%d')
             count = sync_orders_for_date(date_str)
             _deduct_inventory(date_str)
+            sync_writeoffs_for_date(date_str)
             total += count
             current += timedelta(days=1)
         _finish_sync_log(sync_id, 'done', f'Synced {date_from} → {date_to}: {total} products via API')
@@ -408,6 +411,83 @@ def _deduct_inventory(date_str: str):
     """Deduct ingredients from inventory based on sales and recipes."""
     from app.gopos_sync import deduct_inventory
     deduct_inventory(date_str)
+
+
+# Write-off promotion names from GoPos (case-insensitive)
+WRITEOFF_PROMOTION_NAMES = {'write-off'}
+
+
+def sync_writeoffs_for_date(date_str: str):
+    """Extract write-off orders from GoPos for the given date and log them in wastage.
+
+    GoPos write-offs are orders where a promotion named 'write-off' was applied,
+    dropping total_price to 0. We identify them from the already-fetched orders
+    by re-querying with promotions include, then upsert into wastage.
+
+    Wastage rows are keyed by (date, product_name, source='gopos') — so re-running
+    is safe: DELETE + INSERT in one transaction, same as the sales sync.
+    """
+    next_day = (datetime.strptime(date_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+
+    all_orders = []
+    page = 0
+    while page < 50:
+        data = api_get('orders', {
+            'closed_at_from': f'{date_str}T{BUSINESS_DAY_START_HOUR:02d}:00:00',
+            'closed_at_to': f'{next_day}T{BUSINESS_DAY_START_HOUR:02d}:00:00',
+            'status': 'CLOSED',
+            'include': 'items,items.product,promotions',
+            'size': 100,
+            'page': page,
+        })
+        orders = data.get('data', [])
+        if not orders:
+            break
+        all_orders.extend(orders)
+        page += 1
+
+    # Find write-off orders
+    writeoff_agg = {}  # product_name → quantity
+    for order in all_orders:
+        promo_names = {(p.get('name') or '').strip().lower() for p in order.get('promotions') or []}
+        if not promo_names.intersection(WRITEOFF_PROMOTION_NAMES):
+            continue
+        for item in order.get('items', []):
+            if item.get('status') != 'ACTIVE':
+                continue
+            name = item.get('name', '').strip()
+            if not name:
+                continue
+            paid = (item.get('total_price') or {}).get('amount', 0)
+            before = (item.get('sub_total_price') or {}).get('amount', 0)
+            # Only count items that were actually zeroed out (total_price = 0 or discounted to 0)
+            if paid > 0:
+                continue
+            qty = item.get('quantity', 1)
+            writeoff_agg[name] = writeoff_agg.get(name, 0) + qty
+
+    if not writeoff_agg:
+        log.info(f'No write-offs for {date_str}')
+        return 0
+
+    db = get_db()
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        db.execute("DELETE FROM wastage WHERE date = ? AND source = 'gopos'", (date_str,))
+        for product_name, qty in writeoff_agg.items():
+            db.execute(
+                "INSERT INTO wastage (date, product_name, quantity, reason, source) VALUES (?, ?, ?, 'write-off', 'gopos')",
+                (date_str, product_name, qty)
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    log.info(f'Write-offs for {date_str}: {len(writeoff_agg)} products')
+    return len(writeoff_agg)
 
 
 def _start_sync_log(message=''):

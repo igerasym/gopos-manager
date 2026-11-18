@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; gap:12px; flex-wrap:wrap;">
+    <h2 style="margin:0;">Списання псування</h2>
+    <div style="display:flex; gap:8px; align-items:center;">
+        <form method="get" action="/wastage" style="display:inline;">
+            <input type="month" name="month" value="{{ current_month }}" class="form-control" style="font-size:.85em;" onchange="this.form.submit()">
+        </form>
+        <a href="/export/wastage.csv?month={{ current_month }}" class="btn btn-sm btn-outline" download>⬇ CSV</a>
+        <button class="btn btn-primary btn-sm" onclick="document.getElementById('add-wastage-modal').style.display='flex'">+ Записати списання</button>
+    </div>
+</div>
+
+<!-- KPI -->
+<div class="grid-3" style="margin-bottom:16px;">
+    <div class="card kpi">
+        <div class="kpi-label">Всього списань</div>
+        <div class="kpi-value">{{ rows|length }}</div>
+        <div class="kpi-change neutral">
+            🤖 {{ gopos_count }} GoPos · ✋ {{ manual_count }} вручну
+        </div>
+    </div>
+    <div class="card kpi">
+        <div class="kpi-label">Вартість списань</div>
+        <div class="kpi-value" style="color:var(--red);">{{ '{:,.2f}'.format(total_cost) }} zł</div>
+        <div class="kpi-change neutral">збитки місяця</div>
+    </div>
+    <div class="card kpi">
+        <div class="kpi-label">По причинах</div>
+        <div style="margin-top:6px;">
+            {% for r, data in by_reason.items() %}
+            <div style="display:flex; justify-content:space-between; font-size:.82em; margin-bottom:3px;">
+                <span>{{ reason_ua.get(r, r) }}</span>
+                <span style="font-weight:600;">{{ '{:.2f}'.format(data['cost']) }} zł</span>
+            </div>
+            {% else %}
+            <span class="text-muted" style="font-size:.85em;">Немає записів</span>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Top losers -->
+{% if top_losers %}
+<div class="card" style="margin-bottom:16px;">
+    <div class="card-header">
+        <div class="card-title">Топ-10 інгредієнтів за втратами</div>
+    </div>
+    <div class="bar-chart">
+        {% set max_cost = top_losers[0][1]['cost'] if top_losers else 1 %}
+        {% for name, data in top_losers %}
+        <div class="bar-row">
+            <div class="bar-label" title="{{ name }}">{{ name }}</div>
+            <div class="bar-track">
+                <div class="bar-fill" style="width:{{ (data['cost'] / max_cost * 100)|round if max_cost else 0 }}%; min-width:40px; background:var(--red);">
+                    <span>{{ '{:.1f}'.format(data['qty']) }} {{ data['unit'] }}</span>
+                </div>
+            </div>
+            <div class="bar-value" style="color:var(--red);">{{ '{:.2f}'.format(data['cost']) }} zł</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Log table -->
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">📋 Журнал списань — {{ current_month }}</div>
+    </div>
+    {% if rows %}
+    <table>
+        <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Інгредієнт</th>
+                <th class="text-right">К-сть</th>
+                <th style="width:6%;">Од.</th>
+                <th class="text-right hide-mobile">Вартість</th>
+                <th>Причина</th>
+                <th class="hide-mobile">Примітка</th>
+                <th style="width:40px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr>
+                <td class="text-muted" style="font-size:.85em; white-space:nowrap;">{{ r['date'] }}</td>
+                <td style="font-weight:500;">
+                    {{ r['label'] }}
+                    {% if r['source'] == 'gopos' %}
+                    <span class="badge" style="background:#dbeafe; color:#1d4ed8; font-size:.65em; vertical-align:middle; margin-left:4px;">GoPos</span>
+                    {% endif %}
+                </td>
+                <td class="text-right">{{ '{:.2f}'.format(r['quantity']) }}</td>
+                <td class="text-muted" style="font-size:.85em;">{{ r['unit'] }}</td>
+                <td class="text-right hide-mobile" style="color:var(--red); font-weight:500;">
+                    {% if r['cost'] > 0 %}{{ '{:.2f}'.format(r['cost']) }} zł{% else %}—{% endif %}
+                </td>
+                <td>
+                    <span class="badge" style="background:#fef3c7; color:#92400e; font-size:.75em;">{{ reason_ua.get(r['reason'], r['reason']) }}</span>
+                </td>
+                <td class="hide-mobile text-muted" style="font-size:.82em;">{{ r['note'] or '' }}</td>
+                <td class="text-right">
+                    {% if r['source'] == 'manual' %}
+                    <form method="post" action="/wastage/delete/{{ r['id'] }}">
+                        <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
+                                onclick="if(confirm('Видалити запис і відновити запас?'))this.form.submit()">✕</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="padding:24px; text-align:center; color:var(--text-secondary);">Списань за {{ current_month }} немає</p>
+    {% endif %}
+</div>
+
+<!-- Add wastage modal -->
+<div id="add-wastage-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card-bg,#fff); border-radius:12px; padding:24px; min-width:340px; max-width:480px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,.2);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+            <h3 style="margin:0;">Записати списання</h3>
+            <button onclick="document.getElementById('add-wastage-modal').style.display='none'"
+                    style="background:none; border:none; font-size:1.2em; cursor:pointer; color:#999;">✕</button>
+        </div>
+        <form method="post" action="/wastage/add">
+            <div class="form-group" style="margin-bottom:12px;">
+                <label>Інгредієнт</label>
+                <select name="ingredient_id" class="form-control" required>
+                    <option value="">— Обрати —</option>
+                    {% for i in ingredients %}
+                    <option value="{{ i['id'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div class="form-group">
+                    <label>Кількість</label>
+                    <input name="quantity" type="number" step="0.01" min="0.01" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Дата</label>
+                    <input name="date" type="date" class="form-control" value="{{ now_date }}">
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label>Причина</label>
+                <select name="reason" class="form-control">
+                    {% for r in manual_reasons %}
+                    <option value="{{ r }}">{{ reason_ua[r] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:20px;">
+                <label>Примітка</label>
+                <input name="note" class="form-control" placeholder="необовʼязково">
+            </div>
+            <div style="display:flex; gap:8px; justify-content:flex-end;">
+                <button type="button" class="btn btn-outline"
+                        onclick="document.getElementById('add-wastage-modal').style.display='none'">Скасувати</button>
+                <button type="submit" class="btn btn-primary">Записати</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+document.getElementById('add-wastage-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+});
+</script>
+
+{% endblock %}
