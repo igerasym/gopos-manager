@@ -189,6 +189,10 @@
                     {% endif %}
                 </td>
                 <td class="text-right">
+                    {% if i['unit_price'] and i['unit_price'] > 0 %}
+                    <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--accent);"
+                            onclick="showPriceHistory({{ i['id'] }}, '{{ i['name']|e }}')">📈</button>
+                    {% endif %}
                     <form method="post" action="/ingredients/delete/{{ i['id'] }}" style="display:inline;">
                         <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
                                 onclick="openDeleteModal({{ i['id'] }})">✕</button>
@@ -198,6 +202,25 @@
             {% endfor %}
         </tbody>
     </table>
+</div>
+
+<!-- Price history modal -->
+<div id="price-history-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card-bg,#fff); border-radius:12px; padding:24px; min-width:360px; max-width:460px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,.2);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+            <div id="ph-title" style="font-weight:700; font-size:1em;"></div>
+            <button id="ph-close" style="background:none; border:none; font-size:1.2em; cursor:pointer; color:#999; padding:0 4px;">✕</button>
+        </div>
+        <div id="ph-chart" style="margin-bottom:12px; min-height:60px;"></div>
+        <table style="width:100%; font-size:.85em; border-collapse:collapse;">
+            <thead><tr>
+                <th style="text-align:left; color:#999; font-weight:500; padding-bottom:4px;">Дата</th>
+                <th style="text-align:left; color:#999; font-weight:500;">Ціна</th>
+                <th style="text-align:left; color:#999; font-weight:500;">Джерело</th>
+            </tr></thead>
+            <tbody id="ph-list"></tbody>
+        </table>
+    </div>
 </div>
 
 {% endblock %}
@@ -215,6 +238,75 @@ document.getElementById('stock-search').addEventListener('input', function() {
 document.getElementById('delivery-ingredient').addEventListener('change', function() {
     const unit = this.selectedOptions[0].dataset.unit;
     document.getElementById('delivery-unit').textContent = unit;
+});
+
+function showPriceHistory(ingredientId, name) {
+    const modal = document.getElementById('price-history-modal');
+    const title = document.getElementById('ph-title');
+    const chart = document.getElementById('ph-chart');
+    const list = document.getElementById('ph-list');
+    title.textContent = '📈 Історія цін: ' + name;
+    chart.innerHTML = '<span style="color:#999;font-size:.85em;">Завантаження...</span>';
+    list.innerHTML = '';
+    modal.style.display = 'flex';
+
+    fetch('/api/ingredient/' + ingredientId + '/price-history')
+        .then(r => r.json())
+        .then(data => {
+            const history = data.history || [];
+            if (!history.length) {
+                chart.innerHTML = '<span style="color:#999;font-size:.85em;">Немає даних про зміни цін</span>';
+                return;
+            }
+            const prices = history.map(h => h.price);
+            const maxP = Math.max(...prices);
+            const minP = Math.min(...prices);
+            const range = maxP - minP || 1;
+            const H = 80;
+
+            // SVG sparkline
+            const W = 320;
+            const pts = prices.map((p, i) => {
+                const x = prices.length === 1 ? W / 2 : i * (W - 20) / (prices.length - 1) + 10;
+                const y = H - ((p - minP) / range) * (H - 16) - 4;
+                return `${x},${y}`;
+            }).join(' ');
+
+            chart.innerHTML = `
+                <svg width="${W}" height="${H + 20}" style="display:block; overflow:visible;">
+                    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+                    ${prices.map((p, i) => {
+                        const x = prices.length === 1 ? W / 2 : i * (W - 20) / (prices.length - 1) + 10;
+                        const y = H - ((p - minP) / range) * (H - 16) - 4;
+                        const isLast = i === prices.length - 1;
+                        return `<circle cx="${x}" cy="${y}" r="${isLast ? 4 : 3}" fill="${isLast ? 'var(--accent)' : 'white'}" stroke="var(--accent)" stroke-width="2"/>`;
+                    }).join('')}
+                    <text x="10" y="${H + 16}" font-size="11" fill="#999">${history[0].date}</text>
+                    <text x="${W - 10}" y="${H + 16}" font-size="11" fill="#999" text-anchor="end">${history[history.length-1].date}</text>
+                </svg>
+                <div style="display:flex;justify-content:space-between;font-size:.8em;margin-top:4px;">
+                    <span style="color:#999;">мін: <strong>${minP.toFixed(2)} zł</strong></span>
+                    <span style="color:var(--accent);font-weight:600;">зараз: ${data.current_price.toFixed(2)} zł</span>
+                    <span style="color:#999;">макс: <strong>${maxP.toFixed(2)} zł</strong></span>
+                </div>`;
+
+            // List last 10
+            const recent = [...history].reverse().slice(0, 10);
+            list.innerHTML = recent.map((h, i) => {
+                const prev = recent[i + 1];
+                const delta = prev ? ((h.price - prev.price) / prev.price * 100) : null;
+                const arrow = delta === null ? '' : delta > 0 ? `<span style="color:var(--red)"> ▲${delta.toFixed(1)}%</span>` : delta < 0 ? `<span style="color:var(--green)"> ▼${Math.abs(delta).toFixed(1)}%</span>` : '';
+                return `<tr><td style="color:#999;font-size:.8em;">${h.date}</td><td style="font-weight:600;">${h.price.toFixed(2)} zł${arrow}</td><td style="color:#aaa;font-size:.75em;">${h.source || '—'}</td></tr>`;
+            }).join('');
+        })
+        .catch(() => { chart.innerHTML = '<span style="color:var(--red);">Помилка завантаження</span>'; });
+}
+
+document.getElementById('ph-close').addEventListener('click', () => {
+    document.getElementById('price-history-modal').style.display = 'none';
+});
+document.getElementById('price-history-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
 });
 </script>
 {% endblock %}
