@@ -299,7 +299,7 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
         'prev_totals': prev_totals,
         'compare_label': compare_label,
         'day_in_progress': day_in_progress,
-        'as_of': gopos_api.LAST_INTRADAY_SYNC,
+        'as_of': gopos_api.today_refreshed_at(),
         'low_stock': low_stock,
         'total_cogs': total_cogs, 'gross_profit': gross_profit,
         'gross_margin': gross_margin, 'avg_food_cost': avg_food_cost,

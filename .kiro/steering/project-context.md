@@ -65,7 +65,11 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   TODAY's rows in `sales` only (no stock deduction, no write-offs: the evening sync does both). Before this,
   prod had no rows for the current day until 19:00 UTC, because the GoPos webhook was NOT delivering (zero
   hits in the app and nginx logs, `processed_orders` only filled by the full syncs). `gopos_api.LAST_INTRADAY_SYNC`
-  holds the last refresh time (Warsaw 'HH:MM', RAM only); the dashboard and the Telegram chat show it.
+  holds the last refresh time (Warsaw 'HH:MM', RAM only, bound to `LAST_INTRADAY_DAY`); read it through
+  `today_refreshed_at()`, which ignores a time from a previous business day and falls back to the last
+  finished `sync_log` row for today after a restart. The dashboard and the Telegram chat show it.
+  The bot's prompt gets the Warsaw clock as well as the business day: between 00:00 and 05:00 it answers
+  "today" for the previous calendar date and says so. Model `**bold**` is converted to Telegram `<b>`.
   A failing refresh alerts the admin once per outage. If the webhook is ever connected, the refresh stays
   harmless (the day is replaced idempotently).
 - `sync_orders_for_date` **replaces** the day (DELETE + INSERT in one transaction) and rewrites
