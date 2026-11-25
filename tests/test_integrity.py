@@ -306,3 +306,20 @@ def test_stock_count_clears_todays_deductions():
     assert after == 0, "deductions for today must be wiped after a stock count"
     stock = db.execute("SELECT quantity FROM ingredients WHERE id=1").fetchone()['quantity']
     assert stock == 4.4
+
+
+def test_register_webhook_never_logs_the_token(caplog):
+    import logging
+    from unittest.mock import MagicMock
+    caplog.set_level(logging.INFO)
+    get = MagicMock(status_code=200, json=lambda: {'data': []})
+    post = MagicMock(status_code=500, text='bad url http://h/api/webhook/gopos?token=TOPSECRET')
+    with patch.object(ga, 'get_token', return_value='t'), patch.object(ga.requests, 'get', return_value=get), \
+            patch.object(ga.requests, 'post', return_value=post):
+        ga.register_webhook('http://h/api/webhook/gopos?token=TOPSECRET')
+    post.status_code = 201
+    post.json = lambda: {}
+    with patch.object(ga, 'get_token', return_value='t'), patch.object(ga.requests, 'get', return_value=get), \
+            patch.object(ga.requests, 'post', return_value=post):
+        ga.register_webhook('http://h/api/webhook/gopos?token=TOPSECRET')
+    assert 'TOPSECRET' not in caplog.text and 'token=***' in caplog.text

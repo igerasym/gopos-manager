@@ -85,6 +85,11 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   id 1, `http://52.39.186.224/api/webhook/gopos` without a token, resource_type ORDER, **disabled by GoPOS on
   2026-11-06 08:01 after one HTTP 400**: PR #8 (deployed that night) accepted digits-only ids, and GoPOS sends
   the uid. Orders have `id` (int, e.g. 44607) and `uid` (UUID); `GET orders/<id>` and `orders/<uid>` both work.
+  **2026-11-26 00:05 Warsaw:** fix #21 deployed, `GOPOS_WEBHOOK_TOKEN` added to prod `.env` (backup
+  `.env.bak.webhook-20261125`), container restarted, new webhook **id 2** "The Frame Manager sync (token)"
+  registered with `?token=`. Delete id 1 once id 2 shows deliveries in Logs → Requests. The URL is plain HTTP,
+  so the token travels unencrypted; moving the webhook to HTTPS is the next hardening step.
+  Never log the webhook URL: it carries the token (`_mask_token()` in gopos_api.py).
 - Missing days are NOT auto-detected on start (only products are synced on startup).
 - No Playwright, no Chromium, no swap needed
 
