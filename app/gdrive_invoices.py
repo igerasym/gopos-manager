@@ -374,9 +374,9 @@ if __name__ == '__main__':
 def sync_invoices_for_current_month():
     """Auto-sync: parse all new invoices for current month, notify via Telegram."""
     import json
-    from datetime import datetime
+    from app.gopos_api import warsaw_today
 
-    current_month = datetime.now().strftime('%Y-%m')
+    current_month = warsaw_today()[:7]
     db = get_db()
 
     # Ensure tables exist

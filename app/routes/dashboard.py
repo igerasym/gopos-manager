@@ -9,22 +9,35 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
+from app.gopos_api import warsaw_today
 from app.services.recipes import get_cost_lookup
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 
 router = APIRouter()
 
+WEEKDAYS_UA = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'нд']
+
 
 @router.get('/', response_class=HTMLResponse)
 async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
-    today = datetime.now().strftime('%Y-%m-%d')
-    date_from = date_from or today
-    date_to = date_to or today
+    # Business day in Warsaw (05:00 cutoff); the container runs in UTC.
+    today = warsaw_today()
     db = get_db()
 
+    if not date_from and not date_to:
+        # Before the first sale of the day an empty "today" is just a screen of zeros
+        # and a red -100%: open on the last full day instead.
+        has_today = db.execute('SELECT 1 FROM sales WHERE date = ? LIMIT 1', (today,)).fetchone()
+        default_day = today if has_today else (
+            datetime.strptime(today, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+        date_from = date_to = default_day
+    else:
+        date_from = date_from or today
+        date_to = date_to or today
+
     # Date presets for quick filter
-    now = datetime.now()
+    now = datetime.strptime(today, '%Y-%m-%d')
     yesterday = (now - timedelta(days=1)).strftime('%Y-%m-%d')
     week_start = (now - timedelta(days=now.weekday())).strftime('%Y-%m-%d')
     month_start = now.replace(day=1).strftime('%Y-%m-%d')
@@ -151,12 +164,23 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
         GROUP BY date ORDER BY date
     ''', (date_from, date_to)).fetchall()
 
-    # Previous period comparison
+    # Previous period comparison.
+    #  - one day: the same weekday a week earlier (weekends sell ~50% more than weekdays,
+    #    so "yesterday" is the wrong yardstick);
+    #  - several days: the period of equal length right before it;
+    #  - a single day that is still running: no comparison (half a day vs a full one is noise).
     d_from = datetime.strptime(date_from, '%Y-%m-%d')
     d_to = datetime.strptime(date_to, '%Y-%m-%d')
     period_days = (d_to - d_from).days + 1
-    prev_to = (d_from - timedelta(days=1)).strftime('%Y-%m-%d')
-    prev_from = (d_from - timedelta(days=period_days)).strftime('%Y-%m-%d')
+    if period_days == 1:
+        prev_from = prev_to = (d_from - timedelta(days=7)).strftime('%Y-%m-%d')
+        prev_dt = d_from - timedelta(days=7)
+        compare_label = f'{WEEKDAYS_UA[prev_dt.weekday()]} {prev_dt.strftime("%d.%m")}'
+    else:
+        prev_to = (d_from - timedelta(days=1)).strftime('%Y-%m-%d')
+        prev_from = (d_from - timedelta(days=period_days)).strftime('%Y-%m-%d')
+        compare_label = 'попередній період'
+    day_in_progress = date_from == date_to == today
 
     prev_totals = db.execute('''
         SELECT COALESCE(SUM(total_money),0) as revenue,
@@ -272,6 +296,8 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
         'top_products': top_products, 'top_by_qty': top_by_qty,
         'daily': daily, 'period_days': period_days,
         'prev_totals': prev_totals,
+        'compare_label': compare_label,
+        'day_in_progress': day_in_progress,
         'low_stock': low_stock,
         'total_cogs': total_cogs, 'gross_profit': gross_profit,
         'gross_margin': gross_margin, 'avg_food_cost': avg_food_cost,
@@ -284,7 +310,7 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
 @router.get('/export/sales.csv')
 async def export_sales_csv(date_from: str = '', date_to: str = ''):
     """Download sales as CSV for the given date range."""
-    today = datetime.now().strftime('%Y-%m-%d')
+    today = warsaw_today()
     date_from = date_from or today
     date_to = date_to or today
     db = get_db()

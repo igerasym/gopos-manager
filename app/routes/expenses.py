@@ -3,7 +3,6 @@ import csv
 import io
 import json
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -12,6 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
+from app.gopos_api import warsaw_today
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ CATEGORIES = ['Оренда', 'Зарплати', 'Бухгалтерія', 'К�
 
 @router.get('/expenses', response_class=HTMLResponse)
 async def expenses_page(request: Request, month: str = ''):
-    current_month = month or datetime.now().strftime('%Y-%m')
+    current_month = month or warsaw_today()[:7]
     db = get_db()
 
     # All expenses for this month grouped by name
@@ -143,7 +143,7 @@ async def add_expense(
     amount: Optional[str] = Form(''), month: str = Form(''),
     note: str = Form(''),
 ):
-    month = month or datetime.now().strftime('%Y-%m')
+    month = month or warsaw_today()[:7]
     try:
         amt = float(amount) if amount else 0.0
     except (ValueError, TypeError):
@@ -303,7 +303,7 @@ async def approve_invoice(invoice_id: int, category: str = Form('Продукт�
         db.close()
         return RedirectResponse('/expenses', status_code=303)
 
-    month = inv['month'] or datetime.now().strftime('%Y-%m')
+    month = inv['month'] or warsaw_today()[:7]
     vendor = inv['vendor'] or inv['file_name']
     amount = inv['total']
 
@@ -390,7 +390,7 @@ async def skip_invoice(invoice_id: int):
 @router.get('/expenses/scan-drive')
 async def scan_drive(month: str = ''):
     """Scan Google Drive folder — save new files to DB (without Textract parsing)."""
-    current_month = month or datetime.now().strftime('%Y-%m')
+    current_month = month or warsaw_today()[:7]
     try:
         from app.gdrive_invoices import list_invoices_for_month
 
@@ -429,7 +429,7 @@ async def scan_drive(month: str = ''):
 @router.post('/expenses/process-invoices')
 async def process_all_invoices(month: str = Form('')):
     """Start invoice processing in background — returns immediately."""
-    current_month = month or datetime.now().strftime('%Y-%m')
+    current_month = month or warsaw_today()[:7]
 
     import threading
     def run_processing():
@@ -535,7 +535,7 @@ async def get_invoice_items(invoice_id: int):
 @router.get('/export/expenses.csv')
 async def export_expenses_csv(month: str = ''):
     """Download expenses as CSV for the given month."""
-    current_month = month or datetime.now().strftime('%Y-%m')
+    current_month = month or warsaw_today()[:7]
     db = get_db()
     rows = db.execute(
         'SELECT name, category, amount, month, note FROM expenses WHERE month = ? ORDER BY category, amount DESC',

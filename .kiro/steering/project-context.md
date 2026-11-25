@@ -56,6 +56,9 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - Variant groups via `item_group_id` — "Cappuccino Cappuccino" + "Cappuccino Iced" = group 3
 - Business day = 05:00 → next day 05:00 Warsaw (`BUSINESS_DAY_START_HOUR`, `business_date()`, `warsaw_today()`);
   the container runs in UTC, so never use bare `datetime.now()` for a business date.
+  All routes now use `warsaw_today()`. Still UTC: the `DEFAULT (date('now'))` column defaults
+  (deliveries, ingredient_price_history, wastage) — pass the date explicitly on insert — and the
+  technical timestamps in `sync_log`.
 - Daily job 19:00 UTC: sync_products() + sync_orders_for_date(today) + deduct_inventory()
 - 04:30 UTC: `sync_date(yesterday)` — the 19:00 sync misses everything sold later that evening.
 - `sync_orders_for_date` **replaces** the day (DELETE + INSERT in one transaction) and rewrites
@@ -212,7 +215,10 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - ABC analysis (A/B/C badges)
 - Top 5 by revenue + quantity
 - Daily revenue trend
-- Previous period comparison
+- Dates use the Warsaw business day (`warsaw_today()`, 05:00 cutoff), never bare `datetime.now()`.
+  With no date params it opens on today, or on yesterday while today has no sales yet.
+- Period comparison: one day vs the same weekday a week earlier; several days vs the previous
+  period of equal length; a day still in progress shows "день ще триває" instead of a percentage.
 - Low stock alerts
 - Sync button (only visible on dashboard)
 

@@ -293,7 +293,9 @@ def _chunks(text: str, limit: int = TG_LIMIT):
 def build(month: str = None):
     """Return (numbers_text, summary_text_or_None, meta) for `month` (default: last month)."""
     if month is None:
-        month = (date.today().replace(day=1) - timedelta(days=1)).strftime('%Y-%m')
+        from app.gopos_api import warsaw_today
+        first_of_month = date.fromisoformat(warsaw_today()).replace(day=1)
+        month = (first_of_month - timedelta(days=1)).strftime('%Y-%m')
     pm = prev_month(month)
     cur, prev = collect(month), collect(pm)
     cmp = compare(month, cur, prev)

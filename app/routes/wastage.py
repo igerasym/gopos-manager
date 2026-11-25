@@ -1,7 +1,6 @@
 """Wastage (списання псування) routes."""
 import csv
 import io
-from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
@@ -9,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
+from app.gopos_api import warsaw_today
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 router = APIRouter()
@@ -31,7 +31,7 @@ def _is_admin(request: Request) -> bool:
 
 @router.get('/wastage', response_class=HTMLResponse)
 async def wastage_page(request: Request, month: str = ''):
-    current_month = month or datetime.now().strftime('%Y-%m')
+    current_month = month or warsaw_today()[:7]
     month_start = current_month + '-01'
     year, mon = int(current_month[:4]), int(current_month[5:7])
     month_end = f'{year + 1 if mon == 12 else year}-{1 if mon == 12 else mon + 1:02d}-01'
@@ -87,7 +87,7 @@ async def wastage_page(request: Request, month: str = ''):
         'top_losers': top_losers, 'ingredients': ingredients, 'months': months,
         'gopos_count': gopos_count, 'manual_count': manual_count,
         'is_admin': _is_admin(request),
-        'now_date': datetime.now().strftime('%Y-%m-%d'),
+        'now_date': warsaw_today(),
     })
 
 
@@ -101,7 +101,7 @@ async def add_wastage(
     date: str = Form(''),
 ):
     user = request.state.user
-    today = date or datetime.now().strftime('%Y-%m-%d')
+    today = date or warsaw_today()
     month = today[:7]
 
     db = get_db()
@@ -138,14 +138,14 @@ async def delete_wastage(wastage_id: int):
         db.commit()
         month = row['date'][:7]
     else:
-        month = datetime.now().strftime('%Y-%m')
+        month = warsaw_today()[:7]
     db.close()
     return RedirectResponse(f'/wastage?month={month}', status_code=303)
 
 
 @router.get('/export/wastage.csv')
 async def export_wastage_csv(request: Request, month: str = ''):
-    current_month = month or datetime.now().strftime('%Y-%m')
+    current_month = month or warsaw_today()[:7]
     month_start = current_month + '-01'
     year, mon = int(current_month[:4]), int(current_month[5:7])
     month_end = f'{year + 1 if mon == 12 else year}-{1 if mon == 12 else mon + 1:02d}-01'

@@ -1,12 +1,14 @@
 """Stock count routes."""
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
+from app.gopos_api import warsaw_today
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 
@@ -29,9 +31,10 @@ async def stock_count_page(request: Request):
 async def save_stock_count(request: Request):
     form = await request.form()
     user = request.state.user
-    now = datetime.now()
-    today = now.strftime('%Y-%m-%d')
-    time_now = now.strftime('%H:%M')
+    # Business day (05:00 cutoff) so the count lines up with inventory_deductions, which are
+    # keyed by business date; the clock time shown in history is Warsaw local, not UTC.
+    today = warsaw_today()
+    time_now = datetime.now(ZoneInfo('Europe/Warsaw')).strftime('%H:%M')
     note = form.get('note', '')
 
     db = get_db()
