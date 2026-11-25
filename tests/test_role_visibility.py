@@ -83,3 +83,19 @@ def test_wastage_csv_has_cost_column_only_for_admin():
     admin_csv = _client('admin').get('/export/wastage.csv').text
     assert 'Вартість' not in chef_csv
     assert 'Вартість' in admin_csv
+
+
+def test_chef_cannot_open_or_post_invoice_upload():
+    c = _client('chef')
+    assert c.get('/inventory/upload').status_code == 403
+    assert c.post('/inventory/upload').status_code == 403
+    assert c.post('/inventory/upload/confirm').status_code == 403
+
+
+def test_admin_can_open_invoice_upload():
+    assert _client('admin').get('/inventory/upload').status_code == 200
+
+
+def test_chef_inventory_has_no_invoice_upload_link():
+    assert '/inventory/upload' not in _client('chef').get('/inventory').text
+    assert '/inventory/upload' in _client('admin').get('/inventory').text

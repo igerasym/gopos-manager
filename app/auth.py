@@ -33,6 +33,10 @@ ROLE_ACCESS = {
                 '/ingredients/', '/recipes/', '/wastage', '/export/wastage.csv'],
 }
 
+# Inside an otherwise allowed prefix (e.g. /inventory), these stay admin-only:
+# an uploaded invoice carries supplier prices and, once confirmed, updates ingredient prices.
+ADMIN_ONLY_PATHS = ['/inventory/upload']
+
 
 def hash_password(password: str) -> str:
     salt = os.urandom(16).hex()
@@ -96,6 +100,8 @@ def can_access(user: dict, path: str) -> bool:
     allowed = ROLE_ACCESS[role]
     if allowed is None:  # admin
         return True
+    if any(path.startswith(p) for p in ADMIN_ONLY_PATHS):
+        return False
     return any(path.startswith(p) for p in allowed)
 
 
