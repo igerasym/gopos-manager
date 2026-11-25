@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty_state, page_header %}
+{% block page_title %}Усі продукти{% endblock %}
+{% block main_class %}{% endblock %}
+
+{% block content %}
+{% set p = per.p %}
+{% call page_header('Усі продукти', eyebrow=((per.start | shortdate(weekday=False)) ~ ((' — ' ~ (per.end | shortdate(weekday=False))) if per.start != per.end else ''))) %}
+  <a class="btn btn-secondary" href="/export/sales.csv?date_from={{ per.start }}&date_to={{ per.end }}" download>{{ icon('download') }}Завантажити CSV</a>
+{% endcall %}
+<p class="mb-3"><a class="link" href="/">{{ icon('chevron-left', 18) }}Сьогодні</a></p>
+
+<div class="btn-row mb-3">
+  <div class="seg" role="group" aria-label="Період">
+    <a href="/dashboard/products?p=day"{% if p == 'day' %} aria-current="true"{% endif %}>День</a>
+    <a href="/dashboard/products?p=week"{% if p == 'week' %} aria-current="true"{% endif %}>Тиждень</a>
+    <a href="/dashboard/products?p=month"{% if p == 'month' %} aria-current="true"{% endif %}>Місяць</a>
+  </div>
+  <button class="btn btn-secondary btn-icon" type="button" data-sheet-open="sheet-range" aria-label="Обрати свій період">{{ icon('calendar') }}</button>
+</div>
+
+{% if rows %}
+<section class="card" aria-labelledby="sum-h">
+  <h2 id="sum-h" class="qlabel">Скільки йде на продукти</h2>
+  {% if coverage.without_recipe == 0 %}
+    <p class="sentence">З кожних 100 zł виручки на продукти йде <b class="num">{{ cost_share | num(1, strip=True) }} zł</b>
+      ({{ total_cogs | zl(0) }} з {{ revenue | zl(0) }}).</p>
+  {% else %}
+    <div class="notice notice-warn">{{ icon('alert') }}
+      <div class="notice-body"><div class="notice-title">Неповні дані</div>
+        {{ coverage.without_recipe }} {{ coverage.without_recipe | plural('страва', 'страви', 'страв') }} без рецепту
+        — {{ coverage.uncovered_pct }}% виручки без собівартості, тому частка продуктів у ціні неточна.
+        <div class="notice-actions"><a class="btn btn-secondary" href="/recipes">Додати рецепти</a></div></div>
+    </div>
+  {% endif %}
+</section>
+
+<div class="search mt-3 mb-3">{{ icon('search') }}
+  <input class="input" type="search" id="prod-search" placeholder="Знайти продукт" aria-label="Знайти продукт" autocomplete="off">
+</div>
+
+<section class="card card-flush">
+<div class="table-wrap">
+<table class="table table-stack" id="products-table">
+  <thead><tr>
+    <th scope="col" aria-sort="none"><button class="sort" type="button" data-col="0" data-type="str">Продукт</button></th>
+    <th scope="col" class="num" aria-sort="none"><button class="sort" type="button" data-col="1" data-type="num">Продано</button></th>
+    <th scope="col" class="num" aria-sort="descending"><button class="sort" type="button" data-col="2" data-type="num">Виручка {{ icon('chevron-down', 14) }}</button></th>
+    <th scope="col" class="num" aria-sort="none"><button class="sort" type="button" data-col="3" data-type="num">Собівартість</button></th>
+    <th scope="col" class="num" aria-sort="none"><button class="sort" type="button" data-col="4" data-type="num">Заробіток</button></th>
+    <th scope="col" class="num" aria-sort="none"><button class="sort" type="button" data-col="5" data-type="num">Частка продуктів у ціні</button></th>
+    <th scope="col" aria-sort="none"><button class="sort" type="button" data-col="6" data-type="str">Попит</button></th>
+  </tr></thead>
+  <tbody>
+  {% for s in rows %}
+    <tr>
+      <td class="cell-primary" data-label="Продукт" data-val="{{ s.product_name }}">{{ s.product_name }}</td>
+      <td class="num" data-label="Продано" data-val="{{ s.quantity }}">{{ s.quantity | qty('szt') }}</td>
+      <td class="num" data-label="Виручка" data-val="{{ s.total_money }}">{{ s.total_money | zl }}</td>
+      <td class="num" data-label="Собівартість" data-val="{{ s.line_cost if s.has_recipe else -1 }}">{% if s.has_recipe %}{{ s.line_cost | zl }}{% else %}—{% endif %}</td>
+      <td class="num" data-label="Заробіток" data-val="{{ (s.total_money - s.line_cost) if s.has_recipe else -1e9 }}">{% if s.has_recipe %}{{ (s.total_money - s.line_cost) | zl }}{% else %}—{% endif %}</td>
+      <td class="num" data-label="Частка продуктів у ціні" data-val="{{ s.food_cost_pct if s.has_recipe else -1 }}">
+        {% if s.has_recipe %}{{ s.food_cost_pct | pct }}
+          {% if s.food_cost_pct > food_cost_high %}<span class="chip chip-warn">{{ icon('alert', 14) }}Висока</span>{% endif %}
+        {% else %}<a class="chip chip-neutral" href="/recipes">Без рецепту</a>{% endif %}</td>
+      <td data-label="Попит" data-val="{{ s.abc }}">
+        <span class="chip {{ 'chip-ok' if s.abc == 'A' else 'chip-info' if s.abc == 'B' else 'chip-neutral' }}">{{ 'Хіт' if s.abc == 'A' else 'Середній' if s.abc == 'B' else 'Рідко' }}</span></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="small muted" id="prod-empty" hidden style="padding:var(--s4)">Нічого не знайдено</p>
+</section>
+<p class="small muted mt-3">Хіт — продукти, що дають перші 80% виручки; Середній — наступні 15%; Рідко — решта.</p>
+{% else %}
+  {{ empty_state('cup', 'За цей період продажів немає', 'Оберіть інший період або оновіть дані з каси', '/', 'Сьогодні') }}
+{% endif %}
+
+<dialog class="sheet" id="sheet-range" aria-labelledby="sheet-range-h">
+  <div class="sheet-grip" aria-hidden="true"></div>
+  <div class="sheet-head"><h2 id="sheet-range-h">Свій період</h2>
+    <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+  <form method="get" action="/dashboard/products" style="display:contents">
+    <input type="hidden" name="p" value="range">
+    <div class="sheet-body"><div class="form-grid">
+      <div class="field"><label class="field-label" for="r-from">З</label>
+        <input class="input" type="date" id="r-from" name="date_from" value="{{ date_from }}" required></div>
+      <div class="field"><label class="field-label" for="r-to">По</label>
+        <input class="input" type="date" id="r-to" name="date_to" value="{{ date_to }}" required></div>
+    </div></div>
+    <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button>
+      <button class="btn btn-primary" type="submit">Показати</button></div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var table = document.getElementById('products-table');
+  if (!table) return;
+  var tbody = table.tBodies[0];
+  var heads = table.querySelectorAll('th[aria-sort]');
+  table.querySelectorAll('button.sort').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var th = b.closest('th'), col = +b.dataset.col, num = b.dataset.type === 'num';
+      var dir = th.getAttribute('aria-sort') === 'descending' ? 'ascending' : (num ? 'descending' : 'ascending');
+      heads.forEach(function (h) { h.setAttribute('aria-sort', 'none'); });
+      th.setAttribute('aria-sort', dir);
+      var rows = Array.from(tbody.rows);
+      rows.sort(function (a, c) {
+        var x = a.cells[col].dataset.val, y = c.cells[col].dataset.val;
+        var r = num ? parseFloat(x) - parseFloat(y) : x.localeCompare(y, 'uk');
+        return dir === 'ascending' ? r : -r;
+      });
+      rows.forEach(function (r) { tbody.appendChild(r); });
+    });
+  });
+  var q = document.getElementById('prod-search'), none = document.getElementById('prod-empty');
+  q.addEventListener('input', function () {
+    var v = q.value.trim().toLowerCase(), shown = 0;
+    Array.from(tbody.rows).forEach(function (r) {
+      var ok = !v || r.cells[0].dataset.val.toLowerCase().indexOf(v) !== -1;
+      r.hidden = !ok; if (ok) shown++;
+    });
+    none.hidden = shown > 0;
+  });
+})();
+</script>
+{% endblock %}
