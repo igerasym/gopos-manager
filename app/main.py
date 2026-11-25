@@ -9,7 +9,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.db import init_db, enable_wal
 from app.auth import get_current_user, can_access, create_default_admin, check_session_secret
-from app.routes import auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync, expenses, invoices_gdrive, webhook, wastage
+from app.routes import auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync, expenses, invoices_gdrive, webhook, wastage, more
+from app.templating import configure_env
 
 BASE_DIR = Path(__file__).parent
 
@@ -156,8 +157,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(AuthMiddleware)
 
-for r in (auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync, expenses, invoices_gdrive, webhook, wastage):
+for r in (auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync, expenses, invoices_gdrive, webhook, wastage, more):
     app.include_router(r.router)
+    # Shared filters (zl, qty, shortdate, ...) and globals (icon, nav_counts) in every
+    # route module's own Jinja environment.
+    if hasattr(r, 'templates'):
+        configure_env(r.templates.env)
 
 if __name__ == '__main__':
     import uvicorn

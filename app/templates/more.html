@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_ui.html" import page_header %}
+{% block page_title %}Ще{% endblock %}
+{% block main_class %}{% endblock %}
+{% block content %}
+{{ page_header('Ще') }}
+
+<div class="cols-2">
+<div class="stack">
+    <section class="card" id="sync" aria-labelledby="sync-h">
+        <header class="card-head"><h2 id="sync-h">Дані з каси</h2><span id="sync-status"></span></header>
+        <p class="muted mb-3">
+            {%- if last_sync and last_sync.at %}
+            Востаннє оновлено {{ last_sync.at | shortdate(weekday=False) }} о {{ last_sync.at.strftime('%H:%M') }}
+            {%- if last_sync.status == 'error' %} · <span class="danger-text strong">з помилкою</span>{% endif %}
+            {%- else %}Ще не оновлювались{% endif -%}
+        </p>
+        <p class="small muted mb-3">Продажі за сьогодні оновлюються самі щогодини, повністю — щовечора.</p>
+        <form action="/sync" method="post">
+            <button class="btn btn-primary" type="submit" id="sync-btn">{{ icon('refresh') }}Оновити дані з каси</button>
+        </form>
+    </section>
+
+    <section class="card" aria-labelledby="exp-h">
+        <header class="card-head"><h2 id="exp-h">Вивантажити для бухгалтера</h2></header>
+        <ul class="rows">
+            {% for label, href in exports %}
+            <li><a class="row" href="{{ href }}"><span class="row-lead">{{ icon('download') }}</span><span class="row-main"><span class="row-title">{{ label }}</span><span class="row-sub">Файл CSV</span></span><span class="row-chev">{{ icon('chevron-right') }}</span></a></li>
+            {% endfor %}
+        </ul>
+    </section>
+</div>
+<div class="stack">
+    <section class="card" aria-labelledby="acc-h">
+        <header class="card-head"><h2 id="acc-h">Доступ</h2></header>
+        <ul class="rows">
+            <li><a class="row" href="/users"><span class="row-lead">{{ icon('users') }}</span><span class="row-main"><span class="row-title">Користувачі</span><span class="row-sub">Хто має доступ і з якою роллю</span></span><span class="row-chev">{{ icon('chevron-right') }}</span></a></li>
+        </ul>
+    </section>
+
+    <section class="card" aria-labelledby="app-h">
+        <header class="card-head"><h2 id="app-h">Вигляд і вихід</h2></header>
+        <ul class="rows">
+            <li><button class="row" type="button" data-theme-toggle aria-pressed="false"><span class="row-lead">{{ icon('moon') }}</span><span class="row-main"><span class="row-title" data-theme-label>Темна тема</span></span></button></li>
+            <li><a class="row" href="/logout"><span class="row-lead">{{ icon('logout') }}</span><span class="row-main"><span class="row-title">Вийти</span>
+                {%- set u = request.state.user %}{% if u %}<span class="row-sub">{{ u.display_name or u.username }}</span>{% endif %}</span></a></li>
+        </ul>
+    </section>
+</div>
+</div>
+{% endblock %}

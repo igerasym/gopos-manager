@@ -1,62 +1,148 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-    <title>The Frame Manager</title>
-    <link rel="stylesheet" href="/static/style.css?v=3">
+    <title>{% block page_title %}{% endblock %}{% if self.page_title() | trim %} · {% endif %}The Frame Manager</title>
+    <script>
+        /* theme before first paint: saved choice wins, otherwise the system setting */
+        try { var t = localStorage.getItem('tfm-theme'); if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    </script>
+    <link rel="stylesheet" href="/static/style.css?v=5">
+    {% block extra_css %}{% endblock %}
     <style>{% block extra_style %}{% endblock %}</style>
 </head>
+{%- set tfm_user = request.state.user -%}
+{%- set tfm_admin = tfm_user and tfm_user.role == 'admin' -%}
+{%- set tfm_path = request.url.path -%}
+{%- set tfm_counts = nav_counts() if tfm_admin else {} -%}
+{%- set tfm_roles = {'admin': 'власник', 'chef': 'кухар', 'barista': 'бариста'} -%}
+{%- if tfm_admin -%}
+  {%- set tfm_nav = [
+      ('today', 'Сьогодні', '/', 'sun', tfm_path == '/'),
+      ('money', 'Гроші', '/expenses', 'wallet', tfm_path.startswith('/expenses') or tfm_path.startswith('/suppliers') or tfm_path.startswith('/invoices')),
+      ('stock', 'Склад', '/inventory', 'box', tfm_path.startswith('/inventory') or tfm_path.startswith('/wastage') or tfm_path.startswith('/ingredients')),
+      ('menu', 'Меню', '/recipes', 'book', tfm_path.startswith('/recipes') or tfm_path.startswith('/sub-recipes')),
+      ('more', 'Ще', '/more', 'dots', tfm_path.startswith('/more') or tfm_path.startswith('/users')),
+  ] -%}
+{%- else -%}
+  {%- set tfm_nav = [
+      ('stock', 'Склад', '/inventory', 'box', tfm_path == '/inventory' or tfm_path.startswith('/ingredients')),
+      ('count', 'Порахувати', '/inventory/count', 'clipboard', tfm_path.startswith('/inventory/count') or tfm_path.startswith('/inventory/history')),
+      ('wastage', 'Списати', '/wastage', 'trash', tfm_path.startswith('/wastage')),
+      ('menu', 'Рецепти', '/recipes', 'book', tfm_path.startswith('/recipes')),
+      ('more', 'Ще', '#more-sheet', 'dots', False),
+  ] -%}
+{%- endif %}
 <body>
-    <nav>
-        <span class="brand">☕ The Frame</span>
-        <button class="hamburger" onclick="document.querySelector('.nav-links').classList.toggle('open')">☰</button>
-        <div class="nav-links" onclick="if(window.innerWidth<769)this.classList.remove('open')">
-            {% if request.state.user and request.state.user.role == 'admin' %}
-            <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Дашборд</a>
-            <a href="/expenses" class="{% if '/expenses' in request.url.path %}active{% endif %}">Витрати</a>
-            {% endif %}
-            <a href="/inventory" class="{% if request.url.path == '/inventory' or '/inventory/upload' in request.url.path %}active{% endif %}">Склад</a>
-            <a href="/inventory/history" class="{% if '/inventory/count' in request.url.path or '/inventory/history' in request.url.path %}active{% endif %}">Інвентаризація</a>
-            <a href="/wastage" class="{% if '/wastage' in request.url.path %}active{% endif %}">Списання</a>
-            <a href="/recipes" class="{% if '/recipes' in request.url.path %}active{% endif %}">Рецепти</a>
-            {% if request.state.user and request.state.user.role == 'admin' %}
-            <a href="/users" class="{% if '/users' in request.url.path %}active{% endif %}">Користувачі</a>
-            {% endif %}
+    {{ icon_sprite() }}
+    <a class="skip-link" href="#main">До змісту</a>
+    <div class="app">
+        <aside class="sidebar" aria-label="Бічна панель">
+            <a class="brand" href="{{ '/' if tfm_admin else '/inventory' }}"><span class="brand-logo">{{ icon('cup') }}</span>The Frame</a>
+            <nav aria-label="Основне меню">
+                {% for key, label, href, ic, active in tfm_nav %}
+                {% if href.startswith('#') %}
+                <a href="{{ href }}" data-sheet-open="{{ href[1:] }}" role="button">{{ icon(ic) }}<span>{{ label }}</span></a>
+                {% else %}
+                <a href="{{ href }}"{% if active %} aria-current="page"{% endif %}>{{ icon(ic) }}<span>{{ label }}</span>
+                    {%- if tfm_counts.get(key) %}<span class="nav-badge" aria-label="{{ tfm_counts[key] }} потребують уваги">{{ tfm_counts[key] }}</span>{% endif -%}
+                </a>
+                {% endif %}
+                {% endfor %}
+            </nav>
+            <div class="sidebar-foot">
+                <button class="btn btn-secondary" type="button" data-theme-toggle aria-pressed="false">{{ icon('moon') }}<span data-theme-label>Темна тема</span></button>
+                {% if tfm_user %}
+                <div class="user-chip">
+                    <span class="avatar" aria-hidden="true">{{ (tfm_user.display_name or tfm_user.username or '?')[:1] | upper }}</span>
+                    <div class="flex-1"><div class="strong truncate">{{ tfm_user.display_name or tfm_user.username }}</div><div class="caption muted">{{ tfm_roles.get(tfm_user.role, tfm_user.role) }}</div></div>
+                    <a class="btn btn-quiet btn-icon" href="/logout" aria-label="Вийти" title="Вийти">{{ icon('logout') }}</a>
+                </div>
+                {% endif %}
+            </div>
+        </aside>
+
+        <div class="app-body">
+            <main class="main {% block main_class %}legacy{% endblock %}" id="main">
+                <div class="topbar">
+                    <a class="brand" href="{{ '/' if tfm_admin else '/inventory' }}"><span class="brand-logo">{{ icon('cup', 18) }}</span>The Frame</a>
+                    <button class="btn btn-secondary btn-icon" type="button" data-theme-toggle aria-pressed="false" aria-label="Перемкнути темну тему">{{ icon('moon') }}</button>
+                </div>
+                {% block section_tabs %}
+                {%- if tfm_admin and (tfm_path.startswith('/inventory') or tfm_path.startswith('/wastage')) and not tfm_path.startswith('/inventory/upload') %}
+                <nav class="tabs" aria-label="Розділи складу">
+                    <a href="/inventory"{% if tfm_path == '/inventory' %} aria-current="page"{% endif %}>Запаси</a>
+                    <a href="/inventory/history"{% if tfm_path.startswith('/inventory/history') or tfm_path.startswith('/inventory/count') %} aria-current="page"{% endif %}>Інвентаризація</a>
+                    <a href="/wastage"{% if tfm_path.startswith('/wastage') %} aria-current="page"{% endif %}>Списання</a>
+                </nav>
+                {%- endif %}
+                {% endblock %}
+                {% block content %}{% endblock %}
+            </main>
         </div>
-        <div class="nav-right">
-            <span id="sync-status" style="font-size:.8em; margin-right:8px;"></span>
-            {% if request.state.user and request.state.user.role == 'admin' and request.url.path == '/' %}
-            <form action="/sync" method="post">
-                <button class="btn btn-success btn-sm" type="submit" id="sync-btn">🔄 Синк GoPOS</button>
-            </form>
-            {% endif %}
-            <span style="color:rgba(255,255,255,.6); font-size:.8em; margin-left:8px;">{{ request.state.user.display_name or request.state.user.username }}</span>
-            <a href="/logout" class="btn btn-outline btn-sm" style="color:rgba(255,255,255,.7); border-color:rgba(255,255,255,.2); padding:4px 10px; font-size:.75em;">Вийти</a>
-        </div>
-    </nav>
-    <div class="container">
-        {% block content %}{% endblock %}
     </div>
 
-    <!-- Universal confirmation modal -->
-    <div class="modal-overlay" id="confirm-modal">
+    <nav class="bottom-nav" aria-label="Основне меню" style="--bnav-cols: {{ tfm_nav | length }}">
+        {% for key, label, href, ic, active in tfm_nav %}
+        {% if href.startswith('#') %}
+        <button type="button" data-sheet-open="{{ href[1:] }}"><span class="nav-pill">{{ icon(ic) }}</span><span>{{ label }}</span></button>
+        {% else %}
+        <a href="{{ href }}"{% if active %} aria-current="page"{% endif %}><span class="nav-pill">{{ icon(ic) }}</span><span>{{ label }}</span>
+            {%- if tfm_counts.get(key) %}<span class="nav-badge" aria-label="{{ tfm_counts[key] }} потребують уваги">{{ tfm_counts[key] }}</span>{% endif -%}
+        </a>
+        {% endif %}
+        {% endfor %}
+    </nav>
+
+    {% if not tfm_admin %}
+    <dialog class="sheet" id="more-sheet" aria-labelledby="more-sheet-title">
+        <div class="sheet-grip" aria-hidden="true"></div>
+        <div class="sheet-head"><h2 id="more-sheet-title">Ще</h2>
+            <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+        <div class="sheet-body">
+            {% if tfm_user %}<p class="muted mb-3">{{ tfm_user.display_name or tfm_user.username }} · {{ tfm_roles.get(tfm_user.role, tfm_user.role) }}</p>{% endif %}
+            <ul class="action-list">
+                <li><button type="button" data-theme-toggle aria-pressed="false"><span class="row-lead">{{ icon('moon') }}</span><span data-theme-label>Темна тема</span></button></li>
+                <li><a href="/logout"><span class="row-lead">{{ icon('logout') }}</span>Вийти</a></li>
+            </ul>
+        </div>
+    </dialog>
+    {% endif %}
+
+    <!-- Confirm dialog used by confirmDialog() / data-confirm -->
+    <dialog class="dialog" id="tfm-confirm" aria-labelledby="tfm-confirm-title" aria-describedby="tfm-confirm-text">
+        <form method="dialog">
+            <h2 id="tfm-confirm-title">Підтвердження</h2>
+            <p class="dialog-text" id="tfm-confirm-text"></p>
+            <div class="dialog-actions">
+                <button class="btn btn-secondary" value="cancel" type="submit" data-confirm-cancel>Скасувати</button>
+                <button class="btn btn-danger" value="ok" type="submit" data-confirm-ok>Видалити</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- LEGACY: old confirmation modal (openModal / confirmDelete / openDeleteModal and expenses.html use these ids) -->
+    <div class="modal-overlay" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal">
-            <h3 id="modal-title">⚠️ Підтвердження</h3>
+            <h3 id="modal-title">Підтвердження</h3>
             <p id="modal-name" style="font-weight:600; color:var(--text);"></p>
             <div id="modal-details" class="deps" style="display:none;"></div>
-            <p id="modal-warning" style="color:var(--red); font-size:.85em; display:none;"></p>
+            <p id="modal-warning" style="color:var(--danger); display:none;"></p>
             <div class="modal-actions">
-                <button class="btn btn-outline" onclick="closeModal()">Скасувати</button>
+                <button class="btn btn-outline" type="button" onclick="closeModal()">Скасувати</button>
                 <form id="modal-form" method="post" style="display:inline;">
-                    <button class="btn" id="modal-submit-btn" style="background:var(--red); color:#fff;" type="submit">Видалити</button>
+                    <button class="btn btn-danger" id="modal-submit-btn" type="submit">Видалити</button>
                 </form>
             </div>
         </div>
     </div>
 
-    <script src="/static/app.js?v=3"></script>
+    <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+    <script src="/static/app.js?v=5"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

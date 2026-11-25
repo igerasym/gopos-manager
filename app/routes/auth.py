@@ -27,7 +27,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
     db.close()
 
     if not user or not verify_password(password, user['password_hash']):
-        return templates.TemplateResponse(request, 'login.html', context={'error': 'Невірний логін або пароль'})
+        return templates.TemplateResponse(request, 'login.html', context={'error': 'Неправильний логін або пароль'})
 
     response = RedirectResponse('/', status_code=302)
     response.set_cookie('session', sign_cookie(username), httponly=True, max_age=86400 * 30)
