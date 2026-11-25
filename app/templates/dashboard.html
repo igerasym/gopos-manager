@@ -30,7 +30,7 @@
         <div class="kpi-label">Виручка <span class="info-tip" data-tip="Загальний валовий продаж з GoPOS за обраний період, включаючи ПДВ.">ⓘ</span></div>
         <div class="kpi-value">{{ '{:,.0f}'.format(totals['revenue']) }} zł</div>
         {% if day_in_progress %}
-            <div class="kpi-change neutral">день ще триває</div>
+            <div class="kpi-change neutral">день ще триває{% if as_of %}, дані станом на {{ as_of }}{% endif %}</div>
         {% elif totals['revenue'] > 0 and prev_totals['revenue'] > 0 %}
             {% set change = ((totals['revenue'] - prev_totals['revenue']) / prev_totals['revenue'] * 100) %}
             <div class="kpi-change {{ 'up' if change >= 0 else 'down' }}">

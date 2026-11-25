@@ -1,6 +1,7 @@
 """GoPos API client — replaces Playwright scraping."""
 import logging
 import os
+import threading
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -345,6 +346,32 @@ def sync_today():
     except Exception as e:
         _finish_sync_log(sync_id, 'error', str(e)[:200])
         raise
+
+
+# Wall-clock time (Warsaw, 'HH:MM') of the last successful intraday refresh; None until the
+# first one after a restart. Read by the Telegram chat to say how fresh today's numbers are.
+LAST_INTRADAY_SYNC: Optional[str] = None
+_intraday_lock = threading.Lock()
+
+
+def sync_intraday() -> Optional[int]:
+    """Refresh TODAY's sales only, so dashboard and bot are not empty until the evening sync.
+
+    The webhook that should deliver orders live is not reliably connected, and the full sync
+    runs once a day (19:00 UTC). This replaces today's rows in `sales` from the API. It does not
+    deduct stock or log write-offs (the evening sync does both, and re-syncing the day is
+    idempotent), and it skips silently when a previous run is still going.
+    """
+    global LAST_INTRADAY_SYNC
+    if not _intraday_lock.acquire(blocking=False):
+        return None
+    try:
+        count = sync_orders_for_date(warsaw_today())
+        from zoneinfo import ZoneInfo
+        LAST_INTRADAY_SYNC = datetime.now(ZoneInfo('Europe/Warsaw')).strftime('%H:%M')
+        return count
+    finally:
+        _intraday_lock.release()
 
 
 def sync_date(date_str: str):

@@ -40,9 +40,12 @@ def _week_ranges(today: str) -> tuple:
 def today_sales(today: str, finance: bool) -> str:
     s = _summary(today, today, today)
     top = tt.top_products({'date_from': today, 'limit': 3}, today)['products']
+    from app import gopos_api
+    as_of = gopos_api.LAST_INTRADAY_SYNC
+    note = f'станом на {as_of}, оновлюється щогодини' if as_of else 'оновлюється щогодини'
     if not s['items_sold']:
-        return f'📊 <b>{today}</b>\nПродажів за сьогодні ще немає.'
-    lines = [f'📊 <b>Сьогодні, {today}</b> (день ще триває)',
+        return f'📊 <b>{today}</b>\nПродажів за сьогодні ще не записано ({note}).'
+    lines = [f'📊 <b>Сьогодні, {today}</b> ({note})',
              f'Виручка: {_money(s["revenue_gross_zl"])}', f'Позицій: {s["items_sold"]:.0f}']
     if top:
         lines.append('Топ: ' + ', '.join(f'{escape(p["product"])} ×{p["quantity"]:.0f}' for p in top))
