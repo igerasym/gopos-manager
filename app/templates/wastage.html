@@ -26,6 +26,11 @@
         <div class="kpi-label">Вартість списань</div>
         <div class="kpi-value" style="color:var(--red);">{{ '{:,.2f}'.format(total_cost) }} zł</div>
         <div class="kpi-change neutral">збитки місяця</div>
+        {% if unpriced %}
+        <div class="kpi-change" style="color:var(--orange); margin-top:4px;" title="{{ unpriced|join(', ') }}">
+            ⚠ без техкарти, не враховано: {{ unpriced|length }}
+        </div>
+        {% endif %}
     </div>
     {% endif %}
     <div class="card kpi">
@@ -99,7 +104,7 @@
                 <td class="text-muted" style="font-size:.85em;">{{ r['unit'] }}</td>
                 {% if is_admin %}
                 <td class="text-right hide-mobile" style="color:var(--red); font-weight:500;">
-                    {% if r['cost'] > 0 %}{{ '{:.2f}'.format(r['cost']) }} zł{% else %}—{% endif %}
+                    {% if r['cost_known'] %}{{ '{:.2f}'.format(r['cost']) }} zł{% else %}<span title="{{ 'Немає техкартки для цього продукту' if r['source'] == 'gopos' else 'Немає ціни інгредієнта' }}">—</span>{% endif %}
                 </td>
                 {% endif %}
                 <td>

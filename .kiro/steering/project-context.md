@@ -258,6 +258,15 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 ### Stock Count (/inventory/count)
 - Full inventory check with expected vs actual
 
+### Wastage (/wastage) — admin, chef, barista (costs admin-only)
+- Table `wastage`: date, ingredient_id (manual) or product_name (GoPos), quantity, reason, source, user_id.
+- `source='gopos'`: filled by `sync_writeoffs_for_date` from orders carrying the `write-off` promotion
+  (DELETE+INSERT per day). Stock is already deducted via `sales`, so these rows are only a log.
+  Cost = quantity x recipe cost of the product at current ingredient prices (`get_cost_lookup`, same
+  as COGS). A product with no recipe shows "—" and is listed in the "без техкарти" warning, never
+  as 0.00.
+- `source='manual'`: ingredient + quantity + reason; saving deducts stock, deleting restores it.
+
 ## Auth & Roles
 - Cookie-based auth with HMAC-signed sessions
 - Roles: admin (full), chef (inventory+recipes), barista (inventory+recipes). Any other role (e.g. the

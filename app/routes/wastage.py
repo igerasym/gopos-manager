@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
+from app.services.recipes import get_cost_lookup
 from app.gopos_api import warsaw_today
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
@@ -27,6 +28,29 @@ REASON_UA = {
 def _is_admin(request: Request) -> bool:
     user = getattr(request.state, 'user', None)
     return bool(user and user['role'] == 'admin')
+
+
+def _price_rows(rows) -> list:
+    """Rows as dicts with `cost`/`cost_known` filled in.
+
+    Manual rows already carry quantity x ingredient price. A GoPos write-off is a product
+    (e.g. 'Croissant'), so its cost is quantity x the product's recipe cost at current
+    ingredient prices - the same figure the dashboard uses for COGS. No recipe -> unknown,
+    shown as a dash, not as a free 0.00.
+    """
+    product_cost = get_cost_lookup()
+    out = []
+    for r in rows:
+        d = dict(r)
+        if d['source'] == 'gopos':
+            unit_cost = product_cost.get(d['label'], 0) or 0
+            d['cost'] = d['quantity'] * unit_cost
+            d['cost_known'] = unit_cost > 0
+            d['unit'] = 'шт'
+        else:
+            d['cost_known'] = d['cost'] > 0
+        out.append(d)
+    return out
 
 
 @router.get('/wastage', response_class=HTMLResponse)
@@ -53,7 +77,9 @@ async def wastage_page(request: Request, month: str = ''):
         ORDER BY w.date DESC, w.id DESC
     ''', (month_start, month_end)).fetchall()
 
+    rows = _price_rows(rows)
     total_cost = sum(r['cost'] for r in rows)
+    unpriced = sorted({r['label'] for r in rows if r['source'] == 'gopos' and not r['cost_known']})
     gopos_count = sum(1 for r in rows if r['source'] == 'gopos')
     manual_count = len(rows) - gopos_count
 
@@ -87,6 +113,7 @@ async def wastage_page(request: Request, month: str = ''):
         'top_losers': top_losers, 'ingredients': ingredients, 'months': months,
         'gopos_count': gopos_count, 'manual_count': manual_count,
         'is_admin': _is_admin(request),
+        'unpriced': unpriced,
         'now_date': warsaw_today(),
     })
 
@@ -162,6 +189,7 @@ async def export_wastage_csv(request: Request, month: str = ''):
         ORDER BY w.date DESC
     ''', (month_start, month_end)).fetchall()
     db.close()
+    rows = _price_rows(rows)
 
     buf = io.StringIO()
     w = csv.writer(buf)
