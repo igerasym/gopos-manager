@@ -38,8 +38,66 @@ def call_llm(prompt: str, max_tokens: int = 1000) -> str:
         raise
 
 
-def parse_invoice_with_vision(file_bytes: bytes, file_name: str = '') -> dict:
-    """Parse invoice PDF/image directly with LLM vision.
+INVOICE_PROMPT = """You are extracting data from a Polish invoice (faktura) for a coffee shop in Warsaw.
+
+Extract:
+- vendor: company name (e.g. "MAKRO", "Foundation Coffee", "PGE")
+- invoice_number: faktura number (e.g. "FV/2026/123")
+- date: invoice date (YYYY-MM-DD format)
+- total: the amount the cafe has to PAY, in PLN, with VAT (BRUTTO). Take it from the invoice's
+  grand-total line: "Do zapłaty", "Razem do zapłaty", "Kwota należności ogółem", "Wartość brutto"
+  of the whole invoice. NEVER take the total of one section, one VAT rate or one page, and
+  never a net (netto) amount. Credit notes (korekta) have a negative total.
+- total_printed: that same total copied EXACTLY as printed, with its spaces and comma (e.g. "2 174,10")
+- items: array of line items, each with:
+  - name: short product name (clean, no codes)
+  - quantity: numeric quantity
+  - unit_price: BRUTTO unit price in PLN (with VAT)
+  - total: BRUTTO line total in PLN
+
+RULES:
+- Copy every number digit by digit. Do not round, guess or fix numbers. If the PDF text below
+  is given, copy numbers from it, and use the picture to understand the layout.
+- Use BRUTTO (with VAT) prices, NOT netto.
+- Multi-page invoices: extract ALL items from ALL pages (Makro invoices have 3-4 pages).
+- Separate discount lines (rabat, upust) are not items. Keep line totals as printed.
+- Numbers use a comma as the decimal separator and a space or dot for thousands
+  (1 234,56 and 1.234,56 both mean 1234.56).
+- Before answering, check: the line totals add up to the invoice total (within a few zloty
+  of discounts and deposits). If they do not, look again for a missed page, line or digit.
+
+Reply with ONLY valid JSON (no markdown, no explanation):
+{
+  "vendor": "...",
+  "invoice_number": "...",
+  "date": "YYYY-MM-DD",
+  "total": 0.00,
+  "total_printed": "0,00",
+  "items": [
+    {"name": "...", "quantity": 1.0, "unit_price": 10.00, "total": 10.00}
+  ]
+}"""
+
+
+def build_invoice_prompt(pdf_text: str = '', feedback: str = '') -> str:
+    """The invoice extraction prompt, with the PDF text layer and retry feedback when given."""
+    prompt = INVOICE_PROMPT
+    if pdf_text:
+        prompt += f"\n\nPDF TEXT (exact digits, may be in a jumbled order):\n<pdf_text>\n{pdf_text}\n</pdf_text>"
+    if feedback:
+        prompt += (
+            "\n\nYOUR PREVIOUS ANSWER FAILED THESE CHECKS, fix them by re-reading the invoice:\n"
+            f"{feedback}"
+        )
+    return prompt
+
+
+def parse_invoice_with_vision(file_bytes: bytes, file_name: str = '', pdf_text: str = '',
+                              feedback: str = '') -> dict:
+    """Parse invoice PDF/image with LLM vision, plus the PDF text layer when there is one.
+
+    pdf_text: exact digits from the PDF itself (the model reads numbers from it, not pixels).
+    feedback: problems found in an earlier attempt, for a retry.
 
     Returns: {
         'vendor': str, 'date': str, 'invoice_number': str,
@@ -55,8 +113,8 @@ def parse_invoice_with_vision(file_bytes: bytes, file_name: str = '') -> dict:
         try:
             import pdfplumber
             pdf = pdfplumber.open(io.BytesIO(file_bytes))
-            for page in pdf.pages[:5]:  # Max 5 pages
-                img = page.to_image(resolution=150)
+            for page in pdf.pages[:6]:  # Max 6 pages
+                img = page.to_image(resolution=200)
                 buf = io.BytesIO()
                 img.original.save(buf, format='PNG')
                 images.append(('png', buf.getvalue()))
@@ -83,36 +141,7 @@ def parse_invoice_with_vision(file_bytes: bytes, file_name: str = '') -> dict:
             }
         })
 
-    prompt = """You are extracting data from a Polish invoice (faktura) for a coffee shop.
-
-Extract:
-- vendor: company name (e.g. "MAKRO", "Foundation Coffee", "PGE")
-- invoice_number: faktura number (e.g. "FV/2026/123")
-- date: invoice date (YYYY-MM-DD format)
-- total: TOTAL BRUTTO amount in PLN (the "Razem do zapłaty" / "Wartość brutto" — final amount with VAT)
-- items: array of line items, each with:
-  - name: short product name (clean, no codes)
-  - quantity: numeric quantity
-  - unit_price: BRUTTO unit price in PLN (with VAT)
-  - total: BRUTTO line total in PLN
-
-IMPORTANT:
-- Use BRUTTO (with VAT) prices, NOT netto
-- Total must match sum of line totals (verify yourself!)
-- For multi-page invoices: extract ALL items from all pages
-- If you see "Razem" or "Suma" — that's the total
-- Numbers may use comma as decimal separator (1.234,56 → 1234.56)
-
-Reply with ONLY valid JSON (no markdown, no explanation):
-{
-  "vendor": "...",
-  "invoice_number": "...",
-  "date": "YYYY-MM-DD",
-  "total": 0.00,
-  "items": [
-    {"name": "...", "quantity": 1.0, "unit_price": 10.00, "total": 10.00}
-  ]
-}"""
+    prompt = build_invoice_prompt(pdf_text, feedback)
 
     content.append({'text': prompt})
 
