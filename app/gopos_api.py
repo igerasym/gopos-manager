@@ -319,6 +319,7 @@ def sync_orders_for_date(date_str: str) -> int:
         db.executemany(
             'INSERT OR REPLACE INTO processed_orders (order_id, date) VALUES (?, ?)',
             [(str(o['id']), date_str) for o in all_orders if o.get('id') is not None])
+        _save_takeaway(db, date_str, all_orders)
         db.commit()
     except Exception:
         db.rollback()
@@ -577,6 +578,66 @@ def shift_staff(orders: list) -> list:
         if t > s['last']:
             s['last'] = t
     return sorted(staff.values(), key=lambda s: s['first'] or '99:99')
+
+
+# GoPOS marks every order DINE_IN, so "takeaway" is read from the items: a To-go cup or box on the
+# order means the guest took something away. A pastry in a bag without a cup is counted as dine-in.
+TAKEAWAY_ITEM_MARKERS = ('to-go cup', 'to-go box')
+
+
+def is_takeaway(order: dict) -> bool:
+    for it in order.get('items') or []:
+        if it.get('status') != 'ACTIVE':
+            continue
+        name = (it.get('name') or (it.get('product') or {}).get('name') or '').lower()
+        if any(m in name for m in TAKEAWAY_ITEM_MARKERS):
+            return True
+    return False
+
+
+def takeaway_stats(orders: list) -> dict:
+    """Takeaway vs dine-in split of closed orders (needs items included).
+
+    Returns {'orders', 'revenue', 'takeaway_orders', 'takeaway_revenue'}, revenue = paid, gross.
+    """
+    r = {'orders': 0, 'revenue': 0.0, 'takeaway_orders': 0, 'takeaway_revenue': 0.0}
+    for o in orders:
+        paid = (o.get('total_price') or {}).get('amount', 0)
+        r['orders'] += 1
+        r['revenue'] += paid
+        if is_takeaway(o):
+            r['takeaway_orders'] += 1
+            r['takeaway_revenue'] += paid
+    return r
+
+
+def _save_takeaway(db, date_str: str, orders: list):
+    """Store the day's takeaway split (needs the orders loaded with their items)."""
+    t = takeaway_stats(orders)
+    db.execute(
+        'INSERT OR REPLACE INTO daily_takeaway (date, orders, revenue, takeaway_orders, takeaway_revenue) '
+        'VALUES (?, ?, ?, ?, ?)',
+        (date_str, t['orders'], round(t['revenue'], 2), t['takeaway_orders'], round(t['takeaway_revenue'], 2)))
+
+
+def backfill_takeaway(date_from: str, date_to: str) -> int:
+    """Fill daily_takeaway for past days from GoPOS. Touches nothing else (sales, stock). Returns days."""
+    cur = datetime.strptime(date_from, '%Y-%m-%d')
+    end = datetime.strptime(date_to, '%Y-%m-%d')
+    days = 0
+    while cur <= end:
+        d = cur.strftime('%Y-%m-%d')
+        orders = fetch_closed_orders(d, 'items,items.product')
+        if orders:  # an empty answer is more likely an API hiccup than a day without orders
+            db = get_db()
+            try:
+                _save_takeaway(db, d, orders)
+                db.commit()
+            finally:
+                db.close()
+            days += 1
+        cur += timedelta(days=1)
+    return days
 
 
 def discounted_items(orders: list) -> dict:

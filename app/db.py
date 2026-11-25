@@ -214,6 +214,16 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_processed_orders_date ON processed_orders(date);
 
+        -- Takeaway vs dine-in per business day (an order with a To-go cup/box is takeaway).
+        -- Written by sync_orders_for_date from the orders it already loads; read by the bot.
+        CREATE TABLE IF NOT EXISTS daily_takeaway (
+            date TEXT PRIMARY KEY,
+            orders INTEGER NOT NULL,
+            revenue REAL NOT NULL,
+            takeaway_orders INTEGER NOT NULL,
+            takeaway_revenue REAL NOT NULL
+        );
+
         -- Wastage log: manual writeoffs for spoiled / broken / expired items
         -- source='manual': ingredient_id required, product_name optional
         -- source='gopos':  product_name required, ingredient_id NULL (resolved at display time)

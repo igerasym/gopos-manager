@@ -92,6 +92,11 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   `50% Cookie Countdown` (end-of-day half price), `Apology treat`, `15`.
 - Employees: Alina, Alya, Nastia + shared account **`Barista`** (can't attribute those orders to a person).
 - `work_times` (clock-in) exists but is barely used (last entry Aug 2026) — don't rely on it for shifts.
+- **Takeaway vs dine-in:** every order has `type: DINE_IN` (the POS doesn't distinguish), so takeaway is
+  read from the items: an active `To-go cup` or `To-go box` on the order = takeaway
+  (`gopos_api.is_takeaway` / `takeaway_stats`). A pastry in a bag without a cup counts as dine-in, so
+  staff should add the cup/box item to every "to go" order. Measured Oct 28-Nov 24 2026: 48 % of orders but
+  38 % of revenue are takeaway (avg check 30 zł vs 45 zł dine-in), about 50 % at every hour of the day.
 - No to-go flag: every order is `type=DINE_IN`.
 - `sync_date()` / `sync_range()` also DEDUCT INVENTORY. To re-import money fields only, use
   **`resync_sales(from, to)`** (no inventory side effects). History was resynced 2026-05-25 → 2026-11-05.
@@ -211,7 +216,7 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - **Admin vs functional**: `ADMIN_CHAT_ID` = `TELEGRAM_ADMIN_CHAT_ID` or the first id. Partner gets only
   functional messages; admin also gets technical ones. Use `send_message()` for functional, `send_admin()` /
   `alert_admin(where, exc)` for technical. Never `except: pass` in jobs — call `alert_admin`.
-- Daily report: revenue, items, 👤 Shift (employee per order), ☕ Staff drinks (Coffee items ≥5 zł under
+- Daily report: revenue, items, 👤 Shift (employee per order), 🥤 Takeaway share (only when there is any), ☕ Staff drinks (Coffee items ≥5 zł under
   `Staff` discount), 🗑 Write-off, 🏆 Top 7. Blocks appear only when non-empty. Admin gets a 🔧 debug
   footer ONLY when something is wrong (GoPos failed, DB revenue ≠ GoPos paid, last sync not `done`) —
   the owner explicitly doesn't want healthy debug noise.
@@ -229,17 +234,21 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   (last 3 exchanges, 30 min idle), 30 questions/chat/hour. Message and answer text is never logged (chat id,
   tool names, token counts, seconds only). Bedrock Converse with the app's Haiku 4.5 (no new Marketplace
   agreement) calls read-only tools (sales_summary, daily_revenue, weekday_averages, top_products,
-  product_sales, low_stock, stock_item, wastage_summary; finance-only: expenses_summary, food_cost).
+  product_sales, takeaway_summary, low_stock, stock_item, wastage_summary; finance-only: expenses_summary, food_cost).
   Every number must come from a tool. Finance tools and wastage costs go to `TELEGRAM_FINANCE_CHAT_IDS`;
   by default that is every allowed chat (both owners), set it to narrow. The admin chat also gets a footer
   with tools called and token counts. Env: `TELEGRAM_CHAT_ENABLED=0` switches it off,
   `TELEGRAM_CHAT_MODEL_ID`, `TELEGRAM_CHAT_HOURLY_LIMIT`.
   **Skills** (`app/telegram_skills.py`): slash commands answered without the model, from the same tools
   (instant, free, same numbers every time): /today /yesterday (vs same weekday last week) /week (last 7
-  complete days vs the 7 before) /top /order (low stock grouped by supplier; `/stock` is an alias) /wastage
+  complete days vs the 7 before) /takeaway /top /order (low stock grouped by supplier; `/stock` is an alias) /wastage
   /costs (food cost 30 days, finance only) /help. They are registered in Telegram's menu with setMyCommands
   at startup, per chat, so a finance-only skill never shows up for a non-finance chat. To add one: a function
   in `telegram_skills.py`, an entry in `SKILLS`, a test.
+  Takeaway vs dine-in (the marker is described under GoPOS): `daily_takeaway` (one row per business day)
+  is written by `sync_orders_for_date` on every sync, so it refreshes hourly for today and fully in the
+  evening. Tool `takeaway_summary`, skill `/takeaway` (last 7 complete days vs the 7 before). Past days:
+  `python3 scripts/backfill_takeaway.py FROM TO` (reads GoPOS, touches nothing but that table).
   Not available yet: sales by hour, staff/shift data, discounts by type (they need the GoPos API).
   To add a tool: write a read-only function in `telegram_tools.py`, validate inputs, cap rows, register it in
   `TOOLS` (mark finance=True if it shows costs/profit) and add a test.
