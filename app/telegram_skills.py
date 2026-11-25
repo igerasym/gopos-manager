@@ -98,6 +98,26 @@ def top_week(today: str, finance: bool) -> str:
     return '\n'.join(lines)
 
 
+def takeaway_week(today: str, finance: bool) -> str:
+    (a_from, a_to), (b_from, b_to) = _week_ranges(today)
+    a = tt.takeaway_summary({'date_from': a_from, 'date_to': a_to}, today)
+    if a.get('no_data'):
+        return f'🥤 На виніс за {a_from} – {a_to}: даних ще немає.'
+    b = tt.takeaway_summary({'date_from': b_from, 'date_to': b_to}, today)
+    lines = [f'🥤 <b>На виніс, {a_from} – {a_to}</b>',
+             f'Замовлень: {a["takeaway_share_of_orders_pct"]:.0f}% ({a["takeaway_orders"]} з {a["orders"]})',
+             f'Виручки: {a["takeaway_share_of_revenue_pct"]:.0f}% ({_money(a["takeaway_revenue_zl"])})']
+    if a['avg_check_takeaway_zl'] and a['avg_check_dine_in_zl']:
+        lines.append(f'Чек: {a["avg_check_takeaway_zl"]:.0f} zł на виніс vs {a["avg_check_dine_in_zl"]:.0f} zł в залі')
+    if not b.get('no_data'):
+        lines.append(f'Тиждень до того: {b["takeaway_share_of_orders_pct"]:.0f}% замовлень, '
+                     f'{b["takeaway_share_of_revenue_pct"]:.0f}% виручки')
+    if a['days_with_data'] < a['days_in_range']:
+        lines.append(f'⚠ Дані лише за {a["days_with_data"]} з {a["days_in_range"]} днів.')
+    lines.append('<i>На виніс = у замовленні є стаканчик або бокс.</i>')
+    return '\n'.join(lines)
+
+
 def order_list(today: str, finance: bool) -> str:
     items = tt.low_stock({}, today)['items_below_minimum']
     if not items:
@@ -154,6 +174,7 @@ SKILLS = {
     'yesterday': ('Вчорашній день і порівняння з минулим тижнем', yesterday_sales, False),
     'week': ('Тиждень проти попереднього', week_sales, False),
     'top': ('Топ-5 позицій за тиждень', top_week, False),
+    'takeaway': ('На виніс vs в залі за тиждень', takeaway_week, False),
     'order': ('Що замовити: закінчується, по постачальниках', order_list, False),
     'wastage': ('Списання за місяць', wastage_month, False),
     'costs': ('Food cost за 30 днів', food_cost_30, True),

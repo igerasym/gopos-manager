@@ -170,6 +170,40 @@ def product_sales(args: dict, today: str) -> dict:
          'discount_zl': _r(r['discount'])} for r in rows], **_freshness(d_to, today)}
 
 
+def takeaway_summary(args: dict, today: str) -> dict:
+    """Takeaway vs dine-in share for a range (an order with a To-go cup/box counts as takeaway)."""
+    d_from, d_to = _range(args, today)
+    db = get_db()
+    try:
+        r = db.execute('''
+            SELECT COALESCE(SUM(orders),0) orders, COALESCE(SUM(revenue),0) revenue,
+                   COALESCE(SUM(takeaway_orders),0) t_orders, COALESCE(SUM(takeaway_revenue),0) t_revenue,
+                   COUNT(*) days
+            FROM daily_takeaway WHERE date BETWEEN ? AND ?''', (d_from, d_to)).fetchone()
+    finally:
+        db.close()
+    n_days = (date.fromisoformat(d_to) - date.fromisoformat(d_from)).days + 1
+    out = {
+        'date_from': d_from, 'date_to': d_to, 'days_with_data': r['days'], 'days_in_range': n_days,
+        'note': 'Takeaway = the order has a To-go cup or To-go box (the POS marks every order as dine-in). '
+                'A pastry taken away without a cup counts as dine-in, so the takeaway share is a minimum.',
+        **_freshness(d_to, today),
+    }
+    if not r['orders']:
+        out['no_data'] = True
+        return out
+    d_orders, d_rev = r['orders'] - r['t_orders'], r['revenue'] - r['t_revenue']
+    out.update({
+        'orders': r['orders'], 'takeaway_orders': r['t_orders'],
+        'takeaway_share_of_orders_pct': _r(100 * r['t_orders'] / r['orders'], 1),
+        'takeaway_revenue_zl': _r(r['t_revenue']), 'dine_in_revenue_zl': _r(d_rev),
+        'takeaway_share_of_revenue_pct': _r(100 * r['t_revenue'] / r['revenue'], 1) if r['revenue'] else None,
+        'avg_check_takeaway_zl': _r(r['t_revenue'] / r['t_orders']) if r['t_orders'] else None,
+        'avg_check_dine_in_zl': _r(d_rev / d_orders) if d_orders else None,
+    })
+    return out
+
+
 def low_stock(args: dict, today: str) -> dict:
     db = get_db()
     try:
@@ -316,6 +350,7 @@ TOOLS = {
     'weekday_averages': (_spec('weekday_averages', 'Average daily revenue per weekday over a date range (shows which weekdays are strong or weak).', _DATE_PROPS, ['date_from', 'date_to']), weekday_averages, False),
     'top_products': (_spec('top_products', 'Best-selling products in a date range, ranked by revenue or quantity.', {**_DATE_PROPS, 'by': {'type': 'string', 'enum': ['revenue', 'quantity']}, 'limit': {'type': 'integer', 'description': 'max 15, default 7'}}, ['date_from']), top_products, False),
     'product_sales': (_spec('product_sales', 'Sales of products whose name contains the given text, for a date range.', {**_DATE_PROPS, 'product': {'type': 'string'}}, ['date_from', 'product']), product_sales, False),
+    'takeaway_summary': (_spec('takeaway_summary', 'Takeaway vs dine-in: share of orders and revenue and average check for each, for a date range (takeaway = order with a To-go cup/box).', _DATE_PROPS, ['date_from']), takeaway_summary, False),
     'low_stock': (_spec('low_stock', 'Ingredients at or below their minimum stock level right now.', {}), low_stock, False),
     'stock_item': (_spec('stock_item', 'Current stock of ingredients whose name contains the given text.', {'ingredient': {'type': 'string'}}, ['ingredient']), stock_item, False),
     'wastage_summary': (_spec('wastage_summary', 'Write-offs / spoilage for a month: records by reason and the top written-off items.', {'month': {'type': 'string', 'description': 'YYYY-MM, default current month'}}), wastage_summary, False),
