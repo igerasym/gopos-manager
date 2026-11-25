@@ -92,3 +92,20 @@ def test_send_routes_and_survives_llm_failure():
         send.reset_mock()
         mr.send_monthly_report('2026-10', admin_only=True)
         assert send.call_args.args == ('numbers', '111')
+
+
+def test_takeaway_line_with_previous_month():
+    prev = _stats(130000, 30, {wd: 4300 for wd in range(7)}, {})
+    cur = _stats(137000, 31, {wd: 4400 for wd in range(7)}, {})
+    # cur: 3 100 orders, 1 500 takeaway paying 45 000 of 137 000 zł; prev: 3 000 orders, 1 380 takeaway
+    cur['takeaway'] = {'orders': 1500, 'revenue': 45000.0, 'all_revenue': 137000.0}
+    prev['takeaway'] = {'orders': 1380, 'revenue': 40000.0, 'all_revenue': 130000.0}
+    text = mr.format_numbers('2026-10', '2026-09', cur, prev, mr.compare('2026-10', cur, prev))
+    assert '🥤 На виніс: 48% замовлень (було 46%), 33% виручки · чек 30 zł на виніс vs 58 zł в залі' in text
+
+
+def test_takeaway_line_missing_without_data():
+    prev = _stats(100, 30, {}, {}, gopos=False)
+    cur = _stats(100, 31, {}, {}, gopos=False)
+    text = mr.format_numbers('2026-10', '2026-09', cur, prev, mr.compare('2026-10', cur, prev))
+    assert 'На виніс' not in text

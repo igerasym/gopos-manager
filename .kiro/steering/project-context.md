@@ -92,6 +92,11 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   `50% Cookie Countdown` (end-of-day half price), `Apology treat`, `15`.
 - Employees: Alina, Alya, Nastia + shared account **`Barista`** (can't attribute those orders to a person).
 - `work_times` (clock-in) exists but is barely used (last entry Aug 2026) — don't rely on it for shifts.
+- **Takeaway vs dine-in:** every order has `type: DINE_IN` (the POS doesn't distinguish), so takeaway is
+  read from the items: an active `To-go cup` or `To-go box` on the order = takeaway
+  (`gopos_api.is_takeaway` / `takeaway_stats`). A pastry in a bag without a cup counts as dine-in, so
+  staff should add the cup/box item to every "to go" order. Measured Oct 28-Nov 24 2026: 48 % of orders but
+  38 % of revenue are takeaway (avg check 30 zł vs 45 zł dine-in), about 50 % at every hour of the day.
 - No to-go flag: every order is `type=DINE_IN`.
 - `sync_date()` / `sync_range()` also DEDUCT INVENTORY. To re-import money fields only, use
   **`resync_sales(from, to)`** (no inventory side effects). History was resynced 2026-05-25 → 2026-11-05.
@@ -211,7 +216,7 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - **Admin vs functional**: `ADMIN_CHAT_ID` = `TELEGRAM_ADMIN_CHAT_ID` or the first id. Partner gets only
   functional messages; admin also gets technical ones. Use `send_message()` for functional, `send_admin()` /
   `alert_admin(where, exc)` for technical. Never `except: pass` in jobs — call `alert_admin`.
-- Daily report: revenue, items, 👤 Shift (employee per order), ☕ Staff drinks (Coffee items ≥5 zł under
+- Daily report: revenue, items, 👤 Shift (employee per order), 🥤 Takeaway share (only when there is any), ☕ Staff drinks (Coffee items ≥5 zł under
   `Staff` discount), 🗑 Write-off, 🏆 Top 7. Blocks appear only when non-empty. Admin gets a 🔧 debug
   footer ONLY when something is wrong (GoPos failed, DB revenue ≠ GoPos paid, last sync not `done`) —
   the owner explicitly doesn't want healthy debug noise.

@@ -89,17 +89,22 @@ def collect_db(month: str) -> dict:
 
 
 def collect_gopos(month: str) -> dict:
-    from app.gopos_api import fetch_closed_orders
+    from app.gopos_api import fetch_closed_orders, is_takeaway
     first, last = month_bounds(month)
     n, paid = 0, 0.0
+    tk_n, tk_paid = 0, 0.0  # takeaway orders (To-go cup/box on the order) and what they paid
     hours, emp = Counter(), Counter()
     disc = defaultdict(lambda: {'orders': 0, 'value': 0.0})
     vat = defaultdict(lambda: {'net': 0.0, 'tax': 0.0, 'gross': 0.0})  # by VAT rate, straight from the POS
     d = first
     while d <= last:
-        for o in fetch_closed_orders(d.isoformat(), 'employee,promotions,tax_items'):
+        for o in fetch_closed_orders(d.isoformat(), 'employee,promotions,tax_items,items,items.product'):
             n += 1
-            paid += (o.get('total_price') or {}).get('amount', 0)
+            o_paid = (o.get('total_price') or {}).get('amount', 0)
+            paid += o_paid
+            if is_takeaway(o):
+                tk_n += 1
+                tk_paid += o_paid
             for t in o.get('tax_items') or []:
                 v = vat[f'{t.get("tax_amount", 0):g}%']
                 v['net'] += (t.get('total_price_net') or {}).get('amount', 0)
@@ -114,6 +119,7 @@ def collect_gopos(month: str) -> dict:
                 e['value'] += (p.get('used') or {}).get('amount', 0)
         d += timedelta(days=1)
     return {'orders': n, 'avg_ticket': paid / n if n else 0, 'hours': dict(hours),
+            'takeaway': {'orders': tk_n, 'revenue': tk_paid, 'all_revenue': paid},
             'employees': dict(emp), 'discounts': {k: dict(v) for k, v in disc.items()},
             'vat': {k: dict(v) for k, v in vat.items()}}
 
@@ -173,6 +179,21 @@ def compare(cur_m: str, cur: dict, prev: dict) -> dict:
 
 # ─── formatting ───
 
+def _takeaway_month_line(cur: dict, tk: dict, prev: dict, ptk) -> str:
+    """🥤 На виніс: share of orders / revenue, average check takeaway vs dine-in, vs last month."""
+    share = 100 * tk['orders'] / cur['orders']
+    rev_share = 100 * tk['revenue'] / tk['all_revenue'] if tk['all_revenue'] else 0
+    line = f'🥤 На виніс: {share:.0f}% замовлень'
+    if ptk and ptk['orders'] and prev.get('orders'):
+        line += f' (було {100 * ptk["orders"] / prev["orders"]:.0f}%)'
+    line += f', {rev_share:.0f}% виручки'
+    dine_n = cur['orders'] - tk['orders']
+    if dine_n:
+        line += (f' · чек {tk["revenue"] / tk["orders"]:.0f} zł на виніс vs '
+                 f'{(tk["all_revenue"] - tk["revenue"]) / dine_n:.0f} zł в залі')
+    return line
+
+
 def format_numbers(cur_m: str, prev_m: str, cur: dict, prev: dict, cmp: dict) -> str:
     L = [f'📊 <b>The Frame — {month_title(cur_m)}</b> vs {month_title(prev_m).split()[0].lower()}', '']
     L.append(f'💰 Виручка: <b>{zl(cur["revenue"])} zł</b> ({fmt_pct(pct(cur["revenue"], prev["revenue"]))})')
@@ -182,6 +203,9 @@ def format_numbers(cur_m: str, prev_m: str, cur: dict, prev: dict, cmp: dict) ->
     if cur.get('gopos_ok') and prev.get('gopos_ok'):
         L.append(f'🧾 Замовлень: {zl(cur["orders"])} ({fmt_pct(pct(cur["orders"], prev["orders"]))}) · '
                  f'чек {cur["avg_ticket"]:.2f} zł ({fmt_pct(pct(cur["avg_ticket"], prev["avg_ticket"]))})')
+    tk, ptk = cur.get('takeaway'), prev.get('takeaway')
+    if tk and tk['orders'] and cur.get('orders'):
+        L.append(_takeaway_month_line(cur, tk, prev, ptk))
     L.append(f'🏷 Знижки: {zl(cur["discount"])} zł ({fmt_pct(pct(cur["discount"], prev["discount"]))})')
     if cur.get('vat'):  # from the POS receipts (exact); falls back to DB net otherwise
         tax = sum(v['tax'] for v in cur['vat'].values())

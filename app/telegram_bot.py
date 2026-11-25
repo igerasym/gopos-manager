@@ -96,6 +96,17 @@ def _item_list(items: dict) -> str:
     return ', '.join(parts)
 
 
+def _takeaway_line(t: dict) -> str:
+    """'48% of orders, 38% of revenue (avg check 30 vs 45 zł)' from gopos_api.takeaway_stats."""
+    n, rev = t['orders'], t['revenue']
+    tn, trev = t['takeaway_orders'], t['takeaway_revenue']
+    out = f'{100 * tn / n:.0f}% of orders, {100 * trev / rev:.0f}% of revenue' if rev else f'{100 * tn / n:.0f}% of orders'
+    dn, drev = n - tn, rev - trev
+    if tn and dn:
+        out += f' (avg check {trev / tn:.0f} vs {drev / dn:.0f} zł dine-in)'
+    return out
+
+
 def daily_report():
     """Generate and send daily sales report."""
     from app.db import get_db
@@ -148,13 +159,14 @@ def daily_report():
     ]
 
     # Shift + discounts — live from GoPOS; the report must still go out if this fails
-    staff, discounts, orders, gopos_error = None, {}, None, None
+    staff, discounts, orders, gopos_error, takeaway = None, {}, None, None, None
     t0 = time.monotonic()
     try:
         from app import gopos_api
         orders = gopos_api.fetch_closed_orders(today, 'employee,promotions,items,items.product')
         staff = gopos_api.shift_staff(orders)
         discounts = gopos_api.discounted_items(orders)
+        takeaway = gopos_api.takeaway_stats(orders)
     except Exception as e:
         log.warning(f'GoPOS shift/discount lookup failed: {e}')
         gopos_error = e
@@ -165,6 +177,10 @@ def daily_report():
         lines.append('👤 <b>Shift:</b>')
         for s in staff:
             lines.append(f'  {escape(s["name"])} — {s["first"]}–{s["last"]}, {s["orders"]} orders')
+
+    if takeaway and takeaway['orders'] and takeaway['takeaway_orders']:
+        lines.append('')
+        lines.append(f'🥤 <b>Takeaway:</b> {_takeaway_line(takeaway)}')
 
     staff_items = _merge(discounts, STAFF_DISCOUNTS)
     if staff_items:

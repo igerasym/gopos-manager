@@ -171,3 +171,47 @@ def test_debug_footer_on_failed_sync():
                               {'status': 'error', 'finished_at': '2026-11-05 19:00', 'started_at': '',
                                'message': '401 token'}, {})
     assert 'last sync: <b>error</b>' in footer and 'DB vs GoPOS' not in footer
+
+
+def _order(paid, *names, status='ACTIVE'):
+    return {'total_price': {'amount': paid}, 'closed_at': '2026-11-05T12:00:00', 'promotions': [],
+            'items': [_item(n, paid / max(len(names), 1), paid / max(len(names), 1), status=status) for n in names]}
+
+
+TAKEAWAY_ORDERS = [
+    _order(20, 'Latte', 'To-go cup'),      # takeaway
+    _order(40, 'Flat White', 'Brownie'),   # dine-in
+    _order(30, 'Cookie', 'To-go box'),     # takeaway (box, no cup)
+    _order(50, 'Latte', 'Brownie'),        # dine-in
+    _order(10, 'Latte', 'To-go cup', status='REMOVED'),  # a removed cup does not count
+]
+
+
+def test_takeaway_stats_uses_cup_and_box_markers():
+    from app import gopos_api
+    assert gopos_api.is_takeaway(TAKEAWAY_ORDERS[0]) and gopos_api.is_takeaway(TAKEAWAY_ORDERS[2])
+    assert not gopos_api.is_takeaway(TAKEAWAY_ORDERS[1]) and not gopos_api.is_takeaway(TAKEAWAY_ORDERS[4])
+    t = gopos_api.takeaway_stats(TAKEAWAY_ORDERS)
+    assert t == {'orders': 5, 'revenue': 150.0, 'takeaway_orders': 2, 'takeaway_revenue': 50.0}
+
+
+def test_takeaway_line_format():
+    t = {'orders': 5, 'revenue': 150.0, 'takeaway_orders': 2, 'takeaway_revenue': 50.0}
+    assert tb._takeaway_line(t) == '40% of orders, 33% of revenue (avg check 25 vs 33 zł dine-in)'
+    # nothing but takeaway: no division by zero on the dine-in side
+    assert tb._takeaway_line({'orders': 2, 'revenue': 50.0, 'takeaway_orders': 2, 'takeaway_revenue': 50.0}) \
+        == '100% of orders, 100% of revenue'
+
+
+def test_daily_report_has_takeaway_line_only_when_there_is_takeaway(tmp_path, monkeypatch):
+    from app import gopos_api
+    _report_db(tmp_path, monkeypatch)
+    with patch.object(tb, 'send_message') as send, \
+            patch.object(gopos_api, 'fetch_closed_orders', return_value=TAKEAWAY_ORDERS):
+        tb.daily_report()
+    assert '🥤 <b>Takeaway:</b> 40% of orders' in send.call_args.args[0]
+
+    with patch.object(tb, 'send_message') as send, \
+            patch.object(gopos_api, 'fetch_closed_orders', return_value=[TAKEAWAY_ORDERS[1]]):
+        tb.daily_report()
+    assert 'Takeaway' not in send.call_args.args[0]

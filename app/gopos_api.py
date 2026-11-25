@@ -579,6 +579,37 @@ def shift_staff(orders: list) -> list:
     return sorted(staff.values(), key=lambda s: s['first'] or '99:99')
 
 
+# GoPOS marks every order DINE_IN, so "takeaway" is read from the items: a To-go cup or box on the
+# order means the guest took something away. A pastry in a bag without a cup is counted as dine-in.
+TAKEAWAY_ITEM_MARKERS = ('to-go cup', 'to-go box')
+
+
+def is_takeaway(order: dict) -> bool:
+    for it in order.get('items') or []:
+        if it.get('status') != 'ACTIVE':
+            continue
+        name = (it.get('name') or (it.get('product') or {}).get('name') or '').lower()
+        if any(m in name for m in TAKEAWAY_ITEM_MARKERS):
+            return True
+    return False
+
+
+def takeaway_stats(orders: list) -> dict:
+    """Takeaway vs dine-in split of closed orders (needs items included).
+
+    Returns {'orders', 'revenue', 'takeaway_orders', 'takeaway_revenue'}, revenue = paid, gross.
+    """
+    r = {'orders': 0, 'revenue': 0.0, 'takeaway_orders': 0, 'takeaway_revenue': 0.0}
+    for o in orders:
+        paid = (o.get('total_price') or {}).get('amount', 0)
+        r['orders'] += 1
+        r['revenue'] += paid
+        if is_takeaway(o):
+            r['takeaway_orders'] += 1
+            r['takeaway_revenue'] += paid
+    return r
+
+
 def discounted_items(orders: list) -> dict:
     """Items sold under each discount: {discount_name_lower: {item_name: {'qty', 'value', 'unit_price'}}}.
 
