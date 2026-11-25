@@ -5,6 +5,11 @@ Security: the URL is public (GoPOS calls it), so it carries a secret token:
 If GOPOS_WEBHOOK_TOKEN is unset the endpoint still works (legacy registration)
 but logs a warning on every call.
 
+GoPOS blocks a webhook at once when it answers 400/401/403/404/422 (GoPOS support,
+2026-11-25). So anything we merely cannot use (empty body, a test ping, an unknown type,
+a non-numeric id) gets 200 {"status": "ignored"}. Only a wrong token gets 403: that is a
+real misconfiguration, and a blocked webhook in Logi -> Webhooki is the signal to fix it.
+
 Idempotency: each order id is recorded in processed_orders together with its
 sales increment, in one transaction, so a GoPOS retry or a replayed request
 can't count the same order twice. The full daily sync rewrites both tables.
@@ -53,9 +58,10 @@ async def gopos_webhook(request: Request):
     try:
         payload = await request.json()
     except Exception:
-        return JSONResponse({'error': 'invalid json'}, status_code=400)
+        payload = None
     if not isinstance(payload, dict):
-        return JSONResponse({'error': 'invalid payload'}, status_code=400)
+        log.warning('GoPos webhook: body is not a JSON object, ignored')
+        return JSONResponse({'status': 'ignored'})
 
     event_type = str(payload.get('event_type', ''))[:40]
     resource_type = str(payload.get('type', ''))[:40]
@@ -66,7 +72,8 @@ async def gopos_webhook(request: Request):
     if resource_type == 'ORDER':
         # resource_id goes into a GoPOS API path: digits only
         if not _ORDER_ID.match(resource_id):
-            return JSONResponse({'error': 'invalid resource_id'}, status_code=400)
+            log.warning('GoPos webhook: ORDER with a non-numeric resource_id, ignored')
+            return JSONResponse({'status': 'ignored'})
         threading.Thread(target=_process_order_webhook, args=(resource_id,), daemon=True).start()
 
     elif resource_type in ('ITEM', 'CATEGORY'):

@@ -76,6 +76,13 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   are ignored. `resource_id` must be digits. ITEM/CATEGORY events trigger at most one catalog sync per 5 min.
   If `GOPOS_WEBHOOK_TOKEN` is unset the webhook is accepted without auth (logged warning) — set it and
   re-register the GoPOS webhook URL with `?token=`.
+- **GoPOS blocks a webhook immediately when we answer 400/401/403/404/422** (GoPOS support, 2026-11-25).
+  So the endpoint answers 200 `{"status":"ignored"}` to anything it cannot use; only a wrong token gets 403.
+  Check state in the GoPOS panel: Logi → Webhooki (green dot = active, red = blocked) and Logi → Żądania
+  (each delivery: delivered, waiting for retry, or failed, with our response). Webhooks are managed via
+  `GET/POST /api/v3/{org}/webhooks` (`register_webhook()` in gopos_api.py). As of 2026-11-25 there is one,
+  id 1, `http://52.39.186.224/api/webhook/gopos` without a token, resource_type ORDER, and no delivery
+  reached nginx 2026-11-16..25.
 - Missing days are NOT auto-detected on start (only products are synced on startup).
 - No Playwright, no Chromium, no swap needed
 

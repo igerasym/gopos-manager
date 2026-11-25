@@ -71,13 +71,27 @@ def test_webhook_token_required_when_configured(monkeypatch):
         assert c.post('/api/webhook/gopos?token=s3cret', json=body).status_code == 200
 
 
-def test_webhook_rejects_non_numeric_order_id(monkeypatch):
+def test_webhook_ignores_non_numeric_order_id_with_200(monkeypatch):
+    """Never 4xx on a payload we can't use: GoPOS blocks the webhook on 400/404/422."""
     from app.main import app
     monkeypatch.delenv('GOPOS_WEBHOOK_TOKEN', raising=False)
     c = TestClient(app)
     with patch('app.routes.webhook._process_order_webhook') as p:
         r = c.post('/api/webhook/gopos', json={'type': 'ORDER', 'resource_id': '../items'})
-    assert r.status_code == 400 and not p.called
+    assert r.status_code == 200 and r.json()['status'] == 'ignored' and not p.called
+
+
+def test_webhook_never_answers_4xx_to_unusable_bodies(monkeypatch):
+    from app.main import app
+    monkeypatch.delenv('GOPOS_WEBHOOK_TOKEN', raising=False)
+    c = TestClient(app)
+    with patch('app.routes.webhook._process_order_webhook') as p, \
+            patch('app.routes.webhook._sync_products_background') as s:
+        for kwargs in ({'content': b''}, {'content': b'not json'}, {'json': [1, 2]},
+                       {'json': {'type': 'PING'}}, {'json': {}}):
+            r = c.post('/api/webhook/gopos', **kwargs)
+            assert r.status_code == 200, kwargs
+    assert not p.called and not s.called
 
 
 # ─── full sync ───
