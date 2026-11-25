@@ -92,17 +92,33 @@ def _process_single_invoice(db, f, current_month, all_known, known_hashes,
             db.commit()
         return
 
-    # Parse with Claude vision, fallback to Textract
+    # Parse with Claude vision (+ the PDF's own text layer), fallback to Textract
+    from app.invoice_validation import pdf_text as read_pdf_text, check_invoice
+    text = read_pdf_text(file_bytes)
     result = None
+    issues = []
     try:
-        result = parse_invoice_with_vision(file_bytes, f['name'])
+        result = parse_invoice_with_vision(file_bytes, f['name'], pdf_text=text)
         log.info(f"Parsed with Claude vision: {f['name']}")
+        issues = check_invoice(result, text)
+        if issues:
+            # One retry, telling the model what was wrong; keep whichever answer is better.
+            log.warning(f"Invoice {f['name']} failed checks, retrying: {issues}")
+            try:
+                retry = parse_invoice_with_vision(file_bytes, f['name'], pdf_text=text,
+                                                  feedback='\n'.join(f'- {i}' for i in issues))
+                retry_issues = check_invoice(retry, text)
+                if len(retry_issues) < len(issues):
+                    result, issues = retry, retry_issues
+            except Exception as retry_err:
+                log.warning(f"Invoice retry failed for {f['name']}: {retry_err}")
     except Exception as vision_err:
         log.warning(f"Claude vision failed for {f['name']}, fallback to Textract: {vision_err}")
         try:
             result = parse_invoice_textract(file_bytes)
         except Exception as textract_err:
             raise Exception(f"Both vision and Textract failed: {textract_err}")
+        issues = check_invoice(result, text)
 
     # Dedup by invoice number
     inv_num = result.get('invoice_number', '')
@@ -171,7 +187,11 @@ def _process_single_invoice(db, f, current_month, all_known, known_hashes,
     invoice_category = (llm_classification.get('category') if llm_classification else None) or category
     vendor_known = bool(invoice_vendor and invoice_vendor.lower() not in ('', '—', 'інше'))
 
-    if vendor_known and invoice_total > 0:
+    if issues:
+        _alert_needs_review(f['name'], result, issues)
+
+    # An invoice that failed the checks waits for a person: no automatic expense.
+    if vendor_known and invoice_total > 0 and not issues:
         cur = db.execute(
             'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, 0, ?)',
             (invoice_vendor, invoice_category, invoice_total, current_month,
@@ -186,6 +206,21 @@ def _process_single_invoice(db, f, current_month, all_known, known_hashes,
         auto_approved.append({'name': f['name'], 'vendor': invoice_vendor, 'total': invoice_total})
 
     new_parsed.append({'name': f['name'], 'vendor': expense_name, 'total': invoice_total})
+
+
+def _alert_needs_review(file_name: str, result: dict, issues: list):
+    """Tell the admin an invoice was parsed but did not pass the checks."""
+    try:
+        from html import escape
+        from app.telegram_bot import send_admin
+        lines = '\n'.join(f'• {escape(i)}' for i in issues)
+        send_admin(
+            f"🧾 <b>Check this invoice</b>: {escape(file_name)}\n"
+            f"{escape(str(result.get('vendor', '')))}, total {result.get('total', 0)} zł\n{lines}\n"
+            "Not added to expenses automatically. It is waiting under Expenses → Invoices."
+        )
+    except Exception as e:
+        log.warning(f'Could not alert admin about invoice {file_name}: {e}')
 
 
 def _classify_and_map_items(db, invoice_db_id, result, file_name, category, expense_name) -> dict:

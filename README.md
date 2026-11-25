@@ -8,7 +8,7 @@ Internal management system for **The Frame Cafe** (Warsaw). FastAPI + SQLite + J
 - **Expenses** — invoice parsing from Google Drive, auto-classification with AI, P&L per month
 - **Inventory** — ingredients, deliveries, low-stock alerts, supplier management
 - **Recipes** — tech cards with cost calculations, sub-recipes, auto-match resale items
-- **Invoice AI** — Claude Haiku 4.5 (vision) parses PDF invoices, maps items to inventory
+- **Invoice AI** — Claude Haiku 4.5 (vision + the PDF's text layer) parses invoices, maps items to inventory; totals are cross-checked against the PDF text and suspicious invoices wait for approval
 - **GoPOS Sync** — Playwright scraper syncs sales daily at 21:00 UTC
 - **Telegram Bot** — daily reports, sync alerts, price change notifications
 - **Monthly report** — 1st of the month 06:30 UTC: last month vs the month before (calendar-adjusted
@@ -80,6 +80,7 @@ cafe-manager/
 │   ├── gopos_sync.py        # GoPOS Playwright scraper
 │   ├── gdrive_invoices.py   # Google Drive + Textract
 │   ├── llm.py               # Claude Haiku 4.5 (vision + classification)
+│   ├── invoice_validation.py # cross-checks of parsed invoices against the PDF text
 │   ├── telegram_bot.py      # Telegram notifications
 │   ├── services/
 │   │   ├── recipes.py       # Cost calculations

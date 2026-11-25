@@ -176,7 +176,18 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - **Cost:** ~$1-2/month for 50-80 invoices
 - **Future option:** Nova 2 Lite ($0.17/1M input vs Claude $1/1M, ~6x cheaper) — try later if cost matters
 - **Vision-based parsing:** PDF → images via pdfplumber → Claude vision → JSON
-- Single LLM call extracts: vendor, invoice_number, date, total, items[]
+- Single LLM call extracts: vendor, invoice_number, date, total, total_printed, items[]. The prompt
+  (`app/llm.py: INVOICE_PROMPT`) gets the page images (200 dpi) AND the PDF text layer, so digits are
+  copied from text, not read off pixels. Which total to take is spelled out in it ("Do zapłaty" /
+  "Kwota należności ogółem", never a section or net total).
+- **Checks after parsing** (`app/invoice_validation.py: check_invoice`): total must appear in the PDF
+  text, match `total_printed`, and the line totals must roughly add up (25 % slack with a text layer,
+  15 % for scans: Makro lines differ from the total by 5-10 % because of deposits and discounts).
+  On a failure there is ONE retry with the problems fed back; if it still fails the invoice is saved
+  as pending, NOT auto-added to expenses, and the admin gets a Telegram "Check this invoice" message.
+  Found by reading PDFs by hand (2026-11): an electricity bill of 1 581,77 stored as 581.77, Makro
+  totals 400-600 zł too low. On the 253 invoices parsed before this change the checks flag ~17 %
+  (the old prompt read worse), so expect fewer on new ones.
 - Then second call for classification + ingredient mapping
 - IAM role `CatchMyActions-EC2-Role` has `AmazonBedrockFullAccess` and `AmazonTextractFullAccess`
 - Note: Claude 3 Haiku and 3.5 Haiku are marked Legacy by Anthropic for new accounts — use Haiku 4.5
