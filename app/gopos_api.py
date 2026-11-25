@@ -685,6 +685,12 @@ def get_selling_prices() -> dict:
     return {item['name']: item.get('price', {}).get('amount', 0) for item in items}
 
 
+def _mask_token(text) -> str:
+    """The webhook URL carries ?token=<secret>: never let it reach a log line."""
+    import re
+    return re.sub(r'(token=)[^&\s"\']*', r'\1***', str(text))
+
+
 def register_webhook(callback_url: str):
     """Register a webhook in GoPos to receive real-time notifications."""
     token = get_token()
@@ -696,7 +702,7 @@ def register_webhook(callback_url: str):
         existing = r.json().get('data', [])
         for wh in existing:
             if wh.get('url') == callback_url:
-                log.info(f'Webhook already registered: {callback_url}')
+                log.info(f'Webhook already registered: {_mask_token(callback_url)}')
                 return wh
 
     # Register new webhook
@@ -711,8 +717,8 @@ def register_webhook(callback_url: str):
     }, json=payload, timeout=15)
 
     if r.status_code in (200, 201):
-        log.info(f'Webhook registered: {callback_url}')
+        log.info(f'Webhook registered: {_mask_token(callback_url)}')
         return r.json()
     else:
-        log.warning(f'Webhook registration failed: {r.status_code} {r.text[:200]}')
+        log.warning(f'Webhook registration failed: {r.status_code} {_mask_token(r.text[:200])}')
         return None
