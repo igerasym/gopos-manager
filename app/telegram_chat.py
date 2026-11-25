@@ -7,9 +7,11 @@ How it behaves
 - The model (Bedrock Claude Haiku, the model the app already uses) can only call the read-only
   tools in telegram_tools. Cost/expense tools are limited to finance chats.
 - Message text is never logged: only chat id, tool names, token counts and timings.
+- Slash commands ("skills", see telegram_skills) answer without the model.
 
 Env (all optional): TELEGRAM_CHAT_ENABLED=0 turns it off, TELEGRAM_FINANCE_CHAT_IDS
-(default: the admin chat), TELEGRAM_CHAT_MODEL_ID, TELEGRAM_CHAT_HOURLY_LIMIT.
+(default: every allowed chat, i.e. both owners), TELEGRAM_CHAT_MODEL_ID,
+TELEGRAM_CHAT_HOURLY_LIMIT.
 """
 import json
 import logging
@@ -22,6 +24,7 @@ from html import escape
 from urllib.request import Request, urlopen
 
 from app import telegram_bot as tb
+from app import telegram_skills as skills
 from app import telegram_tools as tools
 
 log = logging.getLogger(__name__)
@@ -37,18 +40,6 @@ MEMORY_TTL_S = 30 * 60
 STALE_UPDATE_S = 10 * 60     # a question that waited this long (bot was down) is dropped
 POLL_TIMEOUT_S = 30
 
-HELP_TEXT = (
-    '☕ <b>The Frame Bot</b>\n\n'
-    'Просто напишіть питання, наприклад:\n'
-    '• скільки ми заробили вчора?\n'
-    '• топ-5 позицій за тиждень\n'
-    '• які дні тижня найслабші цього місяця?\n'
-    '• що закінчується на складі?\n\n'
-    '/today — продажі за сьогодні\n'
-    '/stock — що закінчується\n'
-    '/help — це повідомлення'
-)
-
 _lock = threading.Lock()
 _memory: dict = {}                       # chat_id -> (last_used, [messages])
 _asked: dict = defaultdict(deque)        # chat_id -> timestamps of LLM questions
@@ -59,9 +50,11 @@ def allowed_chats() -> set:
 
 
 def finance_chats() -> set:
+    """Chats that may see expenses, costs and profit: every allowed chat (both owners)
+    unless TELEGRAM_FINANCE_CHAT_IDS narrows it."""
     raw = os.getenv('TELEGRAM_FINANCE_CHAT_IDS', '')
     ids = {c.strip() for c in raw.split(',') if c.strip()}
-    return ids or ({tb.ADMIN_CHAT_ID} if tb.ADMIN_CHAT_ID else set())
+    return (ids & allowed_chats()) if ids else allowed_chats()
 
 
 def _today() -> str:
@@ -191,17 +184,24 @@ def _reply(chat_id: str, text: str):
     tb.send_message(text, chat_id)
 
 
-def _today_text() -> str:
-    d = _today()
-    s = tools.sales_summary({'date_from': d}, d)
-    top = tools.top_products({'date_from': d, 'limit': 3}, d)['products']
-    lines = [f'📊 <b>{d}</b>', f'Виручка: {s["revenue_gross_zl"]:,.0f} zł'.replace(',', ' '),
-             f'Позицій продано: {s["items_sold"]:.0f}']
-    if top:
-        lines.append('Топ: ' + ', '.join(f'{escape(p["product"])} ×{p["quantity"]:.0f}' for p in top))
-    if not s['items_sold']:
-        lines.append('Продажів за сьогодні ще немає.')
-    return '\n'.join(lines)
+def _run_command(chat_id: str, text: str):
+    name = text.split()[0].split('@')[0].lstrip('/').lower()
+    finance = chat_id in finance_chats()
+    if name in ('start', 'help'):
+        _reply(chat_id, skills.help_text(finance))
+        return
+    try:
+        out = skills.run(name, _today(), finance)
+    except Exception as e:
+        log.error(f'skill {name} failed: {type(e).__name__}')
+        _reply(chat_id, 'Не вдалося виконати команду, спробуйте ще раз.')
+        return
+    if out is None:
+        _reply(chat_id, 'Невідома команда. /help')
+    elif out == 'forbidden':
+        _reply(chat_id, 'Ця команда недоступна для цього чату.')
+    else:
+        _reply(chat_id, out)
 
 
 def handle_update(update: dict, client=None):
@@ -219,15 +219,7 @@ def handle_update(update: dict, client=None):
         return
 
     if text.startswith('/'):
-        cmd = text.split()[0].split('@')[0].lower()
-        if cmd in ('/start', '/help'):
-            _reply(chat_id, HELP_TEXT)
-        elif cmd == '/today':
-            _reply(chat_id, _today_text())
-        elif cmd in ('/stock', '/inventory'):
-            tb.handle_command('/stock', chat_id)
-        else:
-            _reply(chat_id, 'Невідома команда. /help')
+        _run_command(chat_id, text)
         return
 
     if _over_limit(chat_id):
@@ -254,7 +246,18 @@ def handle_update(update: dict, client=None):
     _reply(chat_id, out)
 
 
+def _register_menu():
+    """Show the commands in Telegram's menu. Best effort; the chat works without it."""
+    for cid in allowed_chats():
+        try:
+            _api('setMyCommands', {'commands': skills.menu(cid in finance_chats()),
+                                   'scope': {'type': 'chat', 'chat_id': int(cid)}}, timeout=10)
+        except Exception as e:
+            log.warning(f'setMyCommands failed: {type(e).__name__} {getattr(e, "code", "")}'.strip())
+
+
 def poll_forever(stop: threading.Event):
+    _register_menu()
     offset = None
     backoff = 1
     while not stop.is_set():

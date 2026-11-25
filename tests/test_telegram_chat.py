@@ -186,10 +186,12 @@ def test_finance_tools_hidden_from_partner_and_refused_if_called():
     assert 'expenses_total_zl' in tt.run_tool('expenses_summary', {}, TODAY, finance=True)
 
 
-def test_finance_chats_default_to_admin_only(monkeypatch):
-    assert tc.finance_chats() == {OWNER}
-    monkeypatch.setenv('TELEGRAM_FINANCE_CHAT_IDS', f'{OWNER}, {PARTNER}')
+def test_finance_chats_default_to_both_owners_and_can_be_narrowed(monkeypatch):
     assert tc.finance_chats() == {OWNER, PARTNER}
+    monkeypatch.setenv('TELEGRAM_FINANCE_CHAT_IDS', OWNER)
+    assert tc.finance_chats() == {OWNER}
+    monkeypatch.setenv('TELEGRAM_FINANCE_CHAT_IDS', f'{OWNER}, {STRANGER}')
+    assert tc.finance_chats() == {OWNER}       # an id outside the allowlist never gains access
 
 
 def test_wastage_costs_only_for_finance():
@@ -272,6 +274,7 @@ def test_poll_loop_uses_offset_and_survives_errors(monkeypatch):
         return {'result': []}
 
     monkeypatch.setattr(tc, '_api', fake_api)
+    monkeypatch.setattr(tc, '_register_menu', lambda: None)
     monkeypatch.setattr(stop, 'wait', lambda s: None)
     tc.poll_forever(stop)
     assert 'offset' not in calls[0] and calls[1]['offset'] == 42 and calls[2]['offset'] == 42
@@ -288,3 +291,100 @@ def test_wastage_tool_prices_gopos_rows_by_recipe_for_finance_only():
     fin = tt.run_tool('wastage_summary', {'month': '2026-11'}, TODAY, finance=True)
     assert fin['total_cost_zl'] == 6.0
     assert 'cost' not in str(tt.run_tool('wastage_summary', {'month': '2026-11'}, TODAY, finance=False))
+
+
+# ── skills (slash commands, no model) ──
+
+def _cmd(chat, text):
+    client = _client()
+    with patch.object(tc.tb, 'send_message') as send:
+        tc.handle_update(_update(chat, text), client)
+    client.converse.assert_not_called()
+    return send.call_args.args[0]
+
+
+def test_yesterday_skill_shows_revenue_and_escapes_names():
+    out = _cmd(PARTNER, '/yesterday')
+    assert '450 zł' in out and '&lt;b&gt;' in out and '<b>Latte' not in out
+
+
+def test_yesterday_compares_with_same_weekday_last_week():
+    db = get_db()
+    db.execute("INSERT INTO sales (date, product_name, quantity, total_money) VALUES ('2026-11-17', 'Espresso', 10, 300)")
+    db.commit()
+    db.close()
+    assert '▲ 50%' in _cmd(PARTNER, '/yesterday')     # 450 vs 300
+
+
+def test_week_skill_compares_two_complete_weeks():
+    db = get_db()
+    db.execute("INSERT INTO sales (date, product_name, quantity, total_money) VALUES ('2026-11-14', 'Espresso', 10, 300)")
+    db.execute("INSERT INTO sales (date, product_name, quantity, total_money) VALUES ('2026-11-25', 'Espresso', 99, 9999)")
+    db.commit()
+    db.close()
+    out = _cmd(PARTNER, '/week')
+    assert '2026-11-18 – 2026-11-24' in out            # today (a running day) is not part of it
+    assert '450 zł' in out and '▲ 50%' in out and '9 999' not in out
+
+
+def test_top_skill():
+    out = _cmd(PARTNER, '/top')
+    assert 'Топ-5' in out and 'Espresso' in out
+
+
+def test_order_skill_groups_by_supplier_and_stock_is_an_alias():
+    db = get_db()
+    db.execute("INSERT INTO suppliers (id, name) VALUES (1, 'Makro')")
+    db.execute("UPDATE ingredients SET supplier_id = 1 WHERE name = 'Mleko'")
+    db.execute("INSERT INTO ingredients (name, unit, quantity, min_quantity) VALUES ('Cukier', 'kg', 1, 3)")
+    db.commit()
+    db.close()
+    for cmd in ('/order', '/stock'):
+        out = _cmd(PARTNER, cmd)
+        assert '<b>Makro</b>' in out and 'Mleko' in out and 'бракує до мінімуму 3' in out
+        assert 'Без постачальника' in out and 'Cukier' in out
+
+
+def test_wastage_skill_costs_only_in_finance_chats(monkeypatch):
+    db = get_db()
+    db.execute("INSERT INTO ingredients (id, name, unit, quantity, unit_price) VALUES (70, 'Cream', 'L', 5, 10)")
+    db.execute("INSERT INTO wastage (date, ingredient_id, quantity, reason, source) VALUES ('2026-11-20', 70, 2, 'expired', 'manual')")
+    db.commit()
+    db.close()
+    assert '20 zł' in _cmd(PARTNER, '/wastage')
+    monkeypatch.setenv('TELEGRAM_FINANCE_CHAT_IDS', OWNER)
+    out = _cmd(PARTNER, '/wastage')
+    assert 'Cream' in out and ' zł' not in out
+
+
+def test_costs_skill_is_finance_only(monkeypatch):
+    assert 'Food cost' in _cmd(PARTNER, '/costs')
+    monkeypatch.setenv('TELEGRAM_FINANCE_CHAT_IDS', OWNER)
+    assert 'недоступна' in _cmd(PARTNER, '/costs')
+    assert 'Food cost' in _cmd(OWNER, '/costs')
+
+
+def test_unknown_command_and_botname_suffix():
+    assert 'Невідома команда' in _cmd(PARTNER, '/nope')
+    assert 'Топ-5' in _cmd(PARTNER, '/top@TheFrameBot')
+
+
+def test_help_lists_only_the_skills_the_chat_may_use(monkeypatch):
+    assert '/costs' in _cmd(PARTNER, '/help')
+    monkeypatch.setenv('TELEGRAM_FINANCE_CHAT_IDS', OWNER)
+    assert '/costs' not in _cmd(PARTNER, '/help') and '/week' in _cmd(PARTNER, '/help')
+
+
+def test_skill_crash_is_reported_without_details(monkeypatch):
+    monkeypatch.setitem(tc.skills.SKILLS, 'today', ('x', lambda t, f: 1 / 0, False))
+    assert 'Не вдалося виконати' in _cmd(PARTNER, '/today')
+
+
+def test_menu_is_registered_per_chat_with_finance_filter(monkeypatch):
+    sent = []
+    monkeypatch.setattr(tc, '_api', lambda m, p, timeout=15: sent.append((m, p)) or {})
+    monkeypatch.setenv('TELEGRAM_FINANCE_CHAT_IDS', OWNER)
+    tc._register_menu()
+    by_chat = {p['scope']['chat_id']: {c['command'] for c in p['commands']} for m, p in sent if m == 'setMyCommands'}
+    assert 'costs' in by_chat[int(OWNER)] and 'costs' not in by_chat[int(PARTNER)]
+    assert 'help' in by_chat[int(PARTNER)]

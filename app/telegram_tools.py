@@ -158,13 +158,15 @@ def low_stock(args: dict, today: str) -> dict:
     db = get_db()
     try:
         rows = db.execute('''
-            SELECT name, quantity, unit, min_quantity FROM ingredients
-            WHERE min_quantity > 0 AND quantity <= min_quantity ORDER BY name LIMIT 40''').fetchall()
+            SELECT i.name, i.quantity, i.unit, i.min_quantity, s.name AS supplier
+            FROM ingredients i LEFT JOIN suppliers s ON i.supplier_id = s.id
+            WHERE i.min_quantity > 0 AND i.quantity <= i.min_quantity
+            ORDER BY s.name, i.name LIMIT 60''').fetchall()
     finally:
         db.close()
     return {'items_below_minimum': [
         {'ingredient': r['name'], 'on_hand': _r(r['quantity'], 3), 'unit': r['unit'],
-         'minimum': _r(r['min_quantity'], 3)} for r in rows]}
+         'minimum': _r(r['min_quantity'], 3), 'supplier': r['supplier']} for r in rows]}
 
 
 def stock_item(args: dict, today: str) -> dict:
