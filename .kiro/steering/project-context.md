@@ -73,7 +73,8 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   hiccup and the day is kept.
 - Real-time: GoPos webhook `POST /api/webhook/gopos?token=<GOPOS_WEBHOOK_TOKEN>` adds each closed order
   to `sales` once: `processed_orders(order_id)` is written in the same transaction, so retries/replays
-  are ignored. `resource_id` must be digits. ITEM/CATEGORY events trigger at most one catalog sync per 5 min.
+  are ignored. `resource_id` is the order **uid (UUID)**; digits are accepted too. `processed_orders` always
+  stores the numeric `id` from the fetched order (same key as the full sync). ITEM/CATEGORY events trigger at most one catalog sync per 5 min.
   If `GOPOS_WEBHOOK_TOKEN` is unset the webhook is accepted without auth (logged warning) — set it and
   re-register the GoPOS webhook URL with `?token=`.
 - **GoPOS blocks a webhook immediately when we answer 400/401/403/404/422** (GoPOS support, 2026-11-25).
@@ -81,8 +82,9 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   Check state in the GoPOS panel: Logi → Webhooki (green dot = active, red = blocked) and Logi → Żądania
   (each delivery: delivered, waiting for retry, or failed, with our response). Webhooks are managed via
   `GET/POST /api/v3/{org}/webhooks` (`register_webhook()` in gopos_api.py). As of 2026-11-25 there is one,
-  id 1, `http://52.39.186.224/api/webhook/gopos` without a token, resource_type ORDER, and no delivery
-  reached nginx 2026-11-16..25.
+  id 1, `http://52.39.186.224/api/webhook/gopos` without a token, resource_type ORDER, **disabled by GoPOS on
+  2026-11-06 08:01 after one HTTP 400**: PR #8 (deployed that night) accepted digits-only ids, and GoPOS sends
+  the uid. Orders have `id` (int, e.g. 44607) and `uid` (UUID); `GET orders/<id>` and `orders/<uid>` both work.
 - Missing days are NOT auto-detected on start (only products are synced on startup).
 - No Playwright, no Chromium, no swap needed
 

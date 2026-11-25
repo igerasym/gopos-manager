@@ -30,7 +30,9 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_ORDER_ID = re.compile(r'^\d{1,20}$')
+# GoPOS sends the order's uid (a UUID) as resource_id; the API takes it or the numeric id.
+# Digits-only (2026-11-06) answered 400 to the first real order and GoPOS disabled the webhook.
+_ORDER_ID = re.compile(r'^(\d{1,20}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$')
 _PRODUCT_SYNC_LOCK = threading.Lock()
 _PRODUCT_SYNC_MIN_INTERVAL = 300  # s; a menu edit fires many ITEM events
 _last_product_sync = 0.0
@@ -92,6 +94,9 @@ def _process_order_webhook(order_id: str):
 
         if order.get('status', '') != 'CLOSED':
             return
+        # processed_orders holds the NUMERIC id, the same key the full sync writes, so a
+        # webhook that names the order by uid still dedupes against the sync.
+        order_key = str(order.get('id') or order_id)
         closed_at = order.get('closed_at', '')
         if not closed_at:
             return
@@ -104,10 +109,10 @@ def _process_order_webhook(order_id: str):
         try:
             db.execute('BEGIN IMMEDIATE')
             cur = db.execute('INSERT OR IGNORE INTO processed_orders (order_id, date) VALUES (?, ?)',
-                             (order_id, date_str))
+                             (order_key, date_str))
             if cur.rowcount == 0:
                 db.rollback()
-                log.info(f'Webhook: order {order_id} already counted, skipped')
+                log.info(f'Webhook: order {order_key} already counted, skipped')
                 return
             for item, a in rows:
                 db.execute('''
@@ -127,7 +132,7 @@ def _process_order_webhook(order_id: str):
             raise
         finally:
             db.close()
-        log.info(f"Webhook: processed order {order_id} for {date_str}")
+        log.info(f"Webhook: processed order {order_key} for {date_str}")
 
     except Exception as e:
         log.error(f"Webhook order processing failed: {e}")

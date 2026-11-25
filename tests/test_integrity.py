@@ -112,6 +112,38 @@ def test_full_sync_replaces_the_day():
     assert names == ['Latte']
 
 
+UID = 'b145766c-92ae-4a5e-948a-9a13cd98dcc2'
+
+
+def test_webhook_accepts_order_uid_and_dedupes_with_full_sync():
+    """GoPOS names the order by its uid; the sync stores the numeric id. Same order, counted once."""
+    from app.main import app
+    order = dict(_order(44607), uid=UID)
+    _sync([order])
+    from app.routes import webhook
+    with patch.object(ga, 'api_get', return_value={'data': order}) as api, \
+            patch.object(ga, 'get_item_tax_rates', return_value={1: 8}):
+        webhook._process_order_webhook(UID)
+    api.assert_called_once()
+    assert api.call_args.args[0] == f'orders/{UID}'
+    assert get_db().execute("SELECT quantity FROM sales WHERE product_name='Latte'").fetchone()[0] == 1
+    c = TestClient(app)
+    with patch('app.routes.webhook._process_order_webhook') as p:
+        r = c.post('/api/webhook/gopos', json={'type': 'ORDER', 'resource_id': UID, 'event_type': 'CLOSED'})
+    assert r.status_code == 200 and r.json()['status'] == 'ok' and p.call_args.args[0] == UID
+
+
+def test_webhook_by_uid_then_sync_does_not_double_count():
+    order = dict(_order(44608), uid=UID)
+    from app.routes import webhook
+    with patch.object(ga, 'api_get', return_value={'data': order}), \
+            patch.object(ga, 'get_item_tax_rates', return_value={1: 8}):
+        webhook._process_order_webhook(UID)
+    assert get_db().execute("SELECT order_id FROM processed_orders").fetchone()[0] == '44608'
+    _sync([order])
+    assert get_db().execute("SELECT quantity FROM sales WHERE product_name='Latte'").fetchone()[0] == 1
+
+
 def test_webhook_after_full_sync_does_not_double_count():
     order = _order(42)
     _sync([order])
