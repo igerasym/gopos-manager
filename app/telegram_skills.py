@@ -42,7 +42,7 @@ def today_sales(today: str, finance: bool) -> str:
     top = tt.top_products({'date_from': today, 'limit': 3}, today)['products']
     from app import gopos_api
     as_of = gopos_api.LAST_INTRADAY_SYNC
-    note = f'станом на {as_of}, оновлюється кожні 30 хв' if as_of else 'оновлюється кожні 30 хв'
+    note = f'станом на {as_of}, оновлюється щогодини' if as_of else 'оновлюється щогодини'
     if not s['items_sold']:
         return f'📊 <b>{today}</b>\nПродажів за сьогодні ще не записано ({note}).'
     lines = [f'📊 <b>Сьогодні, {today}</b> ({note})',

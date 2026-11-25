@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
     intraday_failing = {'on': False}
 
     async def scheduled_intraday():
-        """Every 30 min while the cafe is open: refresh today's sales (no stock deduction)."""
+        """Hourly while the cafe is open: refresh today's sales (no stock deduction)."""
         import threading
         def run():
             try:
@@ -83,16 +83,16 @@ async def lifespan(app: FastAPI):
                 sync_intraday()
                 intraday_failing['on'] = False
             except Exception as e:
-                # Tell the admin once per outage, not every 30 minutes
+                # Tell the admin once per outage, not every hour
                 if not intraday_failing['on']:
                     from app.telegram_bot import alert_admin
                     alert_admin('Intraday sales refresh', e)
                 intraday_failing['on'] = True
         threading.Thread(target=run, daemon=True).start()
 
-    # :15 and :45 never coincide with the :00/:30 jobs above; Warsaw 07:15-22:45
+    # :15 never coincides with the :00/:30 jobs above; Warsaw 07:15-22:15
     scheduler.add_job(scheduled_intraday,
-                      CronTrigger(hour='7-22', minute='15,45', timezone='Europe/Warsaw'))
+                      CronTrigger(hour='7-22', minute='15', timezone='Europe/Warsaw'))
 
     async def scheduled_monthly():
         """1st of the month: last month vs the month before, numbers + AI summary."""

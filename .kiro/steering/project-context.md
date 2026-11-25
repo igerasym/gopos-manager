@@ -61,7 +61,7 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   technical timestamps in `sync_log`.
 - Daily job 19:00 UTC: sync_products() + sync_orders_for_date(today) + deduct_inventory()
 - 04:30 UTC: `sync_date(yesterday)` — the 19:00 sync misses everything sold later that evening.
-- **Intraday refresh** (`sync_intraday`, added 2026-11-25): every 30 min at :15/:45, Warsaw 07:15–22:45, replaces
+- **Intraday refresh** (`sync_intraday`, added 2026-11-25): hourly at :15, Warsaw 07:15–22:15, replaces
   TODAY's rows in `sales` only (no stock deduction, no write-offs: the evening sync does both). Before this,
   prod had no rows for the current day until 19:00 UTC, because the GoPos webhook was NOT delivering (zero
   hits in the app and nginx logs, `processed_orders` only filled by the full syncs). `gopos_api.LAST_INTRADAY_SYNC`

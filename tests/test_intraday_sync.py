@@ -91,4 +91,4 @@ def test_dashboard_shows_refresh_time_for_the_running_day(monkeypatch):
 def test_scheduler_registers_the_intraday_job():
     import inspect
     src = inspect.getsource(__import__('app.main', fromlist=['x']))
-    assert "scheduled_intraday" in src and "minute='15,45'" in src and "timezone='Europe/Warsaw'" in src
+    assert "scheduled_intraday" in src and "minute='15'" in src and "timezone='Europe/Warsaw'" in src

@@ -65,8 +65,8 @@ def _freshness(d_to: str, today: str) -> dict:
     return {
         'includes_today_still_running': True,
         'today_last_refreshed_warsaw': gopos_api.LAST_INTRADAY_SYNC,
-        'note': 'Today is partial: sales are refreshed from the POS about every 30 minutes '
-                '(07:15-22:45 Warsaw) and the full sync runs in the evening. Say the figures are '
+        'note': 'Today is partial: sales are refreshed from the POS about once an hour '
+                '(07:15-22:15 Warsaw) and the full sync runs in the evening. Say the figures are '
                 'as of the refresh time, and do not treat them as the day total.',
     }
 
