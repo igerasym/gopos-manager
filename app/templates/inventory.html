@@ -23,7 +23,9 @@
     <h2 style="margin:0;">Склад</h2>
     <div style="display:flex; gap:6px;">
         <a href="/inventory" class="btn btn-sm {{ 'btn-primary' if request.url.path == '/inventory' else 'btn-outline' }}">Запаси</a>
+        {% if is_admin %}
         <a href="/inventory/upload" class="btn btn-sm {{ 'btn-primary' if '/upload' in request.url.path else 'btn-outline' }}">Завантажити фактуру</a>
+        {% endif %}
     </div>
 </div>
 
