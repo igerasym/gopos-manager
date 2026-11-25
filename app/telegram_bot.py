@@ -245,7 +245,7 @@ def handle_command(text: str, chat_id: str):
         if low:
             lines = ['⚠️ <b>Low stock items:</b>', '']
             for l in low:
-                lines.append(f'• {l["name"]} — {l["quantity"]:.1f} {l["unit"]} (min: {l["min_quantity"]:.0f})')
+                lines.append(f'• {escape(l["name"])} — {l["quantity"]:.1f} {l["unit"]} (min: {l["min_quantity"]:.0f})')
         else:
             lines = ['✅ All stock levels OK']
 
