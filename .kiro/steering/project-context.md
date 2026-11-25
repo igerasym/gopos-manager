@@ -212,7 +212,10 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - ABC analysis (A/B/C badges)
 - Top 5 by revenue + quantity
 - Daily revenue trend
-- Previous period comparison
+- Dates use the Warsaw business day (`warsaw_today()`, 05:00 cutoff), never bare `datetime.now()`.
+  With no date params it opens on today, or on yesterday while today has no sales yet.
+- Period comparison: one day vs the same weekday a week earlier; several days vs the previous
+  period of equal length; a day still in progress shows "день ще триває" instead of a percentage.
 - Low stock alerts
 - Sync button (only visible on dashboard)
 
