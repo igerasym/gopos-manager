@@ -57,6 +57,20 @@ def _r(x, nd=2):
     return round(float(x or 0), nd)
 
 
+def _freshness(d_to: str, today: str) -> dict:
+    """Extra fields when a range reaches the running business day: its figures are partial."""
+    if d_to < today:
+        return {}
+    from app import gopos_api
+    return {
+        'includes_today_still_running': True,
+        'today_last_refreshed_warsaw': gopos_api.LAST_INTRADAY_SYNC,
+        'note': 'Today is partial: sales are refreshed from the POS about every 30 minutes '
+                '(07:15-22:45 Warsaw) and the full sync runs in the evening. Say the figures are '
+                'as of the refresh time, and do not treat them as the day total.',
+    }
+
+
 # ── tools ──
 
 def sales_summary(args: dict, today: str) -> dict:
@@ -76,6 +90,7 @@ def sales_summary(args: dict, today: str) -> dict:
         'discounts_zl': _r(r['discounts']), 'items_sold': _r(r['items'], 0),
         'days_with_sales': r['days'],
         'avg_revenue_per_sales_day_zl': _r(r['revenue'] / r['days']) if r['days'] else None,
+        **_freshness(d_to, today),
     }
 
 
@@ -95,6 +110,7 @@ def daily_revenue(args: dict, today: str) -> dict:
         'days': [{'date': r['date'], 'weekday': WEEKDAYS_UA[date.fromisoformat(r['date']).weekday()],
                   'revenue_zl': _r(r['revenue']), 'items': _r(r['items'], 0)} for r in rows],
         'truncated_to_last_days': MAX_DAILY_ROWS if truncated else None,
+        **_freshness(d_to, today),
     }
 
 
@@ -132,7 +148,7 @@ def top_products(args: dict, today: str) -> dict:
         db.close()
     return {'date_from': d_from, 'date_to': d_to, 'ranked_by': by, 'products': [
         {'product': r['product_name'], 'quantity': _r(r['qty'], 0), 'revenue_zl': _r(r['revenue'])}
-        for r in rows]}
+        for r in rows], **_freshness(d_to, today)}
 
 
 def product_sales(args: dict, today: str) -> dict:
@@ -151,7 +167,7 @@ def product_sales(args: dict, today: str) -> dict:
         db.close()
     return {'date_from': d_from, 'date_to': d_to, 'matches': [
         {'product': r['product_name'], 'quantity': _r(r['qty'], 0), 'revenue_zl': _r(r['revenue']),
-         'discount_zl': _r(r['discount'])} for r in rows]}
+         'discount_zl': _r(r['discount'])} for r in rows], **_freshness(d_to, today)}
 
 
 def low_stock(args: dict, today: str) -> dict:

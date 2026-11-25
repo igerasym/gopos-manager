@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
+from app import gopos_api
 from app.gopos_api import warsaw_today
 from app.services.recipes import get_cost_lookup
 
@@ -298,6 +299,7 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
         'prev_totals': prev_totals,
         'compare_label': compare_label,
         'day_in_progress': day_in_progress,
+        'as_of': gopos_api.LAST_INTRADAY_SYNC,
         'low_stock': low_stock,
         'total_cogs': total_cogs, 'gross_profit': gross_profit,
         'gross_margin': gross_margin, 'avg_food_cost': avg_food_cost,
