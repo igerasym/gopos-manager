@@ -5,6 +5,11 @@ Security: the URL is public (GoPOS calls it), so it carries a secret token:
 If GOPOS_WEBHOOK_TOKEN is unset the endpoint still works (legacy registration)
 but logs a warning on every call.
 
+GoPOS blocks a webhook at once when it answers 400/401/403/404/422 (GoPOS support,
+2026-11-25). So anything we merely cannot use (empty body, a test ping, an unknown type,
+a non-numeric id) gets 200 {"status": "ignored"}. Only a wrong token gets 403: that is a
+real misconfiguration, and a blocked webhook in Logi -> Webhooki is the signal to fix it.
+
 Idempotency: each order id is recorded in processed_orders together with its
 sales increment, in one transaction, so a GoPOS retry or a replayed request
 can't count the same order twice. The full daily sync rewrites both tables.
@@ -25,7 +30,9 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_ORDER_ID = re.compile(r'^\d{1,20}$')
+# GoPOS sends the order's uid (a UUID) as resource_id; the API takes it or the numeric id.
+# Digits-only (2026-11-06) answered 400 to the first real order and GoPOS disabled the webhook.
+_ORDER_ID = re.compile(r'^(\d{1,20}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$')
 _PRODUCT_SYNC_LOCK = threading.Lock()
 _PRODUCT_SYNC_MIN_INTERVAL = 300  # s; a menu edit fires many ITEM events
 _last_product_sync = 0.0
@@ -53,9 +60,10 @@ async def gopos_webhook(request: Request):
     try:
         payload = await request.json()
     except Exception:
-        return JSONResponse({'error': 'invalid json'}, status_code=400)
+        payload = None
     if not isinstance(payload, dict):
-        return JSONResponse({'error': 'invalid payload'}, status_code=400)
+        log.warning('GoPos webhook: body is not a JSON object, ignored')
+        return JSONResponse({'status': 'ignored'})
 
     event_type = str(payload.get('event_type', ''))[:40]
     resource_type = str(payload.get('type', ''))[:40]
@@ -66,7 +74,8 @@ async def gopos_webhook(request: Request):
     if resource_type == 'ORDER':
         # resource_id goes into a GoPOS API path: digits only
         if not _ORDER_ID.match(resource_id):
-            return JSONResponse({'error': 'invalid resource_id'}, status_code=400)
+            log.warning('GoPos webhook: ORDER with a non-numeric resource_id, ignored')
+            return JSONResponse({'status': 'ignored'})
         threading.Thread(target=_process_order_webhook, args=(resource_id,), daemon=True).start()
 
     elif resource_type in ('ITEM', 'CATEGORY'):
@@ -85,6 +94,9 @@ def _process_order_webhook(order_id: str):
 
         if order.get('status', '') != 'CLOSED':
             return
+        # processed_orders holds the NUMERIC id, the same key the full sync writes, so a
+        # webhook that names the order by uid still dedupes against the sync.
+        order_key = str(order.get('id') or order_id)
         closed_at = order.get('closed_at', '')
         if not closed_at:
             return
@@ -97,10 +109,10 @@ def _process_order_webhook(order_id: str):
         try:
             db.execute('BEGIN IMMEDIATE')
             cur = db.execute('INSERT OR IGNORE INTO processed_orders (order_id, date) VALUES (?, ?)',
-                             (order_id, date_str))
+                             (order_key, date_str))
             if cur.rowcount == 0:
                 db.rollback()
-                log.info(f'Webhook: order {order_id} already counted, skipped')
+                log.info(f'Webhook: order {order_key} already counted, skipped')
                 return
             for item, a in rows:
                 db.execute('''
@@ -120,7 +132,7 @@ def _process_order_webhook(order_id: str):
             raise
         finally:
             db.close()
-        log.info(f"Webhook: processed order {order_id} for {date_str}")
+        log.info(f"Webhook: processed order {order_key} for {date_str}")
 
     except Exception as e:
         log.error(f"Webhook order processing failed: {e}")

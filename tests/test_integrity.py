@@ -71,13 +71,27 @@ def test_webhook_token_required_when_configured(monkeypatch):
         assert c.post('/api/webhook/gopos?token=s3cret', json=body).status_code == 200
 
 
-def test_webhook_rejects_non_numeric_order_id(monkeypatch):
+def test_webhook_ignores_non_numeric_order_id_with_200(monkeypatch):
+    """Never 4xx on a payload we can't use: GoPOS blocks the webhook on 400/404/422."""
     from app.main import app
     monkeypatch.delenv('GOPOS_WEBHOOK_TOKEN', raising=False)
     c = TestClient(app)
     with patch('app.routes.webhook._process_order_webhook') as p:
         r = c.post('/api/webhook/gopos', json={'type': 'ORDER', 'resource_id': '../items'})
-    assert r.status_code == 400 and not p.called
+    assert r.status_code == 200 and r.json()['status'] == 'ignored' and not p.called
+
+
+def test_webhook_never_answers_4xx_to_unusable_bodies(monkeypatch):
+    from app.main import app
+    monkeypatch.delenv('GOPOS_WEBHOOK_TOKEN', raising=False)
+    c = TestClient(app)
+    with patch('app.routes.webhook._process_order_webhook') as p, \
+            patch('app.routes.webhook._sync_products_background') as s:
+        for kwargs in ({'content': b''}, {'content': b'not json'}, {'json': [1, 2]},
+                       {'json': {'type': 'PING'}}, {'json': {}}):
+            r = c.post('/api/webhook/gopos', **kwargs)
+            assert r.status_code == 200, kwargs
+    assert not p.called and not s.called
 
 
 # ─── full sync ───
@@ -96,6 +110,38 @@ def test_full_sync_replaces_the_day():
     _sync([_order(1)])
     names = [r[0] for r in get_db().execute("SELECT product_name FROM sales WHERE date='2026-11-05'")]
     assert names == ['Latte']
+
+
+UID = 'b145766c-92ae-4a5e-948a-9a13cd98dcc2'
+
+
+def test_webhook_accepts_order_uid_and_dedupes_with_full_sync():
+    """GoPOS names the order by its uid; the sync stores the numeric id. Same order, counted once."""
+    from app.main import app
+    order = dict(_order(44607), uid=UID)
+    _sync([order])
+    from app.routes import webhook
+    with patch.object(ga, 'api_get', return_value={'data': order}) as api, \
+            patch.object(ga, 'get_item_tax_rates', return_value={1: 8}):
+        webhook._process_order_webhook(UID)
+    api.assert_called_once()
+    assert api.call_args.args[0] == f'orders/{UID}'
+    assert get_db().execute("SELECT quantity FROM sales WHERE product_name='Latte'").fetchone()[0] == 1
+    c = TestClient(app)
+    with patch('app.routes.webhook._process_order_webhook') as p:
+        r = c.post('/api/webhook/gopos', json={'type': 'ORDER', 'resource_id': UID, 'event_type': 'CLOSED'})
+    assert r.status_code == 200 and r.json()['status'] == 'ok' and p.call_args.args[0] == UID
+
+
+def test_webhook_by_uid_then_sync_does_not_double_count():
+    order = dict(_order(44608), uid=UID)
+    from app.routes import webhook
+    with patch.object(ga, 'api_get', return_value={'data': order}), \
+            patch.object(ga, 'get_item_tax_rates', return_value={1: 8}):
+        webhook._process_order_webhook(UID)
+    assert get_db().execute("SELECT order_id FROM processed_orders").fetchone()[0] == '44608'
+    _sync([order])
+    assert get_db().execute("SELECT quantity FROM sales WHERE product_name='Latte'").fetchone()[0] == 1
 
 
 def test_webhook_after_full_sync_does_not_double_count():
