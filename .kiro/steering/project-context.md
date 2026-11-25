@@ -204,8 +204,21 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   Manual: `docker compose exec -T cafe python3 scripts/monthly_report.py 2026-10 --admin|--print`.
 - Invoice summaries (functional) / parse errors (admin), price change alerts ≥10% (functional),
   deploy alerts (admin).
-- The bot does NOT read incoming messages yet (`handle_command` is unwired) — interactive chat is planned:
-  long polling (no public webhook), allowlist = TELEGRAM_CHAT_ID, read-only tools, Haiku, no message text in logs.
+- **Interactive chat** (`app/telegram_chat.py`, tools in `app/telegram_tools.py`): a daemon thread started
+  in `app/main.py` lifespan long-polls `getUpdates` (outbound only, no webhook; the app must stay a single
+  uvicorn process or two pollers fight over updates, 409). Only private chats listed in `TELEGRAM_CHAT_ID` are
+  served; anyone else is ignored silently. Replies go only to the asking chat. Per-chat memory is RAM-only
+  (last 3 exchanges, 30 min idle), 30 questions/chat/hour. Message and answer text is never logged (chat id,
+  tool names, token counts, seconds only). Bedrock Converse with the app's Haiku 4.5 (no new Marketplace
+  agreement) calls read-only tools (sales_summary, daily_revenue, weekday_averages, top_products,
+  product_sales, low_stock, stock_item, wastage_summary; finance-only: expenses_summary, food_cost).
+  Every number must come from a tool. Finance tools and wastage costs are available only to
+  `TELEGRAM_FINANCE_CHAT_IDS` (default: the admin chat), same rule as the web app. The admin chat also gets a
+  footer with tools called and token counts. `/help /today /stock` need no model. Env: `TELEGRAM_CHAT_ENABLED=0`
+  switches it off, `TELEGRAM_CHAT_MODEL_ID`, `TELEGRAM_CHAT_HOURLY_LIMIT`.
+  Not available yet: sales by hour, staff/shift data, discounts by type (they need the GoPos API).
+  To add a tool: write a read-only function in `telegram_tools.py`, validate inputs, cap rows, register it in
+  `TOOLS` (mark finance=True if it shows costs/profit) and add a test.
 
 ## Pages & Features
 
@@ -285,7 +298,7 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - October invoices not uploaded to Drive yet → no October P&L.
 
 ## What's Next (backlog)
-- Interactive Telegram chat with read-only tools (planned next)
+- Telegram chat: more tools (hours, staff, discounts via GoPos API), Telegram-side finance for the partner
 - Staff hygiene (not code): personal POS logins instead of `Barista`; record every write-off via `write-off`
 - VAT payable = sales VAT − invoice VAT (needs VAT split from invoices)
 - Try Nova 2 Lite to reduce LLM costs (~6x cheaper than Claude Haiku 4.5)

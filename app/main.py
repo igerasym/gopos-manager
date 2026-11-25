@@ -101,7 +101,13 @@ async def lifespan(app: FastAPI):
             alert_admin('Startup product sync', e)
     threading.Thread(target=startup_sync, daemon=True).start()
 
+    # Interactive Telegram chat (long polling, outbound only). No-op without a bot token.
+    chat_stop = threading.Event()
+    from app.telegram_chat import start_polling
+    start_polling(chat_stop)
+
     yield
+    chat_stop.set()
     scheduler.shutdown()
 
 
