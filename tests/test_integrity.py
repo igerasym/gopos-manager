@@ -232,10 +232,10 @@ def test_sub_recipe_not_affected_when_unrelated_ingredient_changes():
 def test_stock_count_clears_todays_deductions():
     """After saving a stock count the deductions for today must be cleared
     so the next 04:30 re-sync deducts from the counted (real) stock."""
-    from datetime import datetime
+    from app.gopos_api import warsaw_today
     from app.gopos_sync import deduct_inventory
     from app.main import app
-    today = datetime.now().strftime('%Y-%m-%d')  # same clock the route uses
+    today = warsaw_today()  # same business day the route uses
     db = get_db()
     db.execute("INSERT INTO users (id, username, password_hash, role) VALUES (1,'admin','x:y','admin')")
     db.execute("INSERT INTO ingredients (id, name, unit, quantity, min_quantity) VALUES (1,'Молоко','L',5,0)")

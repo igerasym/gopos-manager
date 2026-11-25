@@ -1,5 +1,4 @@
 """Invoice upload routes."""
-from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -7,6 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
+from app.gopos_api import warsaw_today
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 
@@ -49,7 +49,7 @@ async def confirm_invoice(request: Request):
 
     supplier_id = form.get('supplier_id') or None
     invoice_note = form.get('invoice_note', '')
-    today = datetime.now().strftime('%Y-%m-%d')
+    today = warsaw_today()
 
     item_count = int(form.get('item_count', 0))
     for i in range(item_count):

@@ -87,3 +87,34 @@ def test_csv_default_uses_warsaw_business_day():
     c.cookies.set('session', sign_cookie('admin'))
     body = c.get('/export/sales.csv').text
     assert TODAY in body
+
+
+def test_stock_count_uses_business_day_and_clears_that_days_deductions(monkeypatch):
+    """At 02:00 Warsaw the UTC date is already the next day but the business day is not.
+    The count must be stored under the business day and wipe THAT day's deductions."""
+    monkeypatch.setattr('app.routes.stock_count.warsaw_today', lambda: '2026-11-24')
+    db = get_db()
+    db.execute("INSERT INTO ingredients (id, name, unit, quantity, min_quantity) VALUES (1, 'Mleko', 'L', 5, 0)")
+    db.execute("INSERT INTO inventory_deductions (date, ingredient_id, amount) VALUES ('2026-11-24', 1, 1)")
+    db.execute("INSERT INTO inventory_deductions (date, ingredient_id, amount) VALUES ('2026-11-25', 1, 1)")
+    db.commit()
+    db.close()
+
+    c = TestClient(app, follow_redirects=False)
+    c.cookies.set('session', sign_cookie('admin'))
+    assert c.post('/inventory/count', data={'qty_1': '4'}).status_code in (302, 303)
+
+    db = get_db()
+    assert db.execute('SELECT date FROM stock_counts').fetchone()[0] == '2026-11-24'
+    left = [r[0] for r in db.execute('SELECT date FROM inventory_deductions')]
+    assert left == ['2026-11-25']
+    db.close()
+
+
+def test_expenses_and_wastage_default_month_follow_warsaw_day(monkeypatch):
+    monkeypatch.setattr('app.routes.expenses.warsaw_today', lambda: '2026-10-31')
+    monkeypatch.setattr('app.routes.wastage.warsaw_today', lambda: '2026-10-31')
+    c = TestClient(app, follow_redirects=False)
+    c.cookies.set('session', sign_cookie('admin'))
+    assert 'value="2026-10"' in c.get('/expenses').text
+    assert 'value="2026-10"' in c.get('/wastage').text

@@ -99,8 +99,9 @@ def _item_list(items: dict) -> str:
 def daily_report():
     """Generate and send daily sales report."""
     from app.db import get_db
+    from app.gopos_api import warsaw_today
 
-    today = datetime.now().strftime('%Y-%m-%d')
+    today = warsaw_today()
     db = get_db()
 
     totals = db.execute('''
