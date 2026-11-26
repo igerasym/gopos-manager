@@ -143,3 +143,17 @@ def recalc_sub_recipes_for_ingredient(db, ingredient_id: int):
     ''', (ingredient_id,)).fetchall()
     for row in affected:
         recalc_sub_recipe_cost(db, row['sub_recipe_id'])
+
+
+def parse_num(value, default: float | None = None) -> float | None:
+    """Parse a user-typed number: accepts '1,5', '1.5', '1 234,50' and surrounding spaces.
+    Empty or junk -> default."""
+    if value is None:
+        return default
+    s = str(value).strip().replace('\u202f', '').replace('\u00a0', '').replace(' ', '').replace(',', '.')
+    if not s:
+        return default
+    try:
+        return float(s)
+    except ValueError:
+        return default

@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
+from app.gopos_api import warsaw_today
 from app.services.inventory import get_all_ingredients, get_suppliers, get_ingredient_deps
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
@@ -16,6 +17,14 @@ router = APIRouter()
 def _is_admin(request: Request) -> bool:
     user = getattr(request.state, 'user', None)
     return bool(user and user['role'] == 'admin')
+
+
+def _local_path(target: str, fallback: str = '/inventory') -> str:
+    """Only same-site paths ('/x'); anything else ('//evil', 'https://…', '/\\evil') -> fallback."""
+    t = (target or '').strip()
+    if not t.startswith('/') or t.startswith('//') or '\\' in t:
+        return fallback
+    return t
 
 
 @router.get('/inventory', response_class=HTMLResponse)
@@ -54,8 +63,9 @@ async def add_delivery(
         price = 0  # chef/barista don't see or set prices
     db = get_db()
     db.execute(
-        'INSERT INTO deliveries (ingredient_id, quantity, price, note, supplier_id) '
-        'VALUES (?, ?, ?, ?, ?)', (ingredient_id, quantity, price, note, supplier_id if supplier_id else None)
+        'INSERT INTO deliveries (date, ingredient_id, quantity, price, note, supplier_id) '
+        'VALUES (?, ?, ?, ?, ?, ?)',
+        (warsaw_today(), ingredient_id, quantity, price, note, supplier_id if supplier_id else None)
     )
     db.execute(
         'UPDATE ingredients SET quantity = quantity + ? WHERE id = ?',
@@ -118,7 +128,7 @@ async def edit_ingredient(
         db.execute('UPDATE ingredients SET supplier_id = ? WHERE id = ?', (supplier_id if supplier_id else None, ingredient_id))
     db.commit()
     db.close()
-    return RedirectResponse(redirect, status_code=303)
+    return RedirectResponse(_local_path(redirect), status_code=303)
 
 
 @router.post('/ingredients/delete/{ingredient_id}')
@@ -145,8 +155,10 @@ async def ingredient_deps_api(ingredient_id: int):
 
 
 @router.get('/api/ingredient/{ingredient_id}/price-history')
-async def ingredient_price_history_api(ingredient_id: int):
-    """Last 20 price points for an ingredient (for sparkline chart)."""
+async def ingredient_price_history_api(request: Request, ingredient_id: int):
+    """Last 20 price points for an ingredient (for sparkline chart). Admin only: prices."""
+    if not _is_admin(request):
+        return JSONResponse({'error': 'forbidden'}, status_code=403)
     db = get_db()
     rows = db.execute('''
         SELECT iph.price, iph.date, COALESCE(pi.vendor, pi.file_name, '') as source

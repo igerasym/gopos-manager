@@ -91,9 +91,11 @@ async def wastage_page(request: Request, month: str = ''):
         by_reason[key]['count'] += 1
         by_reason[key]['cost'] += r['cost']
 
-    # By product/ingredient (top losers — only where cost is known)
+    # By product/ingredient (top losers — only where cost is known; the rest are not losses we can rank)
     by_item = {}
     for r in rows:
+        if not r['cost_known']:
+            continue
         key = r['label']
         by_item.setdefault(key, {'qty': 0.0, 'cost': 0.0, 'unit': r['unit']})
         by_item[key]['qty'] += r['quantity']
@@ -130,6 +132,8 @@ async def add_wastage(
     user = request.state.user
     today = date or warsaw_today()
     month = today[:7]
+    if reason not in REASONS or reason == 'write-off':
+        reason = 'other'  # 'write-off' is reserved for the GoPOS import
 
     db = get_db()
     # Deduct from stock

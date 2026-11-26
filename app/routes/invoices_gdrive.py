@@ -17,15 +17,16 @@ router = APIRouter()
 @router.get('/invoices', response_class=HTMLResponse)
 async def invoices_page(request: Request):
     """Show list of invoices from Google Drive."""
+    error = ''
     try:
         files = list_invoices()
     except Exception as e:
         log.error(f"Error listing invoices: {e}")
-        files = []
+        files, error = [], str(e)
 
     return templates.TemplateResponse(request, 'invoices.html', context={
         'files': files,
-        'error': str(e) if not files and 'e' in dir() else '',
+        'error': error,
     })
 
 

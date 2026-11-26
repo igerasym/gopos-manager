@@ -31,13 +31,15 @@ form:focus-within .save-btn { opacity: 1; }
     </div>
     <div class="card kpi">
         <div class="kpi-label">Нестачі</div>
-        <div class="kpi-value" style="color:var(--red);">{{ items|selectattr('difference', 'lt', 0)|list|length }}</div>
+        <div class="kpi-value" style="color:var(--red);">{{ short_count }}</div>
     </div>
+    {% if request.state.user and request.state.user.role == 'admin' %}
     <div class="card kpi">
         <div class="kpi-label">Вартість втрат</div>
         <div class="kpi-value" style="color:var(--red);">{{ '{:.2f}'.format(total_diff_value) }} zł</div>
         <div class="kpi-change neutral">орієнтовні втрати</div>
     </div>
+    {% endif %}
 </div>
 
 <div class="card">
@@ -69,13 +71,13 @@ form:focus-within .save-btn { opacity: 1; }
                         <button class="btn btn-primary save-btn" type="submit" style="padding:2px 6px; font-size:.7em;">✓</button>
                     </form>
                 </td>
-                <td class="text-right {{ 'diff-positive' if i['difference'] > 0.01 else 'diff-negative' if i['difference'] < -0.01 else 'diff-zero' }}">
-                    {{ '{:+.1f}'.format(i['difference']) }}
+                <td class="text-right {{ 'diff-positive' if i['status'] == 'over' else 'diff-negative' if i['status'] == 'short' else 'diff-zero' }}">
+                    {{ '{:+.1f}'.format(i['difference']) if i['status'] != 'match' else '0.0' }}
                 </td>
                 <td>
-                    {% if i['difference'] < -0.01 %}
+                    {% if i['status'] == 'short' %}
                     <span class="badge badge-red">Нестача</span>
-                    {% elif i['difference'] > 0.01 %}
+                    {% elif i['status'] == 'over' %}
                     <span class="badge badge-green">Надлишок</span>
                     {% else %}
                     <span class="badge" style="background:#f1f5f9; color:#64748b;">Збіг</span>
