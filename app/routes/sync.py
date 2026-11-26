@@ -1,4 +1,6 @@
 """Sync trigger and status routes."""
+from datetime import datetime
+
 from fastapi import APIRouter, Form
 from fastapi.responses import JSONResponse
 
@@ -30,6 +32,21 @@ async def trigger_sync(
     return JSONResponse({'status': 'started'})
 
 
+def _refreshed() -> dict:
+    """When sales were last refreshed, in Warsaw time, from the same source as the bot and the
+    attention block (hourly refresh in RAM, else the last finished sync). 'short' is the label
+    shown next to the sync button: 'оновлено о 14:15' / 'оновлено 25 лист. о 04:30'."""
+    from app.services.attention import data_freshness, shortdate
+    f = data_freshness()
+    at = f['at']
+    if at is None:
+        return {'refreshed_at': None, 'refreshed_short': 'ще не оновлювалось'}
+    when = f"о {at.strftime('%H:%M')}"
+    if at.date() != datetime.now(at.tzinfo).date():
+        when = f"{shortdate(at.date(), weekday=False)} {when}"
+    return {'refreshed_at': at.isoformat(), 'refreshed_short': f'оновлено {when}'}
+
+
 @router.get('/api/sync-status')
 async def sync_status():
     db = get_db()
@@ -37,11 +54,13 @@ async def sync_status():
         'SELECT status, message, started_at, finished_at FROM sync_log ORDER BY id DESC LIMIT 1'
     ).fetchone()
     db.close()
+    fresh = _refreshed()
     if not row:
-        return JSONResponse({'status': 'none'})
+        return JSONResponse({'status': 'none', **fresh})
     return JSONResponse({
         'status': row['status'],
         'message': row['message'],
         'started_at': row['started_at'],
         'finished_at': row['finished_at'],
+        **fresh,
     })
