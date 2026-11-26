@@ -323,3 +323,28 @@ def test_register_webhook_never_logs_the_token(caplog):
             patch.object(ga.requests, 'post', return_value=post):
         ga.register_webhook('http://h/api/webhook/gopos?token=TOPSECRET')
     assert 'TOPSECRET' not in caplog.text and 'token=***' in caplog.text
+
+
+def test_day_sync_reads_gopos_orders_once_for_sales_and_writeoffs():
+    """One fetch with promotions serves both the sales sync and the write-off log."""
+    wo = dict(_order(91), promotions=[{'name': 'write-off'}],
+              items=[{**_it('Croissant', 0), 'sub_total_price': {'amount': 12}}])
+    calls = []
+
+    def fake_fetch(day, include):
+        calls.append((day, include))
+        return [_order(90), wo]
+
+    with patch.object(ga, 'fetch_closed_orders', side_effect=fake_fetch), \
+            patch.object(ga, 'sync_products'), patch.object(ga, 'get_item_tax_rates', return_value={1: 8}):
+        ga.sync_date('2026-11-05')
+    assert calls == [('2026-11-05', 'items,items.product,promotions')]
+    db = get_db()
+    assert db.execute("SELECT quantity FROM sales WHERE product_name='Latte'").fetchone()[0] == 1
+    assert db.execute("SELECT quantity FROM wastage WHERE product_name='Croissant' AND source='gopos'").fetchone()[0] == 1
+
+
+def test_single_steps_still_fetch_on_their_own():
+    with patch.object(ga, 'fetch_closed_orders', return_value=[]) as f:
+        ga.sync_writeoffs_for_date('2026-11-05')
+    assert f.call_args.args == ('2026-11-05', 'items,items.product,promotions')

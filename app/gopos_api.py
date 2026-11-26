@@ -252,15 +252,16 @@ def order_item_amounts(order: dict, tax_rates: dict) -> list:
     return rows
 
 
-def sync_orders_for_date(date_str: str) -> int:
+def sync_orders_for_date(date_str: str, orders: Optional[list] = None) -> int:
     """Sync all closed orders for a given date into sales table.
 
     Uses closed_at filter with the business day (05:00 → next day 05:00, the same
     cutoff as business_date()). The day's rows are REPLACED, not merged, so orders
     voided/refunded after the webhook counted them drop out.
-    Returns number of products imported.
+    Returns number of products imported. `orders`: the day's orders already fetched (with at
+    least items,items.product), so a full day sync reads GoPOS once; None = fetch them here.
     """
-    all_orders = fetch_closed_orders(date_str, 'items,items.product')
+    all_orders = fetch_closed_orders(date_str, 'items,items.product') if orders is None else orders
 
     log.info(f'Got {len(all_orders)} orders for {date_str}')
 
@@ -317,6 +318,18 @@ def sync_orders_for_date(date_str: str) -> int:
 
 # ─── High-level sync functions ───
 
+# One read of a day's orders serves both the sales sync (items) and the write-off log (promotions).
+DAY_SYNC_INCLUDE = 'items,items.product,promotions'
+
+
+def _sync_day(date_str: str) -> int:
+    """Sales, stock deduction and write-offs for one business day, reading GoPOS once."""
+    orders = fetch_closed_orders(date_str, DAY_SYNC_INCLUDE)
+    count = sync_orders_for_date(date_str, orders)
+    _deduct_inventory(date_str)
+    sync_writeoffs_for_date(date_str, orders)
+    return count
+
 
 def sync_today():
     """Sync today's sales + products."""
@@ -324,9 +337,7 @@ def sync_today():
     try:
         sync_products()
         today = warsaw_today()
-        count = sync_orders_for_date(today)
-        _deduct_inventory(today)
-        sync_writeoffs_for_date(today)
+        count = _sync_day(today)
         _finish_sync_log(sync_id, 'done', f'Synced {today}: {count} products via API')
         return count
     except Exception as e:
@@ -392,9 +403,7 @@ def sync_date(date_str: str):
     sync_id = _start_sync_log(f'API sync {date_str}')
     try:
         sync_products()
-        count = sync_orders_for_date(date_str)
-        _deduct_inventory(date_str)
-        sync_writeoffs_for_date(date_str)
+        count = _sync_day(date_str)
         _finish_sync_log(sync_id, 'done', f'Synced {date_str}: {count} products via API')
         return count
     except Exception as e:
@@ -413,10 +422,7 @@ def sync_range(date_from: str, date_to: str):
         current = start
         while current <= end:
             date_str = current.strftime('%Y-%m-%d')
-            count = sync_orders_for_date(date_str)
-            _deduct_inventory(date_str)
-            sync_writeoffs_for_date(date_str)
-            total += count
+            total += _sync_day(date_str)
             current += timedelta(days=1)
         _finish_sync_log(sync_id, 'done', f'Synced {date_from} → {date_to}: {total} products via API')
         return total
@@ -457,17 +463,17 @@ def _deduct_inventory(date_str: str):
 WRITEOFF_PROMOTION_NAMES = {'write-off'}
 
 
-def sync_writeoffs_for_date(date_str: str):
+def sync_writeoffs_for_date(date_str: str, orders: Optional[list] = None):
     """Extract write-off orders from GoPos for the given date and log them in wastage.
 
     GoPos write-offs are orders where a promotion named 'write-off' was applied,
-    dropping total_price to 0. We identify them from the already-fetched orders
-    by re-querying with promotions include, then upsert into wastage.
+    dropping total_price to 0. `orders`: the day's orders already fetched WITH promotions
+    (see DAY_SYNC_INCLUDE); None = fetch them here.
 
     Wastage rows are keyed by (date, product_name, source='gopos') — so re-running
     is safe: DELETE + INSERT in one transaction, same as the sales sync.
     """
-    all_orders = fetch_closed_orders(date_str, 'items,items.product,promotions')
+    all_orders = fetch_closed_orders(date_str, DAY_SYNC_INCLUDE) if orders is None else orders
 
     # Find write-off orders
     writeoff_agg = {}  # product_name → quantity

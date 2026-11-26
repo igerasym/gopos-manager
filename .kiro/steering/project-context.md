@@ -75,6 +75,10 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - `sync_orders_for_date` **replaces** the day (DELETE + INSERT in one transaction) and rewrites
   `processed_orders` for it. An empty API answer for a day that already has rows is treated as an API
   hiccup and the day is kept.
+- A full day sync (`sync_today` / `sync_date` / `sync_range` → `_sync_day`) reads the day's orders from GoPOS
+  ONCE with `DAY_SYNC_INCLUDE = 'items,items.product,promotions'` and hands the same list to
+  `sync_orders_for_date(day, orders)` and `sync_writeoffs_for_date(day, orders)`. Called alone (intraday
+  refresh, scripts), each still fetches for itself.
 - Real-time: GoPos webhook `POST /api/webhook/gopos?token=<GOPOS_WEBHOOK_TOKEN>` adds each closed order
   to `sales` once: `processed_orders(order_id)` is written in the same transaction, so retries/replays
   are ignored. `resource_id` is the order **uid (UUID)**; digits are accepted too. `processed_orders` always
