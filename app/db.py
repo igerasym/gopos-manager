@@ -245,6 +245,12 @@ def init_db():
 
         -- "Що потребує уваги" rows a user hid with "Сховати до завтра".
         -- (kind, key) as produced by app/services/attention.py; hidden while today < until.
+        -- Small key/value store for facts that must survive a restart (e.g. when sales were last refreshed).
+        CREATE TABLE IF NOT EXISTS app_state (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS attention_dismissed (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL REFERENCES users(id),

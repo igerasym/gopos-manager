@@ -68,6 +68,10 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   holds the last refresh time (Warsaw 'HH:MM', RAM only, bound to `LAST_INTRADAY_DAY`); read it through
   `today_refreshed_at()`, which ignores a time from a previous business day and falls back to the last
   finished `sync_log` row for today after a restart. The dashboard and the Telegram chat show it.
+  **The time is also stored in the DB** (`app_state.sales_refreshed_at`, UTC), written by every sales sync and
+  every webhook order (`gopos_api.mark_refreshed`, inside the same transaction), so a restart or deploy no
+  longer makes the label fall back to the 04:30 UTC night sync. `attention.data_freshness()` (header label,
+  bot, attention block) takes the newest of RAM, the stored mark and the last finished sync.
   The bot's prompt gets the Warsaw clock as well as the business day: between 00:00 and 05:00 it answers
   "today" for the previous calendar date and says so. Model `**bold**` is converted to Telegram `<b>`.
   A failing refresh alerts the admin once per outage. If the webhook is ever connected, the refresh stays

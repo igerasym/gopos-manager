@@ -306,6 +306,7 @@ def sync_orders_for_date(date_str: str, orders: Optional[list] = None) -> int:
             'INSERT OR REPLACE INTO processed_orders (order_id, date) VALUES (?, ?)',
             [(str(o['id']), date_str) for o in all_orders if o.get('id') is not None])
         _save_takeaway(db, date_str, all_orders)
+        mark_refreshed(db)
         db.commit()
     except Exception:
         db.rollback()
@@ -374,6 +375,40 @@ def sync_intraday() -> Optional[int]:
         _intraday_lock.release()
 
 
+REFRESHED_KEY = 'sales_refreshed_at'
+
+
+def mark_refreshed(db) -> None:
+    """Remember (in the DB, so it survives restarts) that sales data was just refreshed.
+
+    Call it inside the transaction that writes sales: a full/intraday sync and every order that
+    arrives by webhook. Never raises: a label must not break a sync."""
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo('UTC')).strftime('%Y-%m-%d %H:%M:%S')
+        db.execute('INSERT INTO app_state (key, value) VALUES (?, ?) '
+                   'ON CONFLICT(key) DO UPDATE SET value = excluded.value', (REFRESHED_KEY, now))
+    except Exception as e:  # table missing on an old DB, locked, ...
+        log.warning(f'mark_refreshed failed: {e}')
+
+
+def last_refreshed_utc(db=None) -> Optional[datetime]:
+    """UTC time of the last mark_refreshed(), or None."""
+    own = db is None
+    try:
+        db = db or get_db()
+        row = db.execute('SELECT value FROM app_state WHERE key = ?', (REFRESHED_KEY,)).fetchone()
+    except Exception:
+        return None
+    finally:
+        if own and db is not None:
+            db.close()
+    try:
+        return datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S') if row else None
+    except ValueError:
+        return None
+
+
 def today_refreshed_at() -> Optional[str]:
     """Warsaw 'HH:MM' of the last refresh of today's sales, or None if unknown.
 
@@ -381,6 +416,12 @@ def today_refreshed_at() -> Optional[str]:
     sync_log row for today (the 19:00 UTC full sync writes 'Synced <date>: ...').
     """
     today = warsaw_today()
+    from zoneinfo import ZoneInfo
+    stored = last_refreshed_utc()
+    if stored:
+        local = stored.replace(tzinfo=ZoneInfo('UTC')).astimezone(ZoneInfo('Europe/Warsaw'))
+        if business_date(local.strftime('%Y-%m-%dT%H:%M:%S')) == today:
+            return local.strftime('%H:%M')
     if LAST_INTRADAY_SYNC and LAST_INTRADAY_DAY == today:
         return LAST_INTRADAY_SYNC
     try:

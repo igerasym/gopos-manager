@@ -126,6 +126,8 @@ def _process_order_webhook(order_id: str):
                         net_profit = net_profit + excluded.net_profit
                 ''', (date_str, item['name'], item.get('quantity', 1), a['total_money'],
                       a['net_total'], a['discount'], a['net_profit']))
+            from app.gopos_api import mark_refreshed
+            mark_refreshed(db)
             db.commit()
         except Exception:
             db.rollback()
