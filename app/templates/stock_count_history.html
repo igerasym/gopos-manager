@@ -1,56 +1,67 @@
 {% extends "base.html" %}
-{% block content %}
+{% from "_ui.html" import page_header, empty_state, sparkline, trend_chip %}
 
-<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <h2 style="margin:0;">Історія інвентаризацій</h2>
-    <a href="/inventory/count" class="btn btn-primary btn-sm">+ Нова інвентаризація</a>
-</div>
+{% block page_title %}Інвентаризація{% endblock %}
+{% block main_class %}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="/static/pages/stock.css?v=1">{% endblock %}
+{% block section_tabs %}{% with stock_tab='count' %}{% include "_stock_tabs.html" %}{% endwith %}{% endblock %}
+
+{% block content %}
+{% call page_header('Інвентаризація', eyebrow='Склад') %}
+    <a class="btn btn-primary" href="/inventory/count">{{ icon('clipboard') }}Почати нову</a>
+{% endcall %}
+{% if saved == 'delete' %}<div hidden data-toast-now="Інвентаризацію видалено" data-toast-type="ok"></div>{% endif %}
 
 {% if counts %}
-<div class="card">
-    <table>
-        <thead>
-            <tr>
-                <th>Дата</th>
-                <th>Хто</th>
-                <th>Примітка</th>
-                <th class="text-right">Позицій</th>
-                <th class="text-right">Нестачі</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for c in counts %}
-            <tr>
-                <td style="font-weight:600;">{{ c['date'] }} {{ c['time'] or '' }}</td>
-                <td>{{ c['display_name'] or c['username'] or '—' }}</td>
-                <td class="text-muted">{{ c['note'] or '—' }}</td>
-                <td class="text-right">{{ c['item_count'] }}</td>
-                <td class="text-right">
-                    {% if c['shortage_count'] > 0 %}
-                    <span class="badge badge-red">{{ c['shortage_count'] }}</span>
-                    {% else %}
-                    <span class="badge badge-green">0</span>
-                    {% endif %}
-                </td>
-                <td class="text-right">
-                    <a href="/inventory/count/{{ c['id'] }}" class="btn btn-outline btn-sm">Переглянути</a>
-                    {% if request.state.user and request.state.user.role == 'admin' %}
-                    <form method="post" action="/inventory/count/{{ c['id'] }}/delete" style="display:inline; margin-left:4px;">
-                        <button type="button" class="btn btn-outline btn-sm" style="color:var(--red); padding:4px 8px;"
-                                onclick="confirmDelete('/inventory/count/{{ c['id'] }}/delete', 'Інвентаризація {{ c['date'] }} {{ c['time'] or '' }}')">✕</button>
-                    </form>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% else %}
-<div class="card" style="text-align:center; padding:40px; color:var(--text-secondary);">
-    Інвентаризацій ще немає. Розпочніть першу інвентаризацію.
+{% set last = counts[0] %}
+{% if days_since is not none and days_since > overdue_days %}
+<div class="notice notice-warn mb-4">{{ icon('clock') }}
+    <div class="notice-body"><div class="notice-title">Остання інвентаризація {{ days_since }} {{ days_since | plural('день', 'дні', 'днів') }} тому</div>
+        Варто порахувати склад хоча б раз на тиждень.
+        <div class="notice-actions"><a class="btn btn-secondary" href="/inventory/count">Порахувати</a></div></div>
 </div>
 {% endif %}
 
+<section class="card hero" aria-labelledby="last-h">
+    <div class="hero-top"><h2 id="last-h" class="qlabel">Остання інвентаризація, {{ last['date'] | shortdate }}</h2>
+        {% if is_admin %}{{ sparkline(loss_series, label='Втрати по інвентаризаціях') }}{% endif %}</div>
+    {% if is_admin %}
+    <div>
+        <div class="big num">{% if last['loss'] %}−{% endif %}{{ last['loss'] | num(2) }}&nbsp;<small>zł</small></div>
+        {% set prev = counts[1] if counts | length > 1 else none %}
+        {% set t = trend(last['loss'], prev['loss'], good='down') if prev else none %}
+        <p class="sentence mt-2">Не вистачило {{ last['shortage_count'] }} {{ last['shortage_count'] | plural('позиції', 'позицій', 'позицій') }} з {{ last['item_count'] }}.
+            {% if t %}{% if t.direction == 'flat' %}Втрат приблизно стільки ж, скільки минулого разу ({{ prev['loss'] | zl(0) }}).{% else %}<span class="chip chip-{{ t.css }}">{{ icon(t.icon, 14) }}{{ t.text }}</span> Втрат на {{ t.text }} {{ t.word }}, ніж минулого разу ({{ prev['loss'] | zl(0) }}).{% endif %}{% endif %}</p>
+    </div>
+    {% else %}
+    <p class="sentence">Пораховано {{ last['item_count'] }} {{ last['item_count'] | plural('позицію', 'позиції', 'позицій') }}, не вистачило {{ last['shortage_count'] }}.</p>
+    {% endif %}
+    <div class="stat-foot">{{ icon('clock', 16) }}{% if days_since == 0 %}сьогодні{% elif days_since == 1 %}вчора{% elif days_since is not none %}{{ days_since }} {{ days_since | plural('день', 'дні', 'днів') }} тому{% endif %}{% if last['display_name'] or last['username'] %} · {{ last['display_name'] or last['username'] }}{% endif %}</div>
+</section>
+
+<section class="card card-flush mt-4" aria-labelledby="hist-h">
+    <header class="card-head"><h2 id="hist-h">Усі інвентаризації</h2></header>
+    <ul class="rows hist-rows">
+        {% for c in counts %}
+        <li>
+            <a class="row" href="/inventory/count/{{ c['id'] }}">
+                <span class="row-lead hide-phone">{{ icon('clipboard') }}</span>
+                <span class="row-main">
+                    <span class="row-title">{{ c['date'] | shortdate }}{% if c['time'] %}, {{ c['time'] }}{% endif %}</span>
+                    <span class="row-sub">{{ c['display_name'] or c['username'] or 'хтось' }} · {% if c['shortage_count'] %}не вистачило {{ c['shortage_count'] }} з {{ c['item_count'] }}{% else %}усе зійшлося, {{ c['item_count'] }} {{ c['item_count'] | plural('позиція', 'позиції', 'позицій') }}{% endif %}<span class="hide-phone">{% if c['note'] %} · {{ c['note'] }}{% endif %}</span></span>
+                </span>
+                <span class="row-trail">
+                    {% if is_admin %}<span class="row-value num{{ ' danger-text' if c['loss'] }}">{% if c['loss'] %}−{% endif %}{{ c['loss'] | zl }}</span>
+                    {% elif c['shortage_count'] %}<span class="chip chip-warn">{{ icon('alert', 14) }}{{ c['shortage_count'] }}</span>
+                    {% else %}<span class="chip chip-ok">{{ icon('check', 14) }}OK</span>{% endif %}
+                </span>
+                <span class="row-chev">{{ icon('chevron-right') }}</span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% else %}
+<section class="card">{{ empty_state('clipboard', 'Інвентаризацій ще немає', 'Порахуйте склад, щоб побачити, чого не вистачає.', '/inventory/count', 'Почати першу') }}</section>
+{% endif %}
 {% endblock %}

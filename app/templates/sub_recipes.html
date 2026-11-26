@@ -1,191 +1,204 @@
 {% extends "base.html" %}
+{% from "_ui.html" import page_header, empty_state %}
+
+{% block page_title %}Меню{% endblock %}
+{% block main_class %}{% endblock %}
 
 {% block extra_style %}
-.sub-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; }
-.sub-card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; cursor: pointer; user-select: none; }
-.sub-card-header:hover { background: #f8fafc; }
-.sub-card-header h3 { font-size: .95em; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 8px; }
-.sub-card-header h3::before { content: '▸'; font-size: .8em; color: var(--text-secondary); transition: transform .2s; }
-.sub-card.open .sub-card-header h3::before { transform: rotate(90deg); }
-.sub-card-body { display: none; border-top: 1px solid var(--border); }
-.sub-card.open .sub-card-body { display: block; }
-.sub-card-body table { margin: 0; }
-.sub-card-desc { padding: 10px 20px; background: #fafbfc; border-top: 1px solid var(--border); font-size: .82em; color: var(--text-secondary); white-space: pre-line; }
-.sub-card-actions { padding: 10px 20px; border-top: 1px solid var(--border); background: #fafbfc; }
+.menu-tabs { margin-bottom: var(--s4); }
+.card .rows .row-title { white-space: normal; overflow-wrap: anywhere; }
+.menu-tabs .count { margin-left: var(--s1); }
+.card .rows button.row { padding-left: var(--s2); padding-right: var(--s2); margin: 0 calc(-1 * var(--s2)); width: calc(100% + 2 * var(--s2)); border-radius: var(--r-s); }
+.line { display: grid; grid-template-columns: 1fr auto; gap: var(--s2) var(--s3); align-items: center; padding: var(--s3) 0; border-top: 1px solid var(--border); }
+.line:first-child { border-top: 0; }
+.line-name { font-weight: 600; overflow-wrap: anywhere; }
+.line-meta { font-size: var(--fs-small); color: var(--text-muted); }
+.line-cost { text-align: right; }
+.line-edit { grid-column: 1 / -1; display: flex; gap: var(--s2); align-items: center; }
+.line-edit form:first-child { display: flex; gap: var(--s2); flex: 1; min-width: 0; }
+.line-edit .input-group { flex: 1; min-width: 0; max-width: 220px; }
+@media (min-width: 600px) {
+  .line { grid-template-columns: 1fr auto 96px; }
+  .line-edit { grid-column: 2; grid-row: 1; }
+  .line-edit .input-group { width: 130px; }
+  .line-cost { grid-column: 3; grid-row: 1; }
+}
+.prep-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); margin-bottom: var(--s4); }
+.prep-stats .stat { background: var(--surface-2); border-radius: var(--r-s); padding: var(--s3); }
+.sheet-section { margin-top: var(--s5); }
+.sheet-section > h3 { font-size: var(--fs-body); font-weight: 600; margin: 0 0 var(--s2); }
+.desc { white-space: pre-line; color: var(--text-muted); }
+.used-in { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.edit-prep > summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; gap: var(--s2); font-weight: 600; color: var(--accent); }
+.edit-prep > summary::-webkit-details-marker { display: none; }
 {% endblock %}
 
+{% block section_tabs %}{% endblock %}
+
+{%- macro ingredient_select(sid, exclude=None) -%}
+<select class="select" id="{{ sid }}" name="ingredient_id" data-unit-target="{{ sid }}" required>
+    <option value="">Оберіть інгредієнт</option>
+    {%- for i in ingredients if i['id'] != exclude %}<option value="{{ i['id'] }}" data-unit="{{ i['unit'] }}">{{ i['name'] }}</option>{% endfor %}
+</select>
+{%- endmacro -%}
+
 {% block content %}
+{% call page_header('Меню', eyebrow='Заготовки') %}
+    <button class="btn btn-primary" type="button" data-sheet-open="sheet-new-prep">{{ icon('plus') }}Нова заготовка</button>
+{% endcall %}
+<nav class="tabs menu-tabs" aria-label="Розділи меню">
+    {%- for key, label, path in tabs %}
+    <a href="{{ path }}"{% if key == tab %} aria-current="page"{% endif %}>{{ label }}{% if tab_counts[key] %}<span class="count">{{ tab_counts[key] }}</span>{% endif %}</a>
+    {%- endfor %}
+</nav>
 
-<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <h2 style="margin:0;">Рецепти</h2>
-    <div style="display:flex; gap:6px;">
-        <a href="/recipes" class="btn btn-sm {{ 'btn-primary' if request.url.path == '/recipes' else 'btn-outline' }}">Кухня</a>
-        <a href="/recipes/bar" class="btn btn-sm {{ 'btn-primary' if '/bar' in request.url.path else 'btn-outline' }}">Бар</a>
-        <a href="/recipes/sub" class="btn btn-sm {{ 'btn-primary' if '/sub' in request.url.path else 'btn-outline' }}">Напівфабрикати</a>
-    </div>
-</div>
+{% if saved_msg %}<div hidden data-toast-now="{{ saved_msg }}" data-toast-type="ok"></div>{% endif %}
+{% if open_id %}<div hidden data-open-sheet="{{ open_id }}"></div>{% endif %}
 
-{% for s in subs %}
-{% set items = sub_items.get(s['id'], []) %}
-{% set total_cost = items|map(attribute='cost')|sum %}
-<div class="sub-card" id="sub-{{ s['id'] }}">
-    <div class="sub-card-header" onclick="this.parentElement.classList.toggle('open')">
-        <h3>
-            {{ s['name'] }}
-            <span style="font-size:.75em; color:var(--text-secondary); font-weight:400;">
-                вихід: {{ s['yield_amount'] }} {{ s['yield_unit'] }} · {{ items|length }} інгредієнтів
+<section class="card" aria-labelledby="pl-h">
+        <header class="card-head"><h2 id="pl-h">Заготовки</h2><span class="small muted">{{ preps | length }} {{ preps | length | plural('заготовка', 'заготовки', 'заготовок') }}</span></header>
+        <p class="small muted">Те, що готуємо самі й додаємо в страви як інгредієнт: тісто, соуси, сиропи.</p>
+    {% if preps %}
+    <ul class="rows">
+        {%- for p in preps %}
+        {%- set used = usage.get(p.ingredient_id, []) %}
+        <li><button class="row" type="button" data-sheet-open="{{ p.sheet }}">
+            <span class="row-lead">{{ icon('scale') }}</span>
+            <span class="row-main"><span class="row-title">{{ p.name }}</span>
+                <span class="row-sub">вихід {{ p.yield_amount | qty(p.yield_unit) }} · {{ p['items'] | length }} {{ p['items'] | length | plural('інгредієнт', 'інгредієнти', 'інгредієнтів') }}{% if used %} · у {{ used | length }} {{ used | length | plural('рецепті', 'рецептах', 'рецептах') }}{% else %} · ніде не використовується{% endif %}</span></span>
+            <span class="row-trail">
+                {%- if not p['items'] %}<span class="chip chip-warn">{{ icon('alert', 14) }}Немає інгредієнтів</span>
+                {%- elif is_admin %}<span class="row-value num">{{ p.unit_price | zl }}</span><span class="caption muted">за 1 {{ p.unit | unit_ua }}</span>{% endif %}
             </span>
-        </h3>
-        <div style="display:flex; gap:8px; align-items:center;">
-            <span class="badge" style="background:#ede9fe; color:#5b21b6;">
-                {{ '{:.2f}'.format(s['unit_price'] or 0) }} zł/{{ s['unit'] }}
-            </span>
-            <span class="badge badge-green">
-                Всього: {{ '{:.2f}'.format(total_cost) }} zł
-            </span>
-        </div>
+            <span class="row-chev">{{ icon('chevron-right') }}</span>
+        </button></li>
+        {%- endfor %}
+    </ul>
+    {% else %}
+    {{ empty_state('scale', 'Заготовок ще немає', 'Створіть першу, наприклад тісто чи соус.') }}
+    <div class="mt-3"><button class="btn btn-primary" type="button" data-sheet-open="sheet-new-prep">{{ icon('plus') }}Нова заготовка</button></div>
+    {% endif %}
+</section>
+
+
+{% for p in preps %}
+{%- set used = usage.get(p.ingredient_id, []) %}
+<dialog class="sheet sheet-wide" id="{{ p.sheet }}" aria-labelledby="{{ p.sheet }}-h">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+        <div><h2 id="{{ p.sheet }}-h">{{ p.name }}</h2><div class="small muted">Заготовка · вихід {{ p.yield_amount | qty(p.yield_unit) }}</div></div>
+        <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button>
     </div>
-    <div class="sub-card-body">
-        {% if items %}
-        <div style="padding: 12px 20px;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Інгредієнт</th>
-                        <th class="text-right">Кількість</th>
-                        <th>Од.</th>
-                        <th class="text-right">Ціна/од.</th>
-                        <th class="text-right">Вартість</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in items %}
-                    <tr>
-                        <td>{{ item['ingredient'] }}</td>
-                        <td class="text-right">
-                            <form method="post" action="/recipes/sub/{{ s['id'] }}/update/{{ item['id'] }}" style="display:inline-flex; align-items:center; gap:3px;" class="inline-edit-form">
-                                <input type="hidden" name="amount" id="raw_{{ item['id'] }}">
-                                <input type="number" value="{% if item['unit'] in ['kg', 'L'] %}{{ '{:.0f}'.format(item['amount'] * 1000) }}{% else %}{{ item['amount'] }}{% endif %}" step="0.1"
-                                       style="width:70px; padding:3px 6px; border:1px solid transparent; border-radius:4px; font-size:.85em; text-align:right; background:transparent;"
-                                       onchange="document.getElementById('raw_{{ item['id'] }}').value = this.value / {{ 1000 if item['unit'] in ['kg','L'] else 1 }};"
-                                       onfocus="this.style.borderColor='var(--accent)'; this.style.background='#fff'; this.nextElementSibling.style.opacity=1;"
-                                       onblur="this.style.borderColor='transparent'; this.style.background='transparent'; setTimeout(()=>{this.nextElementSibling.style.opacity=0},200);">
-                                <button class="btn btn-primary" type="submit" style="padding:2px 6px; font-size:.7em; opacity:0;">✓</button>
-                            </form>
-                        </td>
-                        <td class="text-muted">
-                            {{ 'g' if item['unit'] == 'kg' else 'ml' if item['unit'] == 'L' else item['unit'] }}
-                        </td>
-                        <td class="text-right text-muted" style="font-size:.8em;">
-                            {% if item['unit_price'] %}{{ '{:.2f}'.format(item['unit_price']) }}{% else %}—{% endif %}
-                        </td>
-                        <td class="text-right" style="font-weight:500;">
-                            {{ '{:.2f}'.format(item['cost']) }} zł
-                        </td>
-                        <td class="text-right">
-                            <form method="post" action="/recipes/sub/{{ s['id'] }}/delete/{{ item['id'] }}" style="display:inline;">
-                                <button class="btn btn-outline btn-sm" type="submit" style="padding:2px 6px; font-size:.7em;">✕</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    <tr style="border-top: 2px solid var(--border);">
-                        <td colspan="4" class="text-right" style="font-weight:600; font-size:.85em;">
-                            Вартість {{ s['yield_amount'] }} {{ s['yield_unit'] }}:
-                        </td>
-                        <td class="text-right" style="font-weight:700; color:var(--accent);">
-                            {{ '{:.2f}'.format(total_cost) }} zł
-                        </td>
-                        <td></td>
-                    </tr>
-                    <tr>
-                        <td colspan="4" class="text-right text-muted" style="font-size:.85em;">
-                            Ціна за 1 {{ s['unit'] }}:
-                        </td>
-                        <td class="text-right" style="font-weight:600;">
-                            {{ '{:.2f}'.format(s['unit_price'] or 0) }} zł
-                        </td>
-                        <td></td>
-                    </tr>
-                </tfoot>
-            </table>
+    <div class="sheet-body">
+        {% if is_admin %}
+        <div class="prep-stats">
+            <div class="stat"><span class="stat-label">Вихід</span><span class="stat-value num">{{ p.yield_amount | qty(p.yield_unit) }}</span></div>
+            <div class="stat"><span class="stat-label">Вартість партії</span><span class="stat-value num">{{ p.total_cost | zl }}</span></div>
+            <div class="stat"><span class="stat-label">За 1 {{ p.unit | unit_ua }}</span><span class="stat-value num">{{ p.unit_price | zl }}</span></div>
         </div>
         {% endif %}
 
-        {% if s['description'] %}
-        <div class="sub-card-desc">
-            <strong>Приготування:</strong><br>{{ s['description'] }}
-        </div>
+        {% if not p['items'] %}
+        <div class="notice notice-warn">{{ icon('alert') }}<div class="notice-body"><div class="notice-title">Ще немає інгредієнтів</div>Додайте їх нижче, щоб порахувати вартість.</div></div>
+        {% else %}
+        <div class="sheet-section"><h3>Інгредієнти на партію</h3>
+        <div>
+            {%- for it in p['items'] %}
+            <div class="line">
+                <div><div class="line-name">{{ it['ingredient'] }}</div>
+                    {% if is_admin %}<div class="line-meta">{% if it['unit_price'] %}{{ it['unit_price'] | zl }} за {{ it['unit'] | unit_ua }}{% else %}ціна невідома{% endif %}</div>{% endif %}</div>
+                {% if is_admin %}<div class="line-cost num">{{ it['cost'] | zl }}</div>{% else %}<div></div>{% endif %}
+                <div class="line-edit">
+                    <form method="post" action="/recipes/sub/{{ p.id }}/update/{{ it['id'] }}">
+                        <input type="hidden" name="base_unit" value="{{ it['unit'] }}">
+                        <div class="input-group"><input class="input" name="display_amount" inputmode="decimal" value="{{ it['display_amount'] | num(3, strip=True) }}" aria-label="Кількість: {{ it['ingredient'] }}" required><span class="input-suffix">{{ it['display_unit'] | unit_ua }}</span></div>
+                        <button class="btn btn-secondary btn-icon" type="submit" aria-label="Зберегти кількість: {{ it['ingredient'] }}">{{ icon('check') }}</button>
+                    </form>
+                    <form method="post" action="/recipes/sub/{{ p.id }}/delete/{{ it['id'] }}" data-confirm="Прибрати «{{ it['ingredient'] }}» із заготовки «{{ p.name }}»?" data-confirm-ok="Прибрати">
+                        <button class="btn btn-quiet btn-icon" type="submit" aria-label="Прибрати {{ it['ingredient'] }}">{{ icon('trash') }}</button>
+                    </form>
+                </div>
+            </div>
+            {%- endfor %}
+        </div></div>
         {% endif %}
 
-        <div style="padding:10px 20px; border-top:1px solid var(--border); background:#f8fafc;">
-            <form class="form-row" method="post" action="/recipes/sub/{{ s['id'] }}/edit" style="width:100%;">
-                <div class="form-group" style="flex:0 0 100px;">
-                    <label>Вихід</label>
-                    <input name="yield_amount" type="number" step="0.1" value="{{ s['yield_amount'] }}" class="form-control" style="font-size:.85em;">
-                </div>
-                <div class="form-group" style="flex:1;">
-                    <label>Приготування</label>
-                    <input name="description" value="{{ s['description'] or '' }}" class="form-control" style="font-size:.85em;">
-                </div>
-                <button class="btn btn-outline btn-sm" type="submit">Зберегти</button>
-            </form>
+        <div class="sheet-section"><h3>Додати інгредієнт</h3>
+        <form class="form" method="post" action="/recipes/sub/{{ p.id }}/add">
+            <input type="hidden" name="display" value="1">
+            <div class="form-grid">
+                <div class="field"><label class="field-label" for="{{ p.sheet }}-ing">Інгредієнт</label>{{ ingredient_select(p.sheet ~ '-ing', p.ingredient_id) }}</div>
+                <div class="field"><label class="field-label" for="{{ p.sheet }}-amt">Кількість на партію</label>
+                    <div class="input-group"><input class="input" id="{{ p.sheet }}-amt" name="amount" inputmode="decimal" required><span class="input-suffix" id="{{ p.sheet }}-ing-suffix">г</span></div></div>
+            </div>
+            <div class="form-actions"><button class="btn btn-secondary" type="submit">{{ icon('plus') }}Додати</button></div>
+        </form></div>
+
+        <div class="sheet-section"><h3>Де використовується</h3>
+        {% if used %}
+            <div class="used-in">{% for u in used %}<span class="chip {{ 'chip-neutral' if u.kind == 'dish' else 'chip-info' }}">{{ icon('book' if u.kind == 'dish' else 'scale', 14) }}{{ u.name }}</span>{% endfor %}</div>
+        {% else %}
+            <p class="small muted">Поки що в жодному рецепті.</p>
+        {% endif %}
         </div>
 
-        <div class="sub-card-actions">
-            <form class="form-row" method="post" action="/recipes/sub/{{ s['id'] }}/add" style="width:100%;">
-                <div class="form-group" style="flex:2;">
-                    <label>Додати інгредієнт</label>
-                    <select name="ingredient_id" class="form-control" required style="font-size:.85em;">
-                        <option value="">—</option>
-                        {% for i in ingredients %}<option value="{{ i['id'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>{% endfor %}
-                    </select>
-                </div>
-                <div class="form-group" style="flex:0 0 80px;">
-                    <label>Кількість</label>
-                    <input name="amount" type="number" step="0.001" class="form-control" required style="font-size:.85em;">
-                </div>
-                <button class="btn btn-primary btn-sm" type="submit">+</button>
+        {% if p.description %}
+        <div class="sheet-section"><h3>Приготування</h3><p class="desc">{{ p.description }}</p></div>
+        {% endif %}
+
+        <details class="edit-prep sheet-section">
+            <summary>{{ icon('pencil', 18) }}Змінити вихід і опис</summary>
+            <form class="form mt-2" method="post" action="/recipes/sub/{{ p.id }}/edit">
+                <div class="field"><label class="field-label" for="{{ p.sheet }}-yield">Вихід</label>
+                    <div class="input-group"><input class="input" id="{{ p.sheet }}-yield" name="yield_amount" inputmode="decimal" value="{{ p.yield_amount | num(3, strip=True) }}" required><span class="input-suffix">{{ p.yield_unit | unit_ua }}</span></div>
+                    <span class="field-help">Скільки виходить з однієї партії</span></div>
+                <div class="field"><label class="field-label" for="{{ p.sheet }}-desc">Приготування</label>
+                    <textarea class="textarea" id="{{ p.sheet }}-desc" name="description" rows="3">{{ p.description }}</textarea></div>
+                <div class="form-actions"><button class="btn btn-secondary" type="submit">Зберегти</button></div>
             </form>
-        </div>
+        </details>
     </div>
-</div>
+    <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Готово</button></div>
+</dialog>
 {% endfor %}
 
-<div style="margin-top:24px;">
-    <div style="font-size:.75em; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:var(--text-secondary); margin-bottom:10px; padding-bottom:6px; border-bottom:2px solid var(--border);">
-        Новий напівфабрикат
-    </div>
-    <div class="card">
-        <form method="post" action="/recipes/sub/create">
-            <div class="form-row" style="margin-bottom:12px;">
-                <div class="form-group" style="flex:2;">
-                    <label>Назва</label>
-                    <input name="name" class="form-control" required placeholder="напр. Соус шакшука">
-                </div>
-                <div class="form-group" style="flex:0 0 80px;">
-                    <label>Вихід</label>
-                    <input name="yield_amount" type="number" step="0.1" value="1" class="form-control" required>
-                </div>
-                <div class="form-group" style="flex:0 0 70px;">
-                    <label>Од.</label>
-                    <select name="unit" class="form-control">
-                        <option value="kg">kg</option>
-                        <option value="L">L</option>
-                        <option value="szt">szt</option>
-                    </select>
-                </div>
+<dialog class="sheet" id="sheet-new-prep" aria-labelledby="sheet-new-prep-h">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head"><h2 id="sheet-new-prep-h">Нова заготовка</h2>
+        <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+    <form method="post" action="/recipes/sub/create" style="display:contents">
+        <div class="sheet-body">
+            <div class="field"><label class="field-label" for="np-name">Назва</label>
+                <input class="input" id="np-name" name="name" required>
+                <span class="field-help">Наприклад, соус шакшука</span></div>
+            <div class="form-grid">
+                <div class="field"><label class="field-label" for="np-yield">Вихід з партії</label>
+                    <input class="input" id="np-yield" name="yield_amount" inputmode="decimal" value="1" required></div>
+                <div class="field"><label class="field-label" for="np-unit">Одиниця</label>
+                    <select class="select" id="np-unit" name="unit">{% for u in units %}<option value="{{ u }}">{{ u | unit_ua }}</option>{% endfor %}</select></div>
             </div>
-            <div class="form-group" style="margin-bottom:12px;">
-                <label>Приготування</label>
-                <textarea name="description" class="form-control" rows="2" style="resize:vertical;"></textarea>
-            </div>
-            <button class="btn btn-primary" type="submit">Створити напівфабрикат</button>
-        </form>
-    </div>
-</div>
+            <div class="field"><label class="field-label" for="np-desc">Приготування <span class="optional">(необовʼязково)</span></label>
+                <textarea class="textarea" id="np-desc" name="description" rows="2"></textarea></div>
+        </div>
+        <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button><button class="btn btn-primary" type="submit">Створити</button></div>
+    </form>
+</dialog>
+{% endblock %}
 
+{% block extra_js %}
+<script>
+(function () {
+    var UNIT = { kg: 'г', L: 'мл', szt: 'шт', g: 'г', ml: 'мл' };
+    document.addEventListener('change', function (e) {
+        var sel = e.target.closest('select[data-unit-target]');
+        if (!sel) return;
+        var opt = sel.options[sel.selectedIndex];
+        var out = document.getElementById(sel.getAttribute('data-unit-target') + '-suffix');
+        var u = opt ? opt.getAttribute('data-unit') : '';
+        if (out) out.textContent = UNIT[u] || u || 'г';
+    });
+    var o = document.querySelector('[data-open-sheet]');
+    if (o && typeof openSheet === 'function') openSheet(o.getAttribute('data-open-sheet'));
+})();
+</script>
 {% endblock %}

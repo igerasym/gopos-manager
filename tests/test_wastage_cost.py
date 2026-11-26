@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.db import init_db, get_db
 from app.auth import hash_password, sign_cookie
+from app.templating import num, zl
 
 TODAY = '2026-11-25'
 
@@ -41,18 +42,19 @@ def _admin():
 
 def test_gopos_writeoff_is_priced_from_recipe():
     html = _admin().get('/wastage').text
-    assert '7.92 zł' in html          # 3 x 2.64
+    assert zl(7.92) in html           # 3 x 2.64
 
 
 def test_total_includes_recipe_cost_and_manual_cost():
     html = _admin().get('/wastage').text
-    assert '12.12 zł' in html         # 7.92 + 4.20
+    assert num(12.12, 2) + '&nbsp;<small>zł</small>' in html  # 7.92 + 4.20 in the hero
 
 
 def test_product_without_recipe_is_flagged_not_counted():
     html = _admin().get('/wastage').text
-    assert 'без техкарти, не враховано: 1' in html
-    assert 'Немає техкартки для цього продукту' in html
+    assert 'Без ціни: Croissant' in html
+    assert 'У страви немає рецепту' in html
+    assert 'неповні дані' in html
 
 
 def test_csv_has_recipe_cost_for_gopos_rows():

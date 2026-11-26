@@ -1,318 +1,323 @@
 {% extends "base.html" %}
+{% from "_ui.html" import page_header, empty_state %}
 
-{% block extra_style %}
-.inline-edit { display: inline-flex; align-items: center; gap: 3px; }
-.inline-edit input, .inline-edit select {
-    padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; font-size: .85em;
-    background: transparent; transition: all .15s;
-}
-.inline-edit input:hover, .inline-edit select:hover { border-color: var(--border); background: #fff; }
-.inline-edit input:focus, .inline-edit select:focus { border-color: var(--accent); background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(67,97,238,.1); }
-.inline-edit .save-btn { opacity: 0; transition: opacity .15s; padding: 2px 6px; font-size: .7em; }
-.inline-edit:focus-within .save-btn { opacity: 1; }
-.inline-edit input[type="number"] { width: 80px; text-align: right; }
-.inline-edit input[type="text"] { width: 100%; min-width: 120px; }
-.inline-edit select { width: 60px; }
-.stock-search { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; width: 100%; font-size: .9em; margin-bottom: 12px; }
-.stock-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(67,97,238,.1); }
-{% endblock %}
+{% block page_title %}Склад{% endblock %}
+{% block main_class %}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="/static/pages/stock.css?v=1">{% endblock %}
+{% block section_tabs %}{% with stock_tab=tab %}{% include "_stock_tabs.html" %}{% endwith %}{% endblock %}
 
 {% block content %}
+{% set titles = {'stock': 'Запаси', 'order': 'Що замовити', 'deliveries': 'Поставки'} %}
+{% call page_header(titles[tab], eyebrow='Склад') %}
+    {% if is_admin %}<a class="btn btn-secondary" href="/inventory/upload">{{ icon('upload') }}<span class="hide-phone">Завантажити фактуру</span><span class="only-phone">Фактура</span></a>{% endif %}
+    <button class="btn btn-primary hide-desktop" type="button" data-sheet-open="sheet-add" aria-label="Додати: поставку, списання, інгредієнт">{{ icon('plus') }}Додати</button>
+    <span class="only-desktop btn-row">
+        <button class="btn btn-secondary" type="button" data-sheet-open="sheet-wastage">{{ icon('trash') }}Списання</button>
+        <button class="btn btn-secondary" type="button" data-sheet-open="sheet-ingredient">{{ icon('plus') }}Інгредієнт</button>
+        <button class="btn btn-primary" type="button" data-sheet-open="sheet-delivery">{{ icon('truck') }}Поставка</button>
+    </span>
+{% endcall %}
 
-<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <h2 style="margin:0;">Склад</h2>
-    <div style="display:flex; gap:6px;">
-        <a href="/inventory" class="btn btn-sm {{ 'btn-primary' if request.url.path == '/inventory' else 'btn-outline' }}">Запаси</a>
-        {% if is_admin %}
-        <a href="/inventory/upload" class="btn btn-sm {{ 'btn-primary' if '/upload' in request.url.path else 'btn-outline' }}">Завантажити фактуру</a>
-        {% endif %}
+{% set saved_msg = {'add': 'Інгредієнт додано', 'delivery': 'Поставку додано', 'delete': 'Інгредієнт видалено'} %}
+{% if saved in saved_msg %}<div hidden data-toast-now="{{ saved_msg[saved] }}" data-toast-type="ok"></div>{% endif %}
+
+{# ───────────────────────── Що замовити ───────────────────────── #}
+{% if tab == 'order' %}
+{% if groups %}
+<section class="card order-sum" aria-labelledby="sum-h">
+    <div>
+        <h2 id="sum-h" class="qlabel">Що треба замовити сьогодні</h2>
+        {% if is_admin %}<div class="big num">{{ order_total | num(2) }}&nbsp;<small>zł</small></div>{% endif %}
+        {% set nsup = groups | length %}
+        <p class="sentence">{{ order_lines }} {{ order_lines | plural('позиція', 'позиції', 'позицій') }} у {{ nsup }} {{ nsup | plural('постачальника', 'постачальників', 'постачальників') }}.{% if is_admin %} Суми приблизні, за останніми цінами.{% endif %}</p>
+        {% if is_admin and order_unpriced %}<p class="small muted mt-2">{{ icon('info', 16) }} Без ціни: {{ order_unpriced }} {{ order_unpriced | plural('позиція', 'позиції', 'позицій') }}, у суму не входять.</p>{% endif %}
     </div>
-</div>
+    <div class="btn-row">
+        <button class="btn btn-secondary" type="button" data-copy="order-all" data-copy-msg="Скопійовано весь список: {{ order_lines }} {{ order_lines | plural('позиція', 'позиції', 'позицій') }} у {{ groups | length }} {{ groups | length | plural('постачальника', 'постачальників', 'постачальників') }}">{{ icon('copy') }}Скопіювати все</button>
+        <textarea hidden id="order-all">{{ order_text_all }}</textarea>
+    </div>
+</section>
 
-{% set has_low = [] %}
-{% for i in items if i['quantity'] <= i['min_quantity'] and i['min_quantity'] > 0 %}{% if has_low.append(i) %}{% endif %}{% endfor %}
-{% if has_low|length > 0 %}
-<div class="alert alert-warning" style="margin-bottom:16px;">
-    ⚠️ <strong>Низький запас:</strong>
-    {% for i in has_low %}
-        {{ i['name'] }} ({{ i['quantity']|round(1) }} {{ i['unit'] }}){% if not loop.last %}, {% endif %}
-    {% endfor %}
+<div class="sups">
+{% for g in groups %}
+    <section class="card card-flush sup" aria-labelledby="sup-{{ loop.index }}-h">
+        <header>
+            <div><h2 id="sup-{{ loop.index }}-h">{{ g.supplier }}</h2><span class="small muted">{{ g.lines | length }} {{ g.lines | length | plural('позиція', 'позиції', 'позицій') }}</span></div>
+            {% if is_admin %}<div class="tot num">{{ g.total | zl }}<span>разом, приблизно</span></div>{% endif %}
+        </header>
+        <ul class="sup-lines">
+        {% for ln in g.lines %}
+            <li>
+                <div class="nm">{{ ln.name }}</div>
+                <div class="sg"><b class="num">+{{ ln.suggested | qty(ln.unit) }}</b>{% if is_admin %}<span class="num">{% if ln.cost is not none %}≈ {{ ln.cost | zl }}{% else %}ціна невідома{% endif %}</span>{% endif %}</div>
+                <div class="lv">є <b class="num">{{ ln.quantity | qty(ln.unit) }}</b> · мінімум <span class="num">{{ ln.min_quantity | qty(ln.unit) }}</span></div>
+                <div class="meter" role="img" aria-label="{{ ln.name }}: {{ ln.level_pct }}% від мінімуму"><i class="{{ 'is-danger' if ln.level_pct < 50 else 'is-warn' }}" style="width:{{ [ln.level_pct, 3] | max }}%"></i></div>
+            </li>
+        {% endfor %}
+        </ul>
+        <div class="card-foot">
+            <button class="btn btn-secondary btn-block" type="button" data-copy="order-{{ loop.index }}" data-copy-msg="Скопійовано список для {{ g.supplier }}: {{ g.lines | length }} {{ g.lines | length | plural('позиція', 'позиції', 'позицій') }}">{{ icon('copy') }}Скопіювати список</button>
+            <textarea hidden id="order-{{ loop.index }}">{{ g.text }}</textarea>
+        </div>
+    </section>
+{% endfor %}
 </div>
+<p class="note">{{ icon('info', 18) }}<span>Скільки замовити: стільки, щоб на складі стало вдвічі більше за мінімум, з округленням угору.</span></p>
+{% else %}
+<section class="card">{{ empty_state('check-circle', 'Усе в нормі', 'Нічого не треба замовляти.', '/inventory?tab=stock', 'До запасів') }}</section>
 {% endif %}
 
-<div class="grid-2" style="margin-bottom: 16px;">
-    <div class="card">
-        <div class="card-header"><div class="card-title">Додати інгредієнт</div></div>
-        <form class="form-row" method="post" action="/inventory/add">
-            <div class="form-group" style="flex:2;">
-                <label>Назва</label>
-                <input name="name" class="form-control" required>
-            </div>
-            <div class="form-group" style="flex:0 0 70px;">
-                <label>Од.</label>
-                <select name="unit" class="form-control">
-                    {% for u in ['g', 'kg', 'ml', 'L', 'szt', 'pcs'] %}
-                    <option value="{{ u }}">{{ u }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="form-group" style="flex:0 0 80px;">
-                <label>К-сть</label>
-                <input name="quantity" type="number" step="0.1" value="0" class="form-control">
-            </div>
-            <div class="form-group" style="flex:0 0 80px;">
-                <label>Мін. запас</label>
-                <input name="min_quantity" type="number" step="0.1" value="0" class="form-control">
-            </div>
-            <button class="btn btn-primary btn-sm" type="submit">+ Додати</button>
-        </form>
+{# ───────────────────────── Запаси ───────────────────────── #}
+{% elif tab == 'stock' %}
+<section class="card stock-sum" aria-labelledby="val-h">
+    {% if is_admin %}
+    <div>
+        <h2 id="val-h" class="qlabel">Вартість запасу</h2>
+        <div class="big num">{{ stock_value | num(0) }}&nbsp;<small>zł</small></div>
+        <p class="sentence">{{ all_items | length }} {{ all_items | length | plural('позиція', 'позиції', 'позицій') }} на складі, {{ low_count }} {{ low_count | plural('закінчується', 'закінчуються', 'закінчуються') }}.</p>
+        {% if unpriced_count %}<p class="small muted mt-2">Без ціни: {{ unpriced_count }} {{ unpriced_count | plural('позиція', 'позиції', 'позицій') }}, у вартість не входять.</p>{% endif %}
     </div>
-    <div class="card">
-        <div class="card-header"><div class="card-title">Додати поставку</div></div>
-        <form class="form-row" method="post" action="/inventory/delivery">
-            <div class="form-group" style="flex:2;">
-                <label>Інгредієнт</label>
-                <select name="ingredient_id" class="form-control" required id="delivery-ingredient">
-                    {% for i in items %}<option value="{{ i['id'] }}" data-unit="{{ i['unit'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>{% endfor %}
+    {% else %}
+    <div>
+        <h2 id="val-h" class="qlabel">Запаси</h2>
+        <p class="sentence">{{ all_items | length }} {{ all_items | length | plural('позиція', 'позиції', 'позицій') }} на складі, {{ low_count }} {{ low_count | plural('закінчується', 'закінчуються', 'закінчуються') }}.</p>
+    </div>
+    {% endif %}
+    {% if low_count %}<a class="btn btn-secondary" href="/inventory?tab=order">{{ icon('cart') }}Що замовити</a>{% endif %}
+</section>
+
+<section class="card card-flush" aria-labelledby="list-h">
+    <header class="card-head"><h2 id="list-h" class="sr-only">Список запасів</h2></header>
+    <div class="card-body stock-tools">
+        <div class="search">{{ icon('search') }}<input class="input" type="search" id="stock-search" placeholder="Пошук інгредієнта" aria-label="Пошук інгредієнта" autocomplete="off"></div>
+        <div class="filter-chips" role="group" aria-label="Фільтр">
+            <a class="filter-chip" href="/inventory?tab=stock"{% if not active_filter and not active_supplier %} aria-current="true"{% endif %}>Усі <span class="count">{{ all_items | length }}</span></a>
+            <a class="filter-chip" href="/inventory?tab=stock&amp;f=low"{% if active_filter == 'low' and not active_supplier %} aria-current="true"{% endif %}>Мало <span class="count">{{ low_count }}</span></a>
+            {% for s in suppliers %}
+            <a class="filter-chip" href="/inventory?tab=stock&amp;supplier={{ s['name'] | urlencode }}"{% if active_supplier == s['name'] %} aria-current="true"{% endif %}>{{ s['name'] }} <span class="count">{{ supplier_counts.get(s['name'], 0) }}</span></a>
+            {% endfor %}
+        </div>
+    </div>
+    {% set raw = items | rejectattr('is_sub_recipe') | list %}
+    {% set subs = items | selectattr('is_sub_recipe') | list %}
+    {% if items %}
+    {% for group_title, group in [('', raw), ('Заготовки: напівфабрикати, які готуєте самі', subs)] if group %}
+    {% if group_title %}<h3 class="group-title">{{ group_title }}</h3>{% endif %}
+    <ul class="rows stock-rows">
+        {% for i in group %}
+        {% set st = status[i['id']] %}
+        <li data-name="{{ i['name'] | lower }}">
+            <button class="row" type="button" data-edit
+                    data-id="{{ i['id'] }}" data-name="{{ i['name'] }}" data-unit="{{ i['unit'] }}"
+                    data-quantity="{{ i['quantity'] | num(3, strip=True) }}" data-min="{{ i['min_quantity'] | num(3, strip=True) }}"
+                    data-supplier="{{ i['supplier_id'] or '' }}"{% if is_admin %} data-price="{{ (i['unit_price'] or 0) | num(4, strip=True) }}"{% endif %}
+                    aria-label="Змінити {{ i['name'] }}">
+                <span class="row-main">
+                    <span class="row-title">{{ i['name'] }}{% if i['kind'] == 'resale' %} <span class="chip chip-neutral">Готовий товар</span>{% endif %}</span>
+                    <span class="row-sub">{{ i['supplier_name'] or 'без постачальника' }}{% if i['min_quantity'] %} · <span class="nowrap">мінімум {{ i['min_quantity'] | qty(i['unit']) }}</span>{% endif %}{% if is_admin and i['unit_price'] %}<span class="hide-phone"> · <span class="nowrap">{{ i['unit_price'] | zl }}/{{ i['unit'] | unit_ua }}</span></span>{% endif %}</span>
+                </span>
+                <span class="row-trail">
+                    <span class="row-value num">{{ i['quantity'] | qty(i['unit']) }}</span>
+                    {% if st == 'out' %}<span class="chip chip-danger">{{ icon('x-circle', 14) }}Немає</span>
+                    {% elif st == 'low' %}<span class="chip chip-warn">{{ icon('alert', 14) }}Мало</span>
+                    {% else %}<span class="chip chip-ok">{{ icon('check', 14) }}OK</span>{% endif %}
+                </span>
+                <span class="row-chev">{{ icon('pencil', 18) }}</span>
+            </button>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endfor %}
+    <p class="empty-text center hidden" id="stock-nothing">Нічого не знайдено.</p>
+    {% else %}
+    {{ empty_state('box', 'Тут порожньо', 'За цим фільтром немає жодного інгредієнта.', '/inventory?tab=stock', 'Показати всі') }}
+    {% endif %}
+</section>
+
+{# ───────────────────────── Поставки ───────────────────────── #}
+{% else %}
+<section class="card card-flush" aria-labelledby="del-h">
+    <header class="card-head"><h2 id="del-h">Останні 60 днів</h2>
+        <span class="small muted">{{ deliveries | length }} {{ deliveries | length | plural('поставка', 'поставки', 'поставок') }}{% if is_admin and deliveries_total %} на {{ deliveries_total | zl(0) }}{% endif %}</span></header>
+    {% if deliveries %}
+    <div class="table-wrap">
+    <table class="table table-stack">
+        <thead><tr>
+            <th scope="col">Дата</th><th scope="col">Інгредієнт</th><th scope="col" class="num">Кількість</th>
+            <th scope="col">Постачальник</th>{% if is_admin %}<th scope="col" class="num">Сума</th>{% endif %}
+        </tr></thead>
+        <tbody>
+        {% for d in deliveries %}
+            <tr>
+                <td class="cell-primary" data-label="Дата">{{ d['date'] | shortdate }}</td>
+                <td data-label="Інгредієнт"><span>{{ d['name'] }}{% if d['note'] %}<span class="block small muted">{{ d['note'] }}</span>{% endif %}</span></td>
+                <td class="num" data-label="Кількість">+{{ d['quantity'] | qty(d['unit']) }}</td>
+                <td data-label="Постачальник">{{ d['supplier_name'] or '—' }}</td>
+                {% if is_admin %}<td class="num" data-label="Сума">{% if d['price'] %}{{ d['price'] | zl }}{% else %}<span class="muted">без ціни</span>{% endif %}</td>{% endif %}
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty"><span class="empty-icon">{{ icon('truck') }}</span><div class="empty-title">Поставок ще немає</div>
+        <p class="empty-text">Додайте поставку, коли привезуть товар.</p>
+        <button class="btn btn-primary" type="button" data-sheet-open="sheet-delivery">{{ icon('plus') }}Додати поставку</button></div>
+    {% endif %}
+</section>
+{% endif %}
+
+
+{# ───────────────────────── sheets ───────────────────────── #}
+<dialog class="sheet" id="sheet-add" aria-labelledby="sheet-add-h">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head"><h2 id="sheet-add-h">Додати</h2><button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+    <div class="sheet-body"><ul class="action-list">
+        <li><button type="button" data-sheet-swap="sheet-delivery"><span class="row-lead">{{ icon('truck') }}</span>Поставка</button></li>
+        <li><button type="button" data-sheet-swap="sheet-wastage"><span class="row-lead">{{ icon('trash') }}</span>Списання</button></li>
+        <li><button type="button" data-sheet-swap="sheet-ingredient"><span class="row-lead">{{ icon('plus') }}</span>Інгредієнт</button></li>
+    </ul></div>
+</dialog>
+
+<dialog class="sheet" id="sheet-delivery" aria-labelledby="sheet-delivery-h">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head"><h2 id="sheet-delivery-h">Нова поставка</h2><button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+    <form method="post" action="/inventory/delivery" style="display:contents" data-unit-form>
+        <input type="hidden" name="redirect" value="/inventory?tab={{ tab }}">
+        <div class="sheet-body form">
+            <div class="field">
+                <label class="field-label" for="d-find">Інгредієнт</label>
+                <div class="search">{{ icon('search') }}<input class="input" type="search" id="d-find" placeholder="Пошук" autocomplete="off" data-filter-select="d-ing" aria-label="Пошук інгредієнта"></div>
+                <select class="select mt-2" id="d-ing" name="ingredient_id" required data-unit-source data-supplier-target="d-sup">
+                    <option value="">Оберіть інгредієнт</option>
+                    {% for i in all_items %}<option value="{{ i['id'] }}" data-unit="{{ i['unit'] | unit_ua }}" data-supplier="{{ i['supplier_id'] or '' }}">{{ i['name'] }}</option>{% endfor %}
                 </select>
             </div>
-            <div class="form-group" style="flex:0 0 100px;">
-                <label>К-сть (<span id="delivery-unit">{{ items[0]['unit'] if items else '' }}</span>)</label>
-                <input name="quantity" type="number" step="0.01" class="form-control" required>
+            <div class="form-grid">
+                <div class="field">
+                    <label class="field-label" for="d-q">Кількість</label>
+                    <div class="input-group"><input class="input" id="d-q" name="quantity" inputmode="decimal" autocomplete="off" required pattern="[0-9]+([.,][0-9]+)?"><span class="input-suffix" data-unit-target>—</span></div>
+                    <span class="field-help">Як у накладній</span>
+                </div>
+                {% if is_admin %}
+                <div class="field">
+                    <label class="field-label" for="d-p">Сума <span class="optional">(необовʼязково)</span></label>
+                    <div class="input-group"><input class="input" id="d-p" name="price" inputmode="decimal" autocomplete="off" pattern="[0-9]+([.,][0-9]+)?"><span class="input-suffix">zł</span></div>
+                </div>
+                {% endif %}
             </div>
-            {% if is_admin %}
-            <div class="form-group" style="flex:0 0 100px;">
-                <label>Ціна zł</label>
-                <input name="price" type="number" step="0.01" value="0" class="form-control">
-            </div>
-            {% endif %}
-            <div class="form-group" style="flex:1;">
-                <label>Постачальник</label>
-                <select name="supplier_id" class="form-control">
-                    <option value="">—</option>
+            <div class="field">
+                <label class="field-label" for="d-sup">Постачальник</label>
+                <select class="select" id="d-sup" name="supplier_id">
+                    <option value="">Не вказано</option>
                     {% for s in suppliers %}<option value="{{ s['id'] }}">{{ s['name'] }}</option>{% endfor %}
                 </select>
             </div>
-            <div class="form-group" style="flex:1;">
-                <label>Примітка</label>
-                <input name="note" class="form-control">
+            <div class="field">
+                <label class="field-label" for="d-n">Примітка <span class="optional">(необовʼязково)</span></label>
+                <input class="input" id="d-n" name="note" autocomplete="off">
             </div>
-            <button class="btn btn-success btn-sm" type="submit">📦 Додати</button>
-        </form>
-    </div>
-</div>
-
-<div class="card">
-    <div class="card-header">
-        <div class="card-title">Поточний запас</div>
-        <div style="display:flex; gap:6px;">
-            <a href="/inventory" class="btn btn-sm {{ 'btn-primary' if not active_supplier else 'btn-outline' }}">Всі</a>
-            {% for s in suppliers %}
-            <a href="/inventory?supplier={{ s['name'] }}" class="btn btn-sm {{ 'btn-primary' if active_supplier == s['name'] else 'btn-outline' }}">{{ s['name'] }}</a>
-            {% endfor %}
         </div>
-    </div>
-    <input type="text" class="stock-search" id="stock-search" placeholder="Пошук інгредієнтів...">
-    <table id="stock-table">
-        <thead>
-            <tr>
-                <th style="width:25%;">Назва</th>
-                <th class="text-right" style="width:10%;">Запас</th>
-                <th style="width:6%;">Од.</th>
-                {% if is_admin %}<th class="text-right hide-mobile" style="width:10%;">Ціна/од.</th>{% endif %}
-                <th class="text-right hide-mobile" style="width:9%;">Мін.</th>
-                <th class="hide-mobile" style="width:18%;">Постачальник</th>
-                <th style="width:6%;">Статус</th>
-                <th style="width:5%;"></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% set shown_sub_header = namespace(value=false) %}
-            {% for i in items %}
-            {% if i['is_sub_recipe'] and not shown_sub_header.value %}
-            {% set shown_sub_header.value = true %}
-            <tr>
-                <td colspan="8" style="background:var(--bg); padding:10px 12px; font-size:.75em; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:var(--text-secondary); border-bottom:2px solid var(--border);">
-                    🔧 Напівфабрикати
-                </td>
-            </tr>
-            {% endif %}
-            <tr{% if i['is_sub_recipe'] %} style="background:#faf5ff;"{% endif %}>
-                <td>
-                    <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
-                        <input type="text" name="name" value="{{ i['name'] }}">
-                        {% if i['is_sub_recipe'] %}<span class="badge" style="background:#ede9fe; color:#5b21b6; font-size:.65em; vertical-align:middle;">ПФ</span>{% endif %}
-                        {% if i['kind'] == 'resale' %}<span class="badge" style="background:#dbeafe; color:#1d4ed8; font-size:.65em; vertical-align:middle;">resale</span>{% endif %}
-                        <button class="btn btn-primary save-btn" type="submit">✓</button>
-                    </form>
-                </td>
-                <td class="text-right">
-                    <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
-                        <input type="number" name="quantity" value="{{ i['quantity'] }}" step="any">
-                        <button class="btn btn-primary save-btn" type="submit">✓</button>
-                    </form>
-                </td>
-                <td>
-                    <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
-                        <select name="unit">
-                            {% for u in ['g', 'kg', 'ml', 'L', 'szt', 'pcs'] %}
-                            <option value="{{ u }}" {{ 'selected' if i['unit'] == u }}>{{ u }}</option>
-                            {% endfor %}
-                        </select>
-                        <button class="btn btn-primary save-btn" type="submit">✓</button>
-                    </form>
-                </td>
+        <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button><button class="btn btn-primary" type="submit">Додати</button></div>
+    </form>
+</dialog>
+
+{% with wastage_ingredients=all_items %}{% include "_wastage_sheet.html" %}{% endwith %}
+
+<dialog class="sheet" id="sheet-ingredient" aria-labelledby="sheet-ingredient-h">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head"><h2 id="sheet-ingredient-h">Новий інгредієнт</h2><button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+    <form method="post" action="/inventory/add" style="display:contents">
+        <div class="sheet-body form">
+            <div class="field">
+                <label class="field-label" for="n-name">Назва</label>
+                <input class="input" id="n-name" name="name" required autocomplete="off">
+                <span class="field-help">Як у фактурі постачальника</span>
+            </div>
+            <div class="form-grid">
+                <div class="field">
+                    <label class="field-label" for="n-unit">Одиниця</label>
+                    <select class="select" id="n-unit" name="unit">{% for u in units %}<option value="{{ u }}"{% if u == 'kg' %} selected{% endif %}>{{ u | unit_ua }}</option>{% endfor %}</select>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="n-q">Є зараз</label>
+                    <input class="input" id="n-q" name="quantity" inputmode="decimal" value="0" pattern="[0-9]+([.,][0-9]+)?">
+                </div>
+                <div class="field">
+                    <label class="field-label" for="n-min">Мінімум на складі</label>
+                    <input class="input" id="n-min" name="min_quantity" inputmode="decimal" value="0" pattern="[0-9]+([.,][0-9]+)?">
+                </div>
                 {% if is_admin %}
-                <td class="text-right hide-mobile">
-                    <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
-                        <input type="number" name="unit_price" value="{{ i['unit_price'] or 0 }}" step="any">
-                        <button class="btn btn-primary save-btn" type="submit">✓</button>
-                    </form>
-                </td>
+                <div class="field">
+                    <label class="field-label" for="n-price">Ціна за одиницю <span class="optional">(необовʼязково)</span></label>
+                    <div class="input-group"><input class="input" id="n-price" name="unit_price" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"><span class="input-suffix">zł</span></div>
+                </div>
                 {% endif %}
-                <td class="text-right hide-mobile">
-                    <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
-                        <input type="number" name="min_quantity" value="{{ i['min_quantity'] }}" step="any">
-                        <button class="btn btn-primary save-btn" type="submit">✓</button>
-                    </form>
-                </td>
-                <td class="hide-mobile">
-                    <form method="post" action="/ingredients/edit/{{ i['id'] }}" class="inline-edit">
-                        <select name="supplier_id" onchange="this.form.submit()" style="font-size:.8em; padding:3px 4px; border:1px solid transparent; border-radius:4px; background:transparent; cursor:pointer; min-width:115px;">
-                            <option value="">—</option>
-                            {% for s in suppliers %}
-                            <option value="{{ s['id'] }}" {{ 'selected' if i['supplier_id'] == s['id'] }}>{{ s['name'] }}</option>
-                            {% endfor %}
-                        </select>
-                        <input type="hidden" name="redirect" value="/inventory{{ '?supplier=' + active_supplier if active_supplier else '' }}">
-                    </form>
-                </td>
-                <td>
-                    {% if i['quantity'] <= i['min_quantity'] %}
-                    <span class="badge badge-red">Мало</span>
-                    {% else %}
-                    <span class="badge badge-green">ОК</span>
-                    {% endif %}
-                </td>
-                <td class="text-right">
-                    {% if is_admin and i['unit_price'] and i['unit_price'] > 0 %}
-                    <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--accent);"
-                            onclick="showPriceHistory({{ i['id'] }}, '{{ i['name']|e }}')">📈</button>
-                    {% endif %}
-                    <form method="post" action="/ingredients/delete/{{ i['id'] }}" style="display:inline;">
-                        <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
-                                onclick="openDeleteModal({{ i['id'] }})">✕</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-
-<!-- Price history modal -->
-<div id="price-history-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; align-items:center; justify-content:center;">
-    <div style="background:var(--card-bg,#fff); border-radius:12px; padding:24px; min-width:360px; max-width:460px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,.2);">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-            <div id="ph-title" style="font-weight:700; font-size:1em;"></div>
-            <button id="ph-close" style="background:none; border:none; font-size:1.2em; cursor:pointer; color:#999; padding:0 4px;">✕</button>
+            </div>
+            <div class="field">
+                <label class="field-label" for="n-sup">Постачальник</label>
+                <select class="select" id="n-sup" name="supplier_id"><option value="">Не вказано</option>{% for s in suppliers %}<option value="{{ s['id'] }}">{{ s['name'] }}</option>{% endfor %}</select>
+            </div>
         </div>
-        <div id="ph-chart" style="margin-bottom:12px; min-height:60px;"></div>
-        <table style="width:100%; font-size:.85em; border-collapse:collapse;">
-            <thead><tr>
-                <th style="text-align:left; color:#999; font-weight:500; padding-bottom:4px;">Дата</th>
-                <th style="text-align:left; color:#999; font-weight:500;">Ціна</th>
-                <th style="text-align:left; color:#999; font-weight:500;">Джерело</th>
-            </tr></thead>
-            <tbody id="ph-list"></tbody>
-        </table>
-    </div>
-</div>
+        <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button><button class="btn btn-primary" type="submit">Додати</button></div>
+    </form>
+</dialog>
 
+{% if tab == 'stock' %}
+<dialog class="sheet" id="sheet-edit" aria-labelledby="sheet-edit-h">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head"><h2 id="sheet-edit-h">Інгредієнт</h2><button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+    <form method="post" action="" id="edit-form" style="display:contents">
+        <input type="hidden" name="redirect" value="/inventory?tab=stock{% if active_filter %}&amp;f={{ active_filter }}{% endif %}{% if active_supplier %}&amp;supplier={{ active_supplier | urlencode }}{% endif %}">
+        <div class="sheet-body form">
+            <div class="field">
+                <label class="field-label" for="e-name">Назва</label>
+                <input class="input" id="e-name" name="name" required autocomplete="off">
+            </div>
+            <div class="form-grid">
+                <div class="field">
+                    <label class="field-label" for="e-q">Є зараз</label>
+                    <div class="input-group"><input class="input" id="e-q" name="quantity" inputmode="decimal" pattern="-?[0-9]+([.,][0-9]+)?"><span class="input-suffix" id="e-q-unit"></span></div>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="e-min">Мінімум на складі</label>
+                    <div class="input-group"><input class="input" id="e-min" name="min_quantity" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"><span class="input-suffix" id="e-min-unit"></span></div>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="e-unit">Одиниця</label>
+                    <select class="select" id="e-unit" name="unit">{% for u in units %}<option value="{{ u }}">{{ u | unit_ua }}{% if u == 'pcs' %} (pcs){% endif %}</option>{% endfor %}</select>
+                </div>
+                {% if is_admin %}
+                <div class="field">
+                    <label class="field-label" for="e-price">Ціна за одиницю</label>
+                    <div class="input-group"><input class="input" id="e-price" name="unit_price" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"><span class="input-suffix">zł</span></div>
+                    <button class="btn btn-ghost btn-sm mt-2" type="button" id="e-history">{{ icon('chart', 18) }}Історія цін</button>
+                </div>
+                {% endif %}
+            </div>
+            <div class="field">
+                <label class="field-label" for="e-sup">Постачальник</label>
+                <select class="select" id="e-sup" name="supplier_id"><option value="">Не вказано</option>{% for s in suppliers %}<option value="{{ s['id'] }}">{{ s['name'] }}</option>{% endfor %}</select>
+            </div>
+            <div class="danger-zone">
+                <button class="btn btn-quiet danger-text" type="button" id="e-delete">{{ icon('trash') }}Видалити інгредієнт</button>
+            </div>
+        </div>
+        <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button><button class="btn btn-primary" type="submit">Зберегти</button></div>
+    </form>
+</dialog>
+<form method="post" action="" id="delete-form" hidden></form>
+
+{% if is_admin %}
+<dialog class="sheet" id="sheet-price" aria-labelledby="sheet-price-h">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head"><h2 id="sheet-price-h">Історія цін</h2><button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+    <div class="sheet-body" id="price-body"><div class="skeleton skeleton-chart"></div></div>
+</dialog>
+{% endif %}
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
-<script>
-document.getElementById('stock-search').addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('#stock-table tbody tr').forEach(tr => {
-        const nameInput = tr.querySelector('td:first-child input[type="text"]');
-        const name = nameInput ? nameInput.value.toLowerCase() : tr.children[0].textContent.toLowerCase();
-        tr.style.display = name.includes(q) ? '' : 'none';
-    });
-});
-document.getElementById('delivery-ingredient').addEventListener('change', function() {
-    const unit = this.selectedOptions[0].dataset.unit;
-    document.getElementById('delivery-unit').textContent = unit;
-});
-
-function showPriceHistory(ingredientId, name) {
-    const modal = document.getElementById('price-history-modal');
-    const title = document.getElementById('ph-title');
-    const chart = document.getElementById('ph-chart');
-    const list = document.getElementById('ph-list');
-    title.textContent = '📈 Історія цін: ' + name;
-    chart.innerHTML = '<span style="color:#999;font-size:.85em;">Завантаження...</span>';
-    list.innerHTML = '';
-    modal.style.display = 'flex';
-
-    fetch('/api/ingredient/' + ingredientId + '/price-history')
-        .then(r => r.json())
-        .then(data => {
-            const history = data.history || [];
-            if (!history.length) {
-                chart.innerHTML = '<span style="color:#999;font-size:.85em;">Немає даних про зміни цін</span>';
-                return;
-            }
-            const prices = history.map(h => h.price);
-            const maxP = Math.max(...prices);
-            const minP = Math.min(...prices);
-            const range = maxP - minP || 1;
-            const H = 80;
-
-            // SVG sparkline
-            const W = 320;
-            const pts = prices.map((p, i) => {
-                const x = prices.length === 1 ? W / 2 : i * (W - 20) / (prices.length - 1) + 10;
-                const y = H - ((p - minP) / range) * (H - 16) - 4;
-                return `${x},${y}`;
-            }).join(' ');
-
-            chart.innerHTML = `
-                <svg width="${W}" height="${H + 20}" style="display:block; overflow:visible;">
-                    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
-                    ${prices.map((p, i) => {
-                        const x = prices.length === 1 ? W / 2 : i * (W - 20) / (prices.length - 1) + 10;
-                        const y = H - ((p - minP) / range) * (H - 16) - 4;
-                        const isLast = i === prices.length - 1;
-                        return `<circle cx="${x}" cy="${y}" r="${isLast ? 4 : 3}" fill="${isLast ? 'var(--accent)' : 'white'}" stroke="var(--accent)" stroke-width="2"/>`;
-                    }).join('')}
-                    <text x="10" y="${H + 16}" font-size="11" fill="#999">${history[0].date}</text>
-                    <text x="${W - 10}" y="${H + 16}" font-size="11" fill="#999" text-anchor="end">${history[history.length-1].date}</text>
-                </svg>
-                <div style="display:flex;justify-content:space-between;font-size:.8em;margin-top:4px;">
-                    <span style="color:#999;">мін: <strong>${minP.toFixed(2)} zł</strong></span>
-                    <span style="color:var(--accent);font-weight:600;">зараз: ${data.current_price.toFixed(2)} zł</span>
-                    <span style="color:#999;">макс: <strong>${maxP.toFixed(2)} zł</strong></span>
-                </div>`;
-
-            // List last 10
-            const recent = [...history].reverse().slice(0, 10);
-            list.innerHTML = recent.map((h, i) => {
-                const prev = recent[i + 1];
-                const delta = prev ? ((h.price - prev.price) / prev.price * 100) : null;
-                const arrow = delta === null ? '' : delta > 0 ? `<span style="color:var(--red)"> ▲${delta.toFixed(1)}%</span>` : delta < 0 ? `<span style="color:var(--green)"> ▼${Math.abs(delta).toFixed(1)}%</span>` : '';
-                return `<tr><td style="color:#999;font-size:.8em;">${h.date}</td><td style="font-weight:600;">${h.price.toFixed(2)} zł${arrow}</td><td style="color:#aaa;font-size:.75em;">${h.source || '—'}</td></tr>`;
-            }).join('');
-        })
-        .catch(() => { chart.innerHTML = '<span style="color:var(--red);">Помилка завантаження</span>'; });
-}
-
-document.getElementById('ph-close').addEventListener('click', () => {
-    document.getElementById('price-history-modal').style.display = 'none';
-});
-document.getElementById('price-history-modal').addEventListener('click', function(e) {
-    if (e.target === this) this.style.display = 'none';
-});
-</script>
+<script src="/static/pages/stock.js?v=1"></script>
 {% endblock %}

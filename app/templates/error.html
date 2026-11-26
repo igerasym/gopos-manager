@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block section_tabs %}{% endblock %}
+{% block content %}
+<div class="card error-page">
+    <div class="empty">
+        <span class="empty-icon">{{ icon('info') }}</span>
+        <h1 class="empty-title">{{ title }}</h1>
+        <p class="empty-text">{{ text }}</p>
+        <a class="btn btn-primary" href="{{ home }}">{{ home_label }}</a>
+    </div>
+</div>
+{% endblock %}

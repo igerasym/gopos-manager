@@ -43,7 +43,7 @@ def test_login_page(client):
 def test_login_wrong_password(client):
     r = client.post('/login', data={'username': 'admin', 'password': 'wrong'})
     assert r.status_code == 200
-    assert 'Невірний' in r.text
+    assert 'Неправильний логін або пароль' in r.text
 
 
 def test_login_success(client):

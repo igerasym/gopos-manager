@@ -1,375 +1,194 @@
 {% extends "base.html" %}
-{% block content %}
-
-<!-- Date filter -->
-<div class="card" style="padding: 14px 20px;">
-    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;">
-        {% for name, pf, pt in presets %}
-        <a href="/?date_from={{ pf }}&date_to={{ pt }}"
-           class="btn btn-sm {{ 'btn-primary' if active_preset == name else 'btn-outline' }}">
-            {{ name }}
-        </a>
-        {% endfor %}
-    </div>
-    <form class="form-row" method="get" action="/">
-        <div class="form-group">
-            <label>Від</label>
-            <input type="date" class="form-control" name="date_from" value="{{ date_from }}">
-        </div>
-        <div class="form-group">
-            <label>До</label>
-            <input type="date" class="form-control" name="date_to" value="{{ date_to }}">
-        </div>
-        <button class="btn btn-primary btn-sm" type="submit">Застосувати</button>
-    </form>
-</div>
-
-<!-- KPI row -->
-<div class="grid-4" style="margin-bottom: 16px;">
-    <div class="card kpi">
-        <div class="kpi-label">Виручка <span class="info-tip" data-tip="Загальний валовий продаж з GoPOS за обраний період, включаючи ПДВ.">ⓘ</span></div>
-        <div class="kpi-value">{{ '{:,.0f}'.format(totals['revenue']) }} zł</div>
-        {% if day_in_progress %}
-            <div class="kpi-change neutral">день ще триває{% if as_of %}, дані станом на {{ as_of }}{% endif %}</div>
-        {% elif totals['revenue'] > 0 and prev_totals['revenue'] > 0 %}
-            {% set change = ((totals['revenue'] - prev_totals['revenue']) / prev_totals['revenue'] * 100) %}
-            <div class="kpi-change {{ 'up' if change >= 0 else 'down' }}">
-                {{ '{:+.1f}'.format(change) }}% vs {{ compare_label }}
-            </div>
-        {% else %}
-            <div class="kpi-change neutral">немає попередніх даних</div>
-        {% endif %}
-    </div>
-    <div class="card kpi">
-        <div class="kpi-label">Собівартість (COGS) <span class="info-tip" data-tip="Cost of Goods Sold — загальна вартість інгредієнтів для всіх проданих позицій, розрахована з техкарток та цін постачальників (брутто).">ⓘ</span></div>
-        <div class="kpi-value">{{ '{:,.0f}'.format(total_cogs) }} zł</div>
-        <div class="kpi-change neutral">food cost</div>
-    </div>
-    <div class="card kpi">
-        <div class="kpi-label">Валовий прибуток <span class="info-tip" data-tip="Виручка мінус собівартість. Що залишається після оплати інгредієнтів. Не включає оренду, зарплати та інші витрати.">ⓘ</span></div>
-        <div class="kpi-value">{{ '{:,.0f}'.format(gross_profit) }} zł</div>
-        <div class="kpi-change {{ 'up' if gross_margin >= 60 else 'down' if gross_margin < 50 else 'neutral' }}">
-            {{ '{:.1f}'.format(gross_margin) }}% маржа
-        </div>
-    </div>
-    <div class="card kpi">
-        <div class="kpi-label">Food Cost % <span class="info-tip" data-tip="COGS ÷ Виручка × 100. Ціль: до 30% — норма, 30–40% — потребує уваги, понад 40% — високий.">ⓘ</span></div>
-        <div class="kpi-value">{{ '{:.1f}'.format(avg_food_cost) }}%</div>
-        <div class="kpi-change {{ 'up' if avg_food_cost <= 30 else 'down' if avg_food_cost > 40 else 'neutral' }}">
-            {{ 'норма' if avg_food_cost <= 30 else 'високий' if avg_food_cost > 40 else 'увага' }}
-        </div>
-    </div>
-</div>
-
-<!-- Recipe coverage alert -->
-{% if recipe_coverage and recipe_coverage['without_recipe'] > 0 %}
-<div style="margin-bottom:16px; padding:12px 16px; border-radius:8px; background:{% if recipe_coverage['pct'] < 50 %}#fff3cd{% elif recipe_coverage['pct'] < 80 %}#fff8e6{% else %}#f0fdf4{% endif %}; border:1px solid {% if recipe_coverage['pct'] < 50 %}#ffc107{% elif recipe_coverage['pct'] < 80 %}#f59e0b{% else %}#86efac{% endif %}; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
-    <div style="display:flex; align-items:center; gap:10px;">
-        <span style="font-size:1.3em;">{% if recipe_coverage['pct'] < 50 %}⚠️{% elif recipe_coverage['pct'] < 80 %}📋{% else %}✅{% endif %}</span>
-        <div>
-            <span style="font-weight:600;">Покриття техкартами: {{ recipe_coverage['pct'] }}%</span>
-            <span style="color:#666; font-size:.85em; margin-left:8px;">({{ recipe_coverage['with_recipe'] }} з {{ recipe_coverage['total'] }} продуктів)</span>
-            <div style="font-size:.82em; color:#666; margin-top:2px;">
-                Без рецепту: <strong>{{ recipe_coverage['without_recipe'] }} продуктів</strong> —
-                виручка <strong>{{ '{:,.0f}'.format(recipe_coverage['uncovered_revenue']) }} zł</strong>
-                ({{ recipe_coverage['uncovered_pct'] }}% від загального) без обліку food cost
-            </div>
-        </div>
-    </div>
-    <a href="/recipes" class="btn btn-sm btn-outline" style="white-space:nowrap; flex-shrink:0;">Заповнити рецепти →</a>
-</div>
-{% endif %}
-
-<!-- P&L Summary -->
-<div class="card" style="margin-bottom: 16px;">
-    <div class="card-header">
-        <div class="card-title">P&L Звіт</div>
-        <div class="card-subtitle">{{ date_from }}{% if date_from != date_to %} → {{ date_to }}{% endif %}</div>
-    </div>
-    <table>
-        <tbody>
-            <tr>
-                <td style="font-weight:600;">Виручка (валова) <span class="info-tip" data-tip="Загальний продаж включаючи ПДВ, до будь-яких вирахувань.">ⓘ</span></td>
-                <td class="text-right" style="font-weight:600;">{{ '{:,.2f}'.format(totals['revenue']) }} zł</td>
-                <td class="text-right text-muted">100%</td>
-            </tr>
-            <tr>
-                <td class="text-muted" style="padding-left:24px;">Знижки <span class="info-tip" data-tip="Загальні знижки для клієнтів (обіди персоналу, акції, лояльність).">ⓘ</span></td>
-                <td class="text-right text-muted">-{{ '{:,.2f}'.format(totals['discounts']) }} zł</td>
-                <td class="text-right text-muted">{{ '{:.1f}'.format(totals['discounts'] / totals['revenue'] * 100) if totals['revenue'] > 0 else 0 }}%</td>
-            </tr>
-            <tr>
-                <td>Чиста виручка <span class="info-tip" data-tip="Виручка після вирахування ПДВ. Що ви фактично заробляєте до витрат.">ⓘ</span></td>
-                <td class="text-right">{{ '{:,.2f}'.format(totals['net_revenue']) }} zł</td>
-                <td class="text-right text-muted">{{ '{:.1f}'.format(totals['net_revenue'] / totals['revenue'] * 100) if totals['revenue'] > 0 else 0 }}%</td>
-            </tr>
-            <tr style="border-top: 2px solid var(--border);">
-                <td style="color:var(--red);">Собівартість (COGS) <span class="info-tip" data-tip="Сума вартості інгредієнтів для всіх проданих позицій. На основі техкарток × кількість продажів. Тільки продукти з рецептами.">ⓘ</span></td>
-                <td class="text-right" style="color:var(--red);">-{{ '{:,.2f}'.format(total_cogs) }} zł</td>
-                <td class="text-right text-muted">{{ '{:.1f}'.format(avg_food_cost) }}%</td>
-            </tr>
-            <tr style="border-top: 2px solid var(--border);">
-                <td style="font-weight:700; font-size:1.05em;">Валовий прибуток <span class="info-tip" data-tip="Виручка − Собівартість. Ваша маржа до оренди, зарплат, комунальних та інших операційних витрат.">ⓘ</span></td>
-                <td class="text-right" style="font-weight:700; font-size:1.05em; color:var(--green);">{{ '{:,.2f}'.format(gross_profit) }} zł</td>
-                <td class="text-right" style="font-weight:600; color:var(--green);">{{ '{:.1f}'.format(gross_margin) }}%</td>
-            </tr>
-            <tr>
-                <td class="text-muted">Продано позицій</td>
-                <td class="text-right text-muted">{{ totals['items']|int }}</td>
-                <td></td>
-            </tr>
-        </tbody>
-    </table>
-</div>
-
-<!-- Category COGS Breakdown -->
-{% if category_breakdown %}
-<div class="card" style="margin-bottom: 16px;">
-    <div class="card-header">
-        <div class="card-title">COGS по категоріях</div>
-        <div class="card-subtitle">{{ date_from }}{% if date_from != date_to %} → {{ date_to }}{% endif %}</div>
-    </div>
-    <table>
-        <thead>
-            <tr>
-                <th>Категорія</th>
-                <th class="text-right">Виручка</th>
-                <th class="text-right">COGS</th>
-                <th class="text-right">Прибуток</th>
-                <th class="text-right">Food Cost %</th>
-                <th class="text-right hide-mobile">К-сть</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for c in category_breakdown %}
-            <tr>
-                <td style="font-weight:500;">
-                    {% if c['category'] == 'Coffee' %}☕{% elif c['category'] == 'Kitchen' %}🍳{% elif c['category'] == 'Bakery' %}🥐{% elif c['category'] == 'Bar' %}🍷{% elif c['category'] == 'Beans' %}☕{% elif c['category'] == 'Ice Cream' %}🍦{% elif c['category'] == 'Soft Drinks' %}🥤{% elif c['category'] == 'Brewware' %}🫖{% else %}📦{% endif %}
-                    {{ c['category'] }}
-                </td>
-                <td class="text-right">{{ '{:,.0f}'.format(c['revenue']) }} zł</td>
-                <td class="text-right" style="color:var(--red);">{{ '{:,.0f}'.format(c['cogs']) }} zł</td>
-                <td class="text-right" style="color:var(--green);">{{ '{:,.0f}'.format(c['gross_profit']) }} zł</td>
-                <td class="text-right">
-                    <span style="font-weight:600; color:{{ 'var(--green)' if c['food_cost_pct'] <= 30 else 'var(--red)' if c['food_cost_pct'] > 50 else 'var(--orange)' }};">
-                        {{ '{:.1f}'.format(c['food_cost_pct']) }}%
-                    </span>
-                </td>
-                <td class="text-right hide-mobile text-muted">{{ c['quantity']|int }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-        <tfoot>
-            <tr style="border-top: 2px solid var(--border); font-weight: 700;">
-                <td>Разом</td>
-                <td class="text-right">{{ '{:,.0f}'.format(category_breakdown|sum(attribute='revenue')) }} zł</td>
-                <td class="text-right" style="color:var(--red);">{{ '{:,.0f}'.format(category_breakdown|sum(attribute='cogs')) }} zł</td>
-                <td class="text-right" style="color:var(--green);">{{ '{:,.0f}'.format(category_breakdown|sum(attribute='gross_profit')) }} zł</td>
-                <td class="text-right">
-                    {% set total_rev = category_breakdown|sum(attribute='revenue') %}
-                    {% set total_cogs_cat = category_breakdown|sum(attribute='cogs') %}
-                    {{ '{:.1f}'.format(total_cogs_cat / total_rev * 100) if total_rev > 0 else '0' }}%
-                </td>
-                <td class="text-right hide-mobile text-muted">{{ category_breakdown|sum(attribute='quantity')|int }}</td>
-            </tr>
-        </tfoot>
-    </table>
-</div>
-{% endif %}
-
-<!-- ABC Analysis -->
-<div class="card" style="margin-bottom: 16px;">
-    <div class="card-header">
-        <div class="card-title">ABC Аналіз <span class="info-tip" data-tip="Продукти ранжовані за виручкою. A = топ-позиції, що дають 80% виручки (зірки), B = наступні 15% (стабільні), C = останні 5% (розгляньте видалення або зміну ціни).">ⓘ</span></div>
-        <div class="card-subtitle">A = 80% виручки, B = наступні 15%, C = останні 5%</div>
-    </div>
-    <div class="grid-3">
-        <div style="text-align:center; padding:12px;">
-            <div style="font-size:2em; font-weight:700; color:var(--green);">{{ abc_counts['A'] }}</div>
-            <div style="font-size:.8em; font-weight:600; color:var(--text-secondary);">A продуктів</div>
-            <div style="font-size:.85em;">{{ '{:,.0f}'.format(abc_revenue['A']) }} zł</div>
-        </div>
-        <div style="text-align:center; padding:12px;">
-            <div style="font-size:2em; font-weight:700; color:var(--orange);">{{ abc_counts['B'] }}</div>
-            <div style="font-size:.8em; font-weight:600; color:var(--text-secondary);">B продуктів</div>
-            <div style="font-size:.85em;">{{ '{:,.0f}'.format(abc_revenue['B']) }} zł</div>
-        </div>
-        <div style="text-align:center; padding:12px;">
-            <div style="font-size:2em; font-weight:700; color:var(--red);">{{ abc_counts['C'] }}</div>
-            <div style="font-size:.8em; font-weight:600; color:var(--text-secondary);">C продуктів</div>
-            <div style="font-size:.85em;">{{ '{:,.0f}'.format(abc_revenue['C']) }} zł</div>
-        </div>
-    </div>
-</div>
-
-<!-- Charts row -->
-<div class="grid-2">
-    <div class="card">
-        <div class="card-header">
-            <div class="card-title">Топ продукти за виручкою</div>
-        </div>
-        <div class="bar-chart">
-            {% set max_rev = top_products[0]['rev'] if top_products else 1 %}
-            {% for p in top_products %}
-            <div class="bar-row">
-                <div class="bar-label" title="{{ p['product_name'] }}">{{ p['product_name'] }}</div>
-                <div class="bar-track">
-                    <div class="bar-fill" style="width: {{ (p['rev'] / max_rev * 100)|round }}%; min-width: 40px;">
-                        <span>{{ p['qty']|int }} шт</span>
-                    </div>
-                </div>
-                <div class="bar-value">{{ '{:,.0f}'.format(p['rev']) }} zł</div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    <div class="card">
-        <div class="card-header">
-            <div class="card-title">Топ продукти за кількістю</div>
-        </div>
-        <div class="bar-chart">
-            {% set max_qty = top_by_qty[0]['qty'] if top_by_qty else 1 %}
-            {% for p in top_by_qty %}
-            <div class="bar-row">
-                <div class="bar-label" title="{{ p['product_name'] }}">{{ p['product_name'] }}</div>
-                <div class="bar-track">
-                    <div class="bar-fill" style="width: {{ (p['qty'] / max_qty * 100)|round }}%; min-width: 40px; background: var(--green);">
-                        <span>{{ '{:,.0f}'.format(p['rev']) }} zł</span>
-                    </div>
-                </div>
-                <div class="bar-value">{{ p['qty']|int }} шт</div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-</div>
-
-<!-- Daily trend -->
-{% if daily|length > 1 %}
-<div class="card">
-    <div class="card-header">
-        <div class="card-title">Денний тренд виручки</div>
-    </div>
-    <div style="display: flex; align-items: flex-end; gap: 4px; height: 120px; padding-top: 8px;">
-        {% set max_daily = daily|map(attribute='revenue')|max %}
-        {% for d in daily %}
-        <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;">
-            <span style="font-size: .7em; font-weight: 600; color: var(--text-secondary);">{{ '{:,.0f}'.format(d['revenue']) }}</span>
-            <div style="width: 100%; max-width: 48px; background: var(--accent); border-radius: 4px 4px 0 0; height: {{ (d['revenue'] / max_daily * 80)|round if max_daily else 0 }}px; min-height: 4px;"></div>
-            <span style="font-size: .7em; color: var(--text-secondary);">{{ d['date'][5:] }}</span>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
-
-<!-- Full sales table with food cost -->
-<div class="card">
-    <div class="card-header">
-        <div>
-            <div class="card-title">Всі продукти</div>
-            <div class="card-subtitle">{{ sales|length }} продуктів · {{ date_from }}{% if date_from != date_to %} → {{ date_to }}{% endif %}</div>
-        </div>
-        <a href="/export/sales.csv?date_from={{ date_from }}&date_to={{ date_to }}"
-           class="btn btn-sm btn-outline" download>⬇ CSV</a>
-    </div>
-    {% if sales %}
-    <table id="products-table">
-        <thead>
-            <tr>
-                <th class="sortable" data-col="0" data-type="str" style="width:30px;">ABC <span class="info-tip" data-tip="A = топ 80% виручки, B = наступні 15%, C = останні 5%.">ⓘ</span></th>
-                <th class="sortable" data-col="1" data-type="str">Продукт</th>
-                <th class="sortable text-right" data-col="2" data-type="num">К-сть</th>
-                <th class="sortable text-right" data-col="3" data-type="num">Виручка</th>
-                <th class="sortable text-right" data-col="4" data-type="num">Вартість од. <span class="info-tip" data-tip="Вартість інгредієнтів на 1 порцію з техкартки. '—' означає, що рецепту ще немає.">ⓘ</span></th>
-                <th class="sortable text-right" data-col="5" data-type="num">COGS <span class="info-tip" data-tip="Вартість од. × К-сть продажів. Загальні витрати на інгредієнти для цього продукту.">ⓘ</span></th>
-                <th class="sortable text-right" data-col="6" data-type="num">Прибуток <span class="info-tip" data-tip="Виручка − COGS для цього продукту.">ⓘ</span></th>
-                <th class="sortable text-right" data-col="7" data-type="num">Food % <span class="info-tip" data-tip="COGS ÷ Виручка × 100. Зелений ≤30%, помаранчевий 30–40%, червоний >40%.">ⓘ</span></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for s in sales %}
-            <tr>
-                <td data-val="{{ s['abc'] }}">
-                    <span class="badge {{ 'badge-green' if s['abc'] == 'A' else 'badge-orange' if s['abc'] == 'B' else 'badge-red' }}">{{ s['abc'] }}</span>
-                </td>
-                <td data-val="{{ s['product_name'] }}">{{ s['product_name'] }}</td>
-                <td class="text-right" data-val="{{ s['quantity'] }}">{{ s['quantity']|int }}</td>
-                <td class="text-right" data-val="{{ s['total_money'] }}">{{ '{:,.2f}'.format(s['total_money']) }} zł</td>
-                <td class="text-right text-muted" data-val="{{ s['unit_cost'] }}" style="font-size:.85em;">
-                    {% if s['has_recipe'] %}{{ '{:.2f}'.format(s['unit_cost']) }}{% else %}<span style="opacity:.4;">—</span>{% endif %}
-                </td>
-                <td class="text-right" data-val="{{ s['line_cost'] }}">
-                    {% if s['has_recipe'] %}{{ '{:,.2f}'.format(s['line_cost']) }} zł{% else %}<span class="text-muted" style="opacity:.4;">—</span>{% endif %}
-                </td>
-                <td class="text-right" data-val="{{ s['total_money'] - s['line_cost'] }}" style="font-weight:500; color:var(--green);">
-                    {% if s['has_recipe'] %}{{ '{:,.2f}'.format(s['total_money'] - s['line_cost']) }} zł{% else %}—{% endif %}
-                </td>
-                <td class="text-right" data-val="{{ s['food_cost_pct'] }}">
-                    {% if s['has_recipe'] %}
-                    <span style="font-weight:600; color:{{ 'var(--green)' if s['food_cost_pct'] <= 30 else 'var(--red)' if s['food_cost_pct'] > 40 else 'var(--orange)' }};">
-                        {{ '{:.1f}'.format(s['food_cost_pct']) }}%
-                    </span>
-                    {% else %}<span class="text-muted" style="opacity:.4;">—</span>{% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <p style="padding: 20px 0; text-align: center; color: var(--text-secondary);">
-        Немає даних про продажі за цей період. Натисніть <strong>Sync GoPOS</strong> для імпорту.
-    </p>
-    {% endif %}
-</div>
-
+{% from "_ui.html" import attention_block, trend_chip, empty_state, page_header %}
+{% block page_title %}Сьогодні{% endblock %}
+{% block main_class %}{% endblock %}
+{% block extra_style %}
+.business-night { display: flex; align-items: center; gap: 6px; margin: calc(-1 * var(--s3)) 0 var(--s3); }
+.stat-takeaway { white-space: normal; }
+.stat-takeaway small { white-space: nowrap; }
+.stat-takeaway .tk-rev { display: block; margin-top: 2px; }
+/* phone: the day's revenue first, the to-do list under it */
+@media (max-width: 599px) { .today-main > .hero { order: -1; } }
 {% endblock %}
 
-{% block extra_style %}
-.sortable { cursor: pointer; user-select: none; position: relative; padding-right: 18px !important; }
-.sortable:hover { color: var(--accent); }
-.sortable::after { content: '⇅'; position: absolute; right: 4px; opacity: .3; font-size: .8em; }
-.sortable.asc::after { content: '↑'; opacity: .8; color: var(--accent); }
-.sortable.desc::after { content: '↓'; opacity: .8; color: var(--accent); }
+{% block content %}
+{% set p = per.p %}
+{% if per.is_today %}{% set when = 'сьогодні' %}{% set title = 'Виручка сьогодні' %}
+{% elif per.is_yesterday %}{% set when = 'вчора' %}{% set title = 'Виручка за вчора' %}
+{% elif p == 'day' %}{% set when = 'за ' ~ (per.start | shortdate) %}{% set title = 'Виручка за ' ~ (per.start | shortdate) %}
+{% elif p == 'week' %}{% set when = 'за тиждень' %}{% set title = 'Виручка за тиждень' %}
+{% elif p == 'month' %}{% set when = 'за місяць' %}{% set title = 'Виручка за місяць' %}
+{% else %}{% set when = 'за період' %}{% set title = 'Виручка за період' %}{% endif %}
+{% set t = trend(cmp_cur, cmp_prev) if per.cmp_ok else None %}
+
+{#- the same period on 'Усі страви' -#}
+{% if p in ('week', 'month') %}{% set pq = 'p=' ~ p %}
+{% elif p == 'day' %}{% set pq = 'date=' ~ per.start %}
+{% else %}{% set pq = 'p=range&date_from=' ~ per.start ~ '&date_to=' ~ per.end %}{% endif %}
+
+{% call page_header('Сьогодні', eyebrow=(date_to | shortdate)) %}
+  <a class="btn btn-secondary" href="/dashboard/products?{{ pq }}">Усі страви{{ icon('chevron-right', 18) }}</a>
+{% endcall %}
+{% if business_night %}<p class="small muted business-night">{{ icon('clock', 16) }} {{ business_night }}</p>{% endif %}
+
+<div class="cols-2">
+  <div class="stack today-main">
+    {{ attention_block(attention_items, limit=5, next='/') }}
+
+    <section class="card hero" aria-labelledby="hero-h">
+      <div class="hero-top">
+        <h2 id="hero-h" class="qlabel">{{ title }}</h2>
+        <div class="btn-row">
+          <div class="seg" role="group" aria-label="Період">
+            <a href="/?p=day"{% if p == 'day' %} aria-current="true"{% endif %}>День</a>
+            <a href="/?p=week"{% if p == 'week' %} aria-current="true"{% endif %}>Тиждень</a>
+            <a href="/?p=month"{% if p == 'month' %} aria-current="true"{% endif %}>Місяць</a>
+          </div>
+          <button class="btn btn-secondary btn-icon" type="button" data-sheet-open="sheet-range"
+                  aria-label="Обрати свій період">{{ icon('calendar') }}</button>
+        </div>
+      </div>
+      {% if p != 'day' %}<p class="small muted">{{ per.start | shortdate(weekday=False) }} — {{ per.end | shortdate(weekday=False) }}</p>{% endif %}
+
+      <div>
+        <div class="big num">{{ revenue | num(2) }}&nbsp;<small>zł</small></div>
+        {% if t %}
+          <p class="sentence mt-2">{{ trend_chip(t) }}
+            {% if t.direction == 'flat' %}так само, як{% else %}{{ t.word }}, ніж{% endif %}
+            {{ per.prev_label }}{% if p == 'day' %} ({{ cmp_prev | zl }}){% endif %}
+            {% if per.in_progress %}<span class="muted">· без сьогодні, день ще триває</span>{% endif %}</p>
+        {% elif per.in_progress and p == 'day' %}
+          <p class="sentence mt-2">День ще триває.
+            {% if last_same_day %}За весь день {{ per.prev_label }} було {{ last_same_day | zl(0) }}.{% endif %}</p>
+        {% elif revenue > 0 %}
+          <p class="sentence mt-2 muted">Немає даних для порівняння{% if per.in_progress %}, день ще триває{% endif %}.</p>
+        {% else %}
+          <p class="sentence mt-2 muted">За цей період продажів ще немає.</p>
+        {% endif %}
+      </div>
+
+      <div class="stat-row">
+        <div class="stat"><span class="stat-label">Чеки</span>
+          <span class="stat-value num">{{ checks.orders | num if checks.orders else '—' }}</span></div>
+        <div class="stat"><span class="stat-label">Середній чек</span>
+          <span class="stat-value num">{% if checks.avg %}{{ checks.avg | num(2) }}&nbsp;<small>zł</small>{% else %}—{% endif %}</span></div>
+        <div class="stat"><span class="stat-label">На винос</span>
+          <span class="stat-value num stat-takeaway">{% if checks.takeaway_pct is not none %}{{ checks.takeaway_pct | pct }}&nbsp;<small>чеків{% if checks.takeaway_rev_pct is not none %},</small><small class="tk-rev">{{ checks.takeaway_rev_pct | pct }}&nbsp;виручки{% endif %}</small>{% else %}—{% endif %}</span></div>
+      </div>
+
+      <div class="stat-foot">
+        {{ icon('clock', 16) }}
+        {% if per.in_progress %}{{ freshness.text }}{% else %}Дані за завершені дні{% endif %}
+        <button class="btn btn-ghost" type="button" id="refresh-btn" style="margin-left:auto">{{ icon('refresh', 16) }}Оновити дані з каси</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="card" aria-labelledby="wk-h">
+      <header class="card-head"><h2 id="wk-h">Тиждень</h2><span class="small muted">до {{ per.end | shortdate }}</span></header>
+      {% if week_has_data %}
+      <p class="sentence">З понеділка: <b class="num">{{ week_total | zl }}</b>.
+        {% set wt = trend(week_cmp[0], week_cmp[1]) if week_cmp else None %}
+        {% if wt %}За завершені дні {{ wt.word if wt.direction != 'flat' else 'так само' }}{% if wt.direction != 'flat' %} ({{ wt.text }}){% endif %}, ніж минулого тижня.{% endif %}
+        {% if week | selectattr('is_today') | list %}Сьогодні день ще триває.{% endif %}</p>
+      <div class="bars" role="group" aria-label="Виручка по днях">
+        {% for c in week %}
+        <a class="bar-col{% if c.is_today %} is-today{% endif %}" href="/?date={{ c.date }}"
+           aria-label="{{ c.label }}: цього тижня {% if c.now is none %}ще немає{% else %}{{ c.now | zl(0) }}{% endif %}, минулого {{ c.ghost | zl(0) }}">
+          <span class="bar-pair">
+            <span class="bar-ghost" style="height:{{ c.ghost_h }}%"></span>
+            {% if c.now_h is not none %}<span class="bar-now{% if c.is_today %} is-partial{% endif %}" style="height:{{ c.now_h }}%">{% if c.now %}<span class="bar-value num">{{ c.now | num }}</span>{% endif %}</span>{% endif %}
+          </span>
+          <span class="bar-label">{{ c.label }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      <div class="legend"><span><i class="swatch-bar"></i>Цей тиждень</span><span><i class="swatch-ghost"></i>Минулий тиждень</span></div>
+      {% else %}
+        {{ empty_state('chart', 'Продажів за ці два тижні ще немає', 'Оновіть дані з каси, щоб побачити графік') }}
+      {% endif %}
+    </section>
+
+    <section class="card" aria-labelledby="top-h">
+      <header class="card-head"><h2 id="top-h">Що продається {{ when }}</h2>
+        <div class="seg" role="group" aria-label="Показати за" id="top-seg">
+          <button type="button" data-top="rev" aria-pressed="true">zł</button>
+          <button type="button" data-top="qty" aria-pressed="false">шт</button>
+        </div></header>
+      {% if top.rev %}
+      {% for mode in ['rev', 'qty'] %}
+      <ul class="rows" data-top-list="{{ mode }}"{% if mode == 'qty' %} hidden{% endif %}>
+        {% for r in top[mode] %}
+        <li class="row">
+          <span class="row-rank">{{ loop.index }}</span>
+          <span class="row-main"><span class="row-title">{{ r.name }}</span>
+            <span class="meter"><i style="width:{{ r.width }}%"></i></span></span>
+          <span class="row-trail"><span class="row-value num">{% if mode == 'rev' %}{{ r.rev | zl }}{% else %}{{ r.qty | qty('szt') }}{% endif %}</span>
+            <span class="small muted num">{% if mode == 'rev' %}{{ r.qty | qty('szt') }}{% else %}{{ r.rev | zl }}{% endif %}</span></span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endfor %}
+      <a class="link" href="/dashboard/products?{{ pq }}">Усі страви{{ icon('chevron-right', 18) }}</a>
+      {% else %}
+        {{ empty_state('cup', 'Продажів ще немає', 'Щойно з’являться чеки, тут буде топ-5') }}
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<dialog class="sheet" id="sheet-range" aria-labelledby="sheet-range-h">
+  <div class="sheet-grip" aria-hidden="true"></div>
+  <div class="sheet-head"><h2 id="sheet-range-h">Свій період</h2>
+    <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+  <form method="get" action="/" style="display:contents">
+    <input type="hidden" name="p" value="range">
+    <div class="sheet-body"><div class="form-grid">
+      <div class="field"><label class="field-label" for="r-from">З</label>
+        <input class="input" type="date" id="r-from" name="date_from" value="{{ date_from }}" required></div>
+      <div class="field"><label class="field-label" for="r-to">По</label>
+        <input class="input" type="date" id="r-to" name="date_to" value="{{ date_to }}" required></div>
+    </div></div>
+    <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button>
+      <button class="btn btn-primary" type="submit">Показати</button></div>
+  </form>
+</dialog>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const table = document.getElementById('products-table');
-    if (!table) return;
-    const headers = table.querySelectorAll('th.sortable');
-    let currentCol = -1, currentDir = 'asc';
-
-    headers.forEach(th => {
-        th.addEventListener('click', function() {
-            const col = parseInt(this.dataset.col);
-            const type = this.dataset.type;
-            if (currentCol === col) {
-                currentDir = currentDir === 'asc' ? 'desc' : 'asc';
-            } else {
-                currentDir = type === 'str' ? 'asc' : 'desc';
-                currentCol = col;
-            }
-            headers.forEach(h => h.classList.remove('asc', 'desc'));
-            this.classList.add(currentDir);
-
-            const tbody = table.querySelector('tbody');
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            rows.sort((a, b) => {
-                const aVal = a.children[col].dataset.val;
-                const bVal = b.children[col].dataset.val;
-                let cmp;
-                if (type === 'num') {
-                    cmp = parseFloat(aVal) - parseFloat(bVal);
-                } else {
-                    cmp = aVal.localeCompare(bVal);
-                }
-                return currentDir === 'asc' ? cmp : -cmp;
-            });
-            rows.forEach(r => tbody.appendChild(r));
-        });
+(function () {
+  document.querySelectorAll('#top-seg [data-top]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('#top-seg [data-top]').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      document.querySelectorAll('[data-top-list]').forEach(function (l) { l.hidden = l.dataset.topList !== b.dataset.top; });
     });
-});
+  });
+  var btn = document.getElementById('refresh-btn');
+  if (!btn) return;
+  btn.addEventListener('click', async function () {
+    btn.disabled = true;
+    var prev = null;
+    try { prev = (await (await fetch('/api/sync-status')).json()).started_at || null; } catch (e) {}
+    try {
+      var r = await fetch('/sync', { method: 'POST', body: new FormData() });
+      if (!r.ok) throw new Error('sync');
+    } catch (e) { toast('Не вдалося почати оновлення', { type: 'error' }); btn.disabled = false; return; }
+    toast('Оновлюю дані з каси…');
+    for (var i = 0; i < 40; i++) {
+      await new Promise(function (ok) { setTimeout(ok, 2000); });
+      try {
+        var s = await (await fetch('/api/sync-status')).json();
+        if (s.started_at !== prev && s.status && s.status !== 'running') {
+          if (s.status === 'error') { toast('Каса не відповіла', { type: 'error' }); btn.disabled = false; return; }
+          location.reload(); return;
+        }
+      } catch (e) {}
+    }
+    toast('Оновлення ще триває, перевірте за хвилину');
+    btn.disabled = false;
+  });
+})();
 </script>
 {% endblock %}

@@ -271,6 +271,26 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   To add a tool: write a read-only function in `telegram_tools.py`, validate inputs, cap rows, register it in
   `TOOLS` (mark finance=True if it shows costs/profit) and add a test.
 
+## Web UI (redesigned 2026-11, direction "Ранкова кава")
+- **Read `.kiro/steering/design-system.md` before touching any template or CSS**: tokens, components with
+  copy-paste snippets, the jargon -> plain-Ukrainian glossary, number/date filters (`zl`, `num`, `qty`, `pct`,
+  `shortdate`, `trend`). No emoji icons (use `icon(name)`), forms live in sheets, tables become card rows on
+  phones, amounts and units keep a non-breaking space (`1 690,02 zł`).
+- Navigation (same on sidebar and phone bottom bar): **Сьогодні** `/`, **Гроші** `/expenses`, **Склад**
+  `/inventory` (tabs Запаси · Що замовити · Поставки · Інвентаризація · Списання), **Меню** `/recipes`,
+  **Ще** `/more` (users, sync, theme, logout). Chef/barista get Склад · Порахувати · Списати · Рецепти · Ще.
+  Role gating and "no money for chef/barista" are unchanged (`tests/test_role_visibility.py`).
+- **"Що потребує уваги"** (`app/services/attention.py`): 11 read-only rules (invoices waiting, stock below
+  minimum, dishes without a recipe, month costs incomplete, count overdue, stale sales data...). Rows hide
+  until tomorrow via `attention_dismissed`; the same rules feed the nav badges. Add a rule = one function +
+  an entry in `RULES` + a test.
+- **Month result** (Гроші): profit = revenue - ALL expenses (product purchases included). The recipe-based
+  cost of sold goods is shown only as a reference, because recipes cover ~80 % of the menu and the rest would
+  silently cost 0. Missing recurring costs show "поки що" and a forecast. `compute_pnl` lives in
+  `app/routes/dashboard.py` and is shared by Сьогодні and Гроші.
+- The business day ends at 05:00 Warsaw (Сьогодні says so between 00:00 and 05:00). Styled 404/403/500 pages:
+  `app/errors.py`. Local preview without prod data or network: see the foundation notes in design-system.md.
+
 ## Pages & Features
 
 ### Dashboard (/) — admin only

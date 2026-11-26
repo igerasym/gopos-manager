@@ -1,261 +1,395 @@
 {% extends "base.html" %}
+{% from "_ui.html" import page_header, empty_state %}
+
+{% block page_title %}Меню{% endblock %}
+{% block main_class %}{% endblock %}
 
 {% block extra_style %}
-.tech-card {
-    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-    margin-bottom: 12px; overflow: hidden;
+.menu-tabs { margin-bottom: var(--s4); }
+.card .rows .row-title { white-space: normal; overflow-wrap: anywhere; }
+.chip-line { display: block; margin-top: var(--s1); }
+.menu-tabs .count { margin-left: var(--s1); }
+.card .rows button.row { padding-left: var(--s2); padding-right: var(--s2); margin: 0 calc(-1 * var(--s2)); width: calc(100% + 2 * var(--s2)); border-radius: var(--r-s); }
+.dish-sub { display: block; white-space: normal; }
+.dish-sub b { color: var(--text); font-weight: 600; }
+.cat-head { padding: var(--s4) 0 var(--s1); font-size: var(--fs-small); color: var(--text-muted); font-weight: 600; border-top: 1px solid var(--border); }
+.cat-head:first-child { border-top: 0; }
+.more-rows > summary { list-style: none; cursor: pointer; min-height: var(--tap); display: flex; align-items: center; gap: var(--s2); padding: 0 var(--s4); color: var(--accent); font-weight: 600; border-top: 1px solid var(--border); }
+.more-rows > summary::-webkit-details-marker { display: none; }
+.more-rows[open] > summary { display: none; }
+.line { display: grid; grid-template-columns: 1fr auto; gap: var(--s2) var(--s3); align-items: center; padding: var(--s3) 0; border-top: 1px solid var(--border); }
+.line:first-child { border-top: 0; }
+.line-name { font-weight: 600; overflow-wrap: anywhere; }
+.line-meta { font-size: var(--fs-small); color: var(--text-muted); }
+.line-cost { text-align: right; }
+.line-edit { grid-column: 1 / -1; display: flex; gap: var(--s2); align-items: center; }
+.line-edit form:first-child { display: flex; gap: var(--s2); flex: 1; min-width: 0; }
+.line-edit .input-group { flex: 1; min-width: 0; max-width: 220px; }
+@media (min-width: 600px) {
+  .line { grid-template-columns: 1fr auto 96px; }
+  .line-edit { grid-column: 2; grid-row: 1; }
+  .line-edit .input-group { width: 130px; }
+  .line-cost { grid-column: 3; grid-row: 1; }
 }
-.tech-card-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 20px; cursor: pointer; user-select: none; transition: background .1s;
-}
-.tech-card-header:hover { background: #f8fafc; }
-.tech-card-header h3 { font-size: .95em; font-weight: 600; color: var(--text); margin: 0; display: flex; align-items: center; gap: 8px; }
-.tech-card-header h3::before { content: '▸'; font-size: .8em; color: var(--text-secondary); transition: transform .2s; display: inline-block; }
-.tech-card.open .tech-card-header h3::before { transform: rotate(90deg); }
-.tech-card-meta { display: flex; gap: 8px; align-items: center; }
-.tech-card-meta .badge { font-size: .7em; }
-.tech-card-body { display: none; border-top: 1px solid var(--border); }
-.tech-card.open .tech-card-body { display: block; }
-.tech-card-ingredients { padding: 12px 20px; }
-.tech-card-ingredients table { margin-bottom: 0; }
-.tech-card-ingredients table th { font-size: .7em; }
-.tech-card-desc {
-    padding: 12px 20px; border-top: 1px solid var(--border); background: #fafbfc;
-    font-size: .82em; color: var(--text-secondary); white-space: pre-line; line-height: 1.5;
-}
-.tech-card-actions { padding: 10px 20px; border-top: 1px solid var(--border); background: #fafbfc; }
-.section-title {
-    font-size: .75em; font-weight: 700; text-transform: uppercase; letter-spacing: .8px;
-    color: var(--text-secondary); margin: 28px 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--border);
-}
-.inline-edit { display: inline-flex; align-items: center; gap: 4px; }
-.inline-edit input, .inline-edit select {
-    padding: 3px 6px; border: 1px solid transparent; border-radius: 4px; font-size: .85em;
-    background: transparent; width: auto; transition: all .15s;
-}
-.inline-edit input:hover, .inline-edit select:hover { border-color: var(--border); background: #fff; }
-.inline-edit input:focus, .inline-edit select:focus { border-color: var(--accent); background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(67,97,238,.1); }
-.inline-edit input[type="number"] { width: 70px; text-align: right; }
-.inline-edit select { width: 60px; }
-.inline-edit .save-btn { opacity: 0; transition: opacity .15s; padding: 2px 6px; font-size: .75em; }
-.inline-edit:focus-within .save-btn { opacity: 1; }
-.ingredient-count { font-size: .75em; color: var(--text-secondary); font-weight: 400; }
+.dish-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3); margin-bottom: var(--s4); }
+@media (min-width: 600px) { .dish-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.dish-stats .stat { background: var(--surface-2); border-radius: var(--r-s); padding: var(--s3); }
+.sheet-section { margin-top: var(--s5); }
+.sheet-section > h3 { font-size: var(--fs-body); font-weight: 600; margin: 0 0 var(--s2); }
+.desc { white-space: pre-line; color: var(--text-muted); }
+.edit-dish > summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; gap: var(--s2); font-weight: 600; color: var(--accent); }
+.edit-dish > summary::-webkit-details-marker { display: none; }
 {% endblock %}
 
+{% block section_tabs %}{% endblock %}
+
+{%- macro econ_line(e) -%}
+{%- if e and e.cost is not none and e.price is not none -%}
+собівартість <b class="num">{{ e.cost | zl }}</b> · ціна <b class="num">{{ e.price | zl }}</b> · заробляємо <b class="num">{{ e.earn | zl }}</b> ({{ e.earn_pct | pct }})
+{%- elif e and e.price is not none -%}
+ціна <b class="num">{{ e.price | zl }}</b> · собівартість невідома
+{%- elif e and e.cost is not none -%}
+собівартість <b class="num">{{ e.cost | zl }}</b> · ціни в касі немає
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro status_chip(d) -%}
+{%- if not d.lines -%}
+<span class="chip chip-warn">{{ icon('alert', 14) }}Немає інгредієнтів</span>
+{%- elif d.econ -%}
+  {%- if d.econ.alert -%}<span class="chip chip-danger" title="Більше {{ alert_pct | pct }} ціни йде на продукти">{{ icon('alert', 14) }}продукти {{ d.econ.share | pct }}</span>
+  {%- elif d.econ.share is not none -%}<span class="chip chip-ok">продукти {{ d.econ.share | pct }}</span>
+  {%- elif d.econ.cost is none -%}<span class="chip chip-warn">{{ icon('alert', 14) }}Немає цін</span>
+  {%- else -%}<span class="chip chip-neutral">Немає ціни</span>
+  {%- endif -%}
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro ingredient_select(sid) -%}
+<select class="select" id="{{ sid }}" name="ingredient_id" data-unit-target="{{ sid }}">
+    <option value="">Оберіть інгредієнт</option>
+    {%- for i in ingredients %}<option value="{{ i['id'] }}" data-unit="{{ i['unit'] }}"{% if is_admin and not i['priced'] %} data-noprice="1"{% endif %}>{{ i['name'] }}</option>{% endfor %}
+</select>
+{%- endmacro -%}
+
 {% block content %}
+{% call page_header('Меню', eyebrow=tab_label) %}
+    <button class="btn btn-primary" type="button" data-sheet-open="sheet-new" data-product="">{{ icon('plus') }}Нова страва</button>
+{% endcall %}
+<nav class="tabs menu-tabs" aria-label="Розділи меню">
+    {%- for key, label, path in tabs %}
+    <a href="{{ path }}"{% if key == tab %} aria-current="page"{% endif %}>{{ label }}{% if tab_counts[key] %}<span class="count">{{ tab_counts[key] }}</span>{% endif %}</a>
+    {%- endfor %}
+</nav>
 
-<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <h2 style="margin:0;">Рецепти</h2>
-    <div style="display:flex; gap:6px;">
-        <a href="/recipes" class="btn btn-sm {{ 'btn-primary' if request.url.path == '/recipes' else 'btn-outline' }}">Кухня</a>
-        <a href="/recipes/bar" class="btn btn-sm {{ 'btn-primary' if '/bar' in request.url.path else 'btn-outline' }}">Бар</a>
-        <a href="/recipes/sub" class="btn btn-sm {{ 'btn-primary' if '/sub' in request.url.path else 'btn-outline' }}">Напівфабрикати</a>
-    </div>
-</div>
+{% if saved_msg %}<div hidden data-toast-now="{{ saved_msg }}" data-toast-type="ok"></div>{% endif %}
+{% if open_id %}<div hidden data-open-sheet="{{ open_id }}"></div>{% endif %}
 
-{% set current_cat = namespace(value='') %}
-{% for card in cards %}
-    {% if card['category'] != current_cat.value %}
-        {% set current_cat.value = card['category'] %}
-        <div class="section-title">{{ card['category'] or 'Без категорії' }}</div>
-    {% endif %}
+<div class="stack">
 
-    {% set ingredients_list = recipe_map.get(card['product_name'], []) %}
-    <div class="tech-card" id="card-{{ loop.index }}">
-        <div class="tech-card-header" onclick="this.parentElement.classList.toggle('open')">
-            <h3>
-                {{ card['product_name'] }}
-                <span class="ingredient-count">{{ ingredients_list|length }} інгредієнтів</span>
-            </h3>
-            <div class="tech-card-meta">
-                {% if request.state.user and request.state.user.role == 'admin' %}
-                {% set cost = cost_map.get(card['product_name'], 0) %}
-                {% set sell_price = price_map.get(card['product_name'], 0) %}
-                {% if cost > 0 %}
-                <span class="badge" style="background:#ede9fe; color:#5b21b6;">{{ '{:.2f}'.format(cost) }} zł</span>
-                {% endif %}
-                {% if sell_price > 0 and cost > 0 %}
-                {% set fc_pct = (cost / sell_price * 100) %}
-                <span class="badge {{ 'badge-green' if fc_pct <= 30 else 'badge-red' if fc_pct > 40 else 'badge-orange' }}">
-                    Food Cost {{ '{:.0f}'.format(fc_pct) }}%
-                </span>
-                {% endif %}
-                {% if sell_price > 0 %}
-                <span class="badge" style="background:#f1f5f9; color:#64748b;">Продаж: {{ '{:.0f}'.format(sell_price) }} zł</span>
-                {% endif %}
-                {% endif %}
-                {% if card['portion_weight'] %}
-                <span class="badge badge-green">{{ card['portion_weight'] }}</span>
-                {% endif %}
-            </div>
-        </div>
-
-        <div class="tech-card-body">
-            {% if ingredients_list %}
-            <div class="tech-card-ingredients">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Інгредієнт</th>
-                            <th class="text-right" style="width:100px;">Кількість</th>
-                            <th style="width:60px;">Одиниця</th>
-                            {% if request.state.user and request.state.user.role == 'admin' %}
-                            <th class="text-right" style="width:80px;">Ціна/од.</th>
-                            <th class="text-right" style="width:80px;">Вартість</th>
-                            {% endif %}
-                            <th style="width:50px;"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for r in ingredients_list %}
-                        <tr>
-                            <td>{{ r['ingredient'] }}</td>
-                            <td class="text-right">
-                                <form method="post" action="/recipes/update/{{ r['id'] }}" class="inline-edit">
-                                    <input type="text" inputmode="decimal" name="display_amount" value="{{ r['display_amount'] }}"
-                                           style="width:70px; padding:3px 6px; border:1px solid transparent; border-radius:4px; font-size:.85em; text-align:right; background:transparent;">
-                                    <input type="hidden" name="display_unit" value="{{ r['display_unit'] }}">
-                                    <input type="hidden" name="base_unit" value="{{ r['unit'] }}">
-                                    <button class="btn btn-primary save-btn" type="submit">✓</button>
-                                </form>
-                            </td>
-                            <td class="text-muted" style="font-size:.85em;">{{ r['display_unit'] }}</td>
-                            </td>
-                            {% if request.state.user and request.state.user.role == 'admin' %}
-                            <td class="text-right text-muted" style="font-size:.8em;">
-                                {% if r['unit_price'] > 0 %}{{ '{:.2f}'.format(r['unit_price']) }}{% else %}—{% endif %}
-                            </td>
-                            <td class="text-right" style="font-size:.85em; font-weight:500;">
-                                {% if r['cost'] > 0 %}{{ '{:.2f}'.format(r['cost']) }} zł{% else %}<span class="text-muted">—</span>{% endif %}
-                            </td>
-                            {% endif %}
-                            <td class="text-right">
-                                <form method="post" action="/recipes/delete/{{ r['id'] }}" style="display:inline;">
-                                    <button class="btn btn-outline btn-sm" type="submit" style="padding:2px 6px; font-size:.75em;">✕</button>
-                                </form>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                    {% if request.state.user and request.state.user.role == 'admin' %}
-                    <tfoot>
-                        <tr style="border-top: 2px solid var(--border);">
-                            <td colspan="4" class="text-right" style="font-weight:600; font-size:.85em;">Загальна вартість:</td>
-                            <td class="text-right" style="font-weight:700; font-size:.9em; color:var(--accent);">
-                                {{ '{:.2f}'.format(cost_map.get(card['product_name'], 0)) }} zł
-                            </td>
-                            <td></td>
-                        </tr>
-                    </tfoot>
-                    {% endif %}
-                </table>
-            </div>
-            {% endif %}
-
-            {% if card['description'] %}
-            <div class="tech-card-desc">
-                <strong style="color:var(--text);">Приготування:</strong><br>
-                {{ card['description'] }}
-            </div>
-            {% endif %}
-
-            <div class="tech-card-actions">
-                <form class="form-row" method="post" action="/recipes/add" style="width:100%;">
-                    <input type="hidden" name="product_name" value="{{ card['product_name'] }}">
-                    <div class="form-group" style="flex:2;">
-                        <label>Додати інгредієнт</label>
-                        <select name="ingredient_id" class="form-control" required style="font-size:.85em;">
-                            <option value="">—</option>
-                            {% for i in ingredients %}<option value="{{ i['id'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>{% endfor %}
-                        </select>
-                    </div>
-                    <div class="form-group" style="flex:0 0 80px;">
-                        <label>Кількість</label>
-                        <input name="amount" type="number" step="0.01" class="form-control" required style="font-size:.85em;">
-                    </div>
-                    <button class="btn btn-primary btn-sm" type="submit">+</button>
-                </form>
-            </div>
-        </div>
-    </div>
-{% endfor %}
-
-{% if orphan_products %}
-<div class="section-title">Без технологічної картки</div>
-{% for pname in orphan_products %}
-<div class="tech-card" style="border-left: 3px solid var(--orange);">
-    <div class="tech-card-header" onclick="this.parentElement.classList.toggle('open')">
-        <h3>{{ pname }} <span class="ingredient-count">{{ recipe_map[pname]|length }} інгредієнтів</span></h3>
-        <form method="post" action="/recipes/card" style="display:flex; gap:6px; align-items:end;" onclick="event.stopPropagation();">
-            <input type="hidden" name="product_name" value="{{ pname }}">
-            <input name="category" placeholder="Категорія" class="form-control" style="width:100px; font-size:.8em; padding:4px 8px;">
-            <input name="portion_weight" placeholder="Порція" class="form-control" style="width:80px; font-size:.8em; padding:4px 8px;">
-            <button class="btn btn-success btn-sm" type="submit" style="font-size:.75em;">Створити</button>
-        </form>
-    </div>
-    <div class="tech-card-body">
-        <div class="tech-card-ingredients">
-            <table>
-                <thead><tr><th>Інгредієнт</th><th class="text-right" style="width:120px;">Кількість</th><th style="width:80px;">Одиниця</th><th style="width:60px;"></th></tr></thead>
-                <tbody>
-                    {% for r in recipe_map[pname] %}
-                    <tr>
-                        <td>{{ r['ingredient'] }}</td>
-                        <td class="text-right">
-                            <form method="post" action="/recipes/update/{{ r['id'] }}" class="inline-edit">
-                                <input type="number" name="amount" value="{{ r['amount'] }}" step="0.01">
-                                <button class="btn btn-primary save-btn" type="submit">✓</button>
-                            </form>
-                        </td>
-                        <td class="text-muted">{{ r['unit'] }}</td>
-                        <td class="text-right">
-                            <form method="post" action="/recipes/delete/{{ r['id'] }}" style="display:inline;">
-                                <button class="btn btn-outline btn-sm" type="submit" style="padding:2px 6px; font-size:.75em;">✕</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-{% endfor %}
+{#- ── Без рецепту ───────────────────────────────────────────── -#}
+{% if missing.count %}
+<section class="card" id="no-recipe" aria-labelledby="nr-h">
+        <header class="card-head"><h2 id="nr-h">Без рецепту</h2><span class="chip chip-warn">{{ icon('alert', 14) }}{{ missing.count }}</span></header>
+        {% if is_admin %}
+        <p class="sentence"><b class="num">{{ missing.count }}</b> {{ missing.count | plural('страва', 'страви', 'страв') }} без рецепту — <b class="num">{{ missing.share | pct }}</b> виручки за 30 днів без собівартості.</p>
+        <p class="small muted mt-2">Поки рецепта немає, ми не знаємо, скільки коштують продукти для цих страв, і частка продуктів у ціні неповна.</p>
+        {% else %}
+        <p class="sentence"><b class="num">{{ missing.count }}</b> {{ missing.count | plural('страва продається', 'страви продаються', 'страв продаються') }} без рецепту.</p>
+        {% endif %}
+    {%- macro missing_row(m) -%}
+    <li class="row">
+        <span class="row-lead">{{ icon('book') }}</span>
+        <span class="row-main"><span class="row-title">{{ m.product_name }}</span>
+            <span class="row-sub">{% if is_admin %}{{ m.share | pct(1) }} виручки{% endif %}{% if m.has_card %}{% if is_admin %} · {% endif %}без інгредієнтів{% endif %}</span></span>
+        <span class="row-trail">
+        {%- if m.has_card and m.tab == tab and sheet_ids.get(m.product_name) %}
+            <button class="btn btn-secondary" type="button" data-sheet-open="{{ sheet_ids[m.product_name] }}">Додати<span class="hide-phone"> рецепт</span></button>
+        {%- elif m.has_card %}
+            <a class="btn btn-secondary" href="{{ tab_paths[m.tab] }}?open={{ m.product_name | urlencode }}">Додати<span class="hide-phone"> рецепт</span></a>
+        {%- else %}
+            <button class="btn btn-secondary" type="button" data-sheet-open="sheet-new" data-product="{{ m.product_name }}">Додати<span class="hide-phone"> рецепт</span></button>
+        {%- endif %}
+        </span>
+    </li>
+    {%- endmacro %}
+    <ul class="rows">
+        {%- for m in missing['items'][:5] %}{{ missing_row(m) }}{% endfor %}
+    </ul>
+    {%- if missing['items'] | length > 5 %}
+    <details class="more-rows">
+        <summary>{{ icon('chevron-down', 18) }}Ще {{ missing['items'] | length - 5 }}</summary>
+        <ul class="rows">{% for m in missing['items'][5:] %}{{ missing_row(m) }}{% endfor %}</ul>
+    </details>
+    {%- endif %}
+</section>
 {% endif %}
 
-<div class="section-title">Нова технологічна картка</div>
-<div class="card">
-    <form method="post" action="/recipes/card">
-        <div class="form-row" style="margin-bottom: 12px;">
-            <div class="form-group" style="flex:2;">
-                <label>Продукт (з GoPOS)</label>
-                <input name="product_name" list="products" class="form-control" required>
-                <datalist id="products">
-                    {% for p in products %}<option value="{{ p['product_name'] }}">{% endfor %}
-                </datalist>
-            </div>
-            <div class="form-group" style="flex:1;">
-                <label>Категорія</label>
-                <input name="category" list="categories" class="form-control">
-                <datalist id="categories">
-                    <option value="Сніданки">
-                    <option value="Основні страви">
-                    <option value="Додатки">
-                    <option value="Бар">
-                </datalist>
-            </div>
-            <div class="form-group" style="flex:1;">
-                <label>Розмір порції</label>
-                <input name="portion_weight" class="form-control" placeholder="~250 г">
-            </div>
+{#- ── Dish list ─────────────────────────────────────────────── -#}
+<section class="card" aria-labelledby="dl-h">
+        <header class="card-head"><h2 id="dl-h">{{ tab_label }}</h2><span class="small muted">{{ dishes | length }} {{ dishes | length | plural('страва', 'страви', 'страв') }}</span></header>
+        {% if is_admin and dishes %}
+        <div class="filter-chips" role="group" aria-label="Сортування">
+            <a class="filter-chip" href="{{ tab_path }}"{% if sort == 'name' %} aria-current="true"{% endif %}>За назвою</a>
+            <a class="filter-chip" href="{{ tab_path }}?sort=share"{% if sort == 'share' %} aria-current="true"{% endif %}>Найбільша частка продуктів</a>
+            <a class="filter-chip" href="{{ tab_path }}?sort=earn"{% if sort == 'earn' %} aria-current="true"{% endif %}>Найбільше заробляємо</a>
         </div>
-        <div class="form-group" style="margin-bottom: 12px;">
-            <label>Приготування</label>
-            <textarea name="description" class="form-control" rows="3" style="resize:vertical;"></textarea>
-        </div>
-        <button class="btn btn-primary" type="submit">Створити картку</button>
-    </form>
+        <p class="small muted mt-2">Червоний — на продукти йде більше {{ alert_pct | pct }} ціни.</p>
+        {% endif %}
+    {% if dishes %}
+    {%- set group_by_cat = sort == 'name' and (dishes | map(attribute='category') | unique | list | length) > 1 %}
+    <ul class="rows">
+        {%- set cur = namespace(cat=None) %}
+        {%- for d in dishes %}
+        {%- if group_by_cat and d.category != cur.cat %}{% set cur.cat = d.category %}<li class="cat-head">{{ d.category or 'Без категорії' }}</li>{% endif %}
+        <li><button class="row" type="button" data-sheet-open="{{ d.id }}">
+            <span class="row-main"><span class="row-title">{{ d.name }}</span>
+                <span class="row-sub dish-sub">
+                {%- if is_admin and d.econ and (d.econ.cost is not none or d.econ.price is not none) %}{{ econ_line(d.econ) }}
+                {%- else %}{{ d.lines | length }} {{ d.lines | length | plural('інгредієнт', 'інгредієнти', 'інгредієнтів') }}{% if d.portion_weight %} · порція {{ d.portion_weight }}{% endif %}{% endif %}</span>
+                <span class="chip-line only-phone">{{ status_chip(d) }}</span></span>
+            <span class="row-trail hide-phone">{{ status_chip(d) }}</span>
+            <span class="row-chev">{{ icon('chevron-right') }}</span>
+        </button></li>
+        {%- endfor %}
+    </ul>
+    {% else %}
+    {{ empty_state('book', 'Тут ще немає страв', 'Додайте першу страву з рецептом.') }}
+    <div class="mt-3"><button class="btn btn-primary" type="button" data-sheet-open="sheet-new" data-product="">{{ icon('plus') }}Нова страва</button></div>
+    {% endif %}
+</section>
+
+{#- ── Без картки: recipe lines but no card ─────────────────────── -#}
+{% if orphans %}
+<section class="card" id="no-card" aria-labelledby="nc-h">
+        <header class="card-head"><h2 id="nc-h">Без картки</h2><span class="chip chip-neutral">{{ orphans | length }}</span></header>
+        <p class="small muted">Рецепт є, але страва не має картки (категорії й порції), тому її немає в жодній вкладці.</p>
+    <ul class="rows">
+        {%- for o in orphans %}
+        <li class="row">
+            <span class="row-main"><span class="row-title">{{ o.name }}</span>
+                <span class="row-sub dish-sub">{{ o.lines | length }} {{ o.lines | length | plural('інгредієнт', 'інгредієнти', 'інгредієнтів') }}{% if is_admin and o.econ and o.econ.cost is not none %} · собівартість <b class="num">{{ o.econ.cost | zl }}</b>{% endif %}</span></span>
+            <span class="row-trail"><button class="btn btn-secondary" type="button" data-sheet-open="{{ o.id }}">Створити картку</button></span>
+        </li>
+        {%- endfor %}
+    </ul>
+</section>
+{% endif %}
+
 </div>
 
+
+{#- ── Dish sheets ───────────────────────────────────────────── -#}
+{% for d in dishes %}
+<dialog class="sheet sheet-wide" id="{{ d.id }}" aria-labelledby="{{ d.id }}-h">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+        <div><h2 id="{{ d.id }}-h">{{ d.name }}</h2>
+            <div class="small muted">{{ d.category or 'Без категорії' }}{% if d.portion_weight %} · порція {{ d.portion_weight }}{% endif %}</div></div>
+        <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button>
+    </div>
+    <div class="sheet-body">
+        {% if is_admin and d.econ %}
+        <div class="dish-stats">
+            <div class="stat"><span class="stat-label">Собівартість</span><span class="stat-value num">{{ d.econ.cost | zl }}</span></div>
+            <div class="stat"><span class="stat-label">Ціна</span><span class="stat-value num">{{ d.econ.price | zl }}</span></div>
+            <div class="stat"><span class="stat-label">Заробляємо</span><span class="stat-value num">{{ d.econ.earn | zl }}</span></div>
+            <div class="stat"><span class="stat-label">Частка продуктів у ціні</span><span class="stat-value">{% if d.econ.share is not none %}{{ status_chip(d) }}{% else %}—{% endif %}</span></div>
+        </div>
+        {% endif %}
+
+        {% if not d.lines %}
+        <div class="notice notice-warn">{{ icon('alert') }}<div class="notice-body"><div class="notice-title">У страви ще немає інгредієнтів</div>Додайте їх нижче, щоб знати, скільки коштують продукти.</div></div>
+        {% else %}
+        <div class="sheet-section"><h3>Інгредієнти на порцію</h3>
+        <div>
+            {%- for r in d.lines %}
+            <div class="line">
+                <div><div class="line-name">{{ r['ingredient'] }}</div>
+                    {% if is_admin %}<div class="line-meta">{% if r['unit_price'] > 0 %}{{ r['unit_price'] | zl }} за {{ r['unit'] | unit_ua }}{% else %}ціна невідома{% endif %}</div>{% endif %}</div>
+                {% if is_admin %}<div class="line-cost num">{% if r['cost'] > 0 %}{{ r['cost'] | zl }}{% else %}—{% endif %}</div>{% else %}<div></div>{% endif %}
+                <div class="line-edit">
+                    <form method="post" action="/recipes/update/{{ r['id'] }}">
+                        <input type="hidden" name="base_unit" value="{{ r['unit'] }}">
+                        <input type="hidden" name="next" value="{{ tab_path }}">
+                        <div class="input-group"><input class="input" name="display_amount" inputmode="decimal" value="{{ r['display_amount'] | num(3, strip=True) }}" aria-label="Кількість: {{ r['ingredient'] }}" required><span class="input-suffix">{{ r['display_unit'] | unit_ua }}</span></div>
+                        <button class="btn btn-secondary btn-icon" type="submit" aria-label="Зберегти кількість: {{ r['ingredient'] }}">{{ icon('check') }}</button>
+                    </form>
+                    <form method="post" action="/recipes/delete/{{ r['id'] }}" data-confirm="Прибрати «{{ r['ingredient'] }}» з рецепту «{{ d.name }}»?" data-confirm-ok="Прибрати">
+                        <input type="hidden" name="next" value="{{ tab_path }}">
+                        <button class="btn btn-quiet btn-icon" type="submit" aria-label="Прибрати {{ r['ingredient'] }}">{{ icon('trash') }}</button>
+                    </form>
+                </div>
+            </div>
+            {%- endfor %}
+        </div></div>
+        {% endif %}
+
+        <div class="sheet-section"><h3>Додати інгредієнт</h3>
+        <form class="form" method="post" action="/recipes/add">
+            <input type="hidden" name="product_name" value="{{ d.name }}">
+            <input type="hidden" name="display" value="1">
+            <input type="hidden" name="next" value="{{ tab_path }}">
+            <div class="form-grid">
+                <div class="field"><label class="field-label" for="{{ d.id }}-ing">Інгредієнт</label>{{ ingredient_select(d.id ~ '-ing') }}</div>
+                <div class="field"><label class="field-label" for="{{ d.id }}-amt">Кількість на порцію</label>
+                    <div class="input-group"><input class="input" id="{{ d.id }}-amt" name="amount" inputmode="decimal" required><span class="input-suffix" id="{{ d.id }}-ing-suffix">г</span></div></div>
+            </div>
+            <div class="form-actions"><button class="btn btn-secondary" type="submit">{{ icon('plus') }}Додати</button></div>
+        </form></div>
+
+        {% if d.description %}
+        <div class="sheet-section"><h3>Приготування</h3><p class="desc">{{ d.description }}</p></div>
+        {% endif %}
+
+        <details class="edit-dish sheet-section">
+            <summary>{{ icon('pencil', 18) }}Змінити страву</summary>
+            <form class="form mt-2" method="post" action="/recipes/card">
+                <input type="hidden" name="product_name" value="{{ d.name }}">
+                <div class="form-grid">
+                    <div class="field"><label class="field-label" for="{{ d.id }}-cat">Категорія</label>
+                        <input class="input" id="{{ d.id }}-cat" name="category" list="menu-categories" value="{{ d.category }}"></div>
+                    <div class="field"><label class="field-label" for="{{ d.id }}-pw">Порція <span class="optional">(необовʼязково)</span></label>
+                        <input class="input" id="{{ d.id }}-pw" name="portion_weight" value="{{ d.portion_weight }}"></div>
+                </div>
+                <div class="field"><label class="field-label" for="{{ d.id }}-desc">Приготування</label>
+                    <textarea class="textarea" id="{{ d.id }}-desc" name="description" rows="3">{{ d.description }}</textarea></div>
+                <div class="form-actions"><button class="btn btn-secondary" type="submit">Зберегти страву</button></div>
+            </form>
+            <form class="mt-3" method="post" action="/recipes/card/delete" data-confirm="Видалити страву «{{ d.name }}» разом з рецептом?" data-confirm-ok="Видалити">
+                <input type="hidden" name="product_name" value="{{ d.name }}">
+                <input type="hidden" name="next" value="{{ tab_path }}">
+                <button class="btn btn-danger" type="submit">{{ icon('trash') }}Видалити страву</button>
+            </form>
+        </details>
+    </div>
+    <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Готово</button></div>
+</dialog>
+{% endfor %}
+
+{#- ── Без картки sheets ─────────────────────────────────────── -#}
+{% for o in orphans %}
+<dialog class="sheet" id="{{ o.id }}" aria-labelledby="{{ o.id }}-h">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head"><h2 id="{{ o.id }}-h">Картка: {{ o.name }}</h2>
+        <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+    <form method="post" action="/recipes/card" style="display:contents">
+        <div class="sheet-body">
+            <input type="hidden" name="product_name" value="{{ o.name }}">
+            <div class="field"><label class="field-label" for="{{ o.id }}-cat">Категорія</label>
+                <input class="input" id="{{ o.id }}-cat" name="category" list="menu-categories" value="{{ tab_label if tab != 'kitchen' else 'Кухня' }}" required></div>
+            <div class="field"><label class="field-label" for="{{ o.id }}-pw">Порція <span class="optional">(необовʼязково)</span></label>
+                <input class="input" id="{{ o.id }}-pw" name="portion_weight"></div>
+            <p class="small muted mt-3">У рецепті: {% for r in o.lines %}{{ r['ingredient'] }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+        </div>
+        <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button><button class="btn btn-primary" type="submit">Створити картку</button></div>
+    </form>
+</dialog>
+{% endfor %}
+
+{#- ── Нова страва / Додати рецепт ───────────────────────────── -#}
+<dialog class="sheet" id="sheet-new" aria-labelledby="sheet-new-h">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head"><h2 id="sheet-new-h">Нова страва</h2>
+        <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+    <form method="post" action="/recipes/card" style="display:contents">
+        <div class="sheet-body">
+            <input type="hidden" name="display" value="1">
+            <div class="field"><label class="field-label" for="new-name">Назва страви, як у касі</label>
+                <input class="input" id="new-name" name="product_name" list="menu-products" required autocomplete="off">
+                </div>
+            <div class="form-grid">
+                <div class="field"><label class="field-label" for="new-cat">Категорія</label>
+                    <select class="select" id="new-cat" name="category" data-default="{{ default_category }}">
+                        {%- for c in card_categories %}<option value="{{ c }}"{% if c == default_category %} selected{% endif %}>{{ c }}</option>{% endfor %}
+                    </select></div>
+                <div class="field"><label class="field-label" for="new-pw">Порція <span class="optional">(необовʼязково)</span></label>
+                    <input class="input" id="new-pw" name="portion_weight"></div>
+            </div>
+            <div class="form-grid">
+                <div class="field"><label class="field-label" for="new-ing">Перший інгредієнт <span class="optional">(необовʼязково)</span></label>{{ ingredient_select('new-ing') }}</div>
+                <div class="field"><label class="field-label" for="new-amt">Кількість на порцію</label>
+                    <div class="input-group"><input class="input" id="new-amt" name="amount" inputmode="decimal"><span class="input-suffix" id="new-ing-suffix">г</span></div>
+                    <span class="field-help" id="new-ing-help" aria-live="polite"></span></div>
+            </div>
+            {%- if is_admin %}
+            <p class="small warn-text" id="new-ing-noprice" hidden>{{ icon('alert', 16) }} Ціни цього інгредієнта немає: собівартість буде 0</p>
+            {%- endif %}
+            <div class="field"><label class="field-label" for="new-desc">Приготування <span class="optional">(необовʼязково)</span></label>
+                <textarea class="textarea" id="new-desc" name="description" rows="2"></textarea></div>
+            <p class="small muted">Решту інгредієнтів додасте у картці страви. Поки інгредієнтів немає, страва буде в списку з позначкою, що їх бракує.</p>
+        </div>
+        <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button><button class="btn btn-primary" type="submit">Створити</button></div>
+    </form>
+</dialog>
+
+<datalist id="menu-products">{% for p in products %}<option value="{{ p['product_name'] }}"{% if pos_cats.get(p['product_name']) %} data-cat="{{ pos_cats[p['product_name']] }}"{% endif %}>{% endfor %}</datalist>
+<datalist id="menu-categories">
+    {%- for c in card_categories %}<option value="{{ c }}">{% endfor %}
+</datalist>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var UNIT = { kg: 'г', L: 'мл', szt: 'шт', g: 'г', ml: 'мл' };
+    // Amount suffix follows the chosen ingredient (amounts are typed in г / мл / шт).
+    document.addEventListener('change', function (e) {
+        var sel = e.target.closest('select[data-unit-target]');
+        if (!sel) return;
+        var opt = sel.options[sel.selectedIndex];
+        var out = document.getElementById(sel.getAttribute('data-unit-target') + '-suffix');
+        var u = opt ? opt.getAttribute('data-unit') : '';
+        if (out) out.textContent = UNIT[u] || u || 'г';
+        if (sel.id === 'new-ing') newIngHint();
+    });
+    // New dish: say in which unit the price is and in which the amount, warn about a missing price.
+    var BIG = { kg: 'кг', L: 'л' };
+    function newIngHint() {
+        var sel = document.getElementById('new-ing');
+        var help = document.getElementById('new-ing-help');
+        var warn = document.getElementById('new-ing-noprice');
+        var amt = document.getElementById('new-amt');
+        if (!sel || !help) return;
+        var opt = sel.options[sel.selectedIndex];
+        var u = opt && opt.value ? opt.getAttribute('data-unit') : '';
+        var small = UNIT[u] || u;
+        var text = '';
+        if (BIG[u]) {
+            text = 'Склад рахує в ' + BIG[u] + ', тут вводьте в ' + small + ': 1 ' + BIG[u] + ' = 1000 ' + small + '.';
+            var v = parseFloat(String(amt && amt.value || '').replace(',', '.'));
+            if (v > 0 && v < 1) text += ' ' + String(v).replace('.', ',') + ' ' + small + ' — дуже мало. Мали на увазі ' + Math.round(v * 1000) + ' ' + small + '?';
+        }
+        help.textContent = text;
+        if (warn) warn.hidden = !(opt && opt.getAttribute('data-noprice'));
+    }
+    var amtEl = document.getElementById('new-amt');
+    if (amtEl) amtEl.addEventListener('input', newIngHint);
+    // Category follows the till category of the chosen dish (coffee -> Бар), else the tab.
+    function newCatFromName() {
+        var input = document.getElementById('new-name');
+        var cat = document.getElementById('new-cat');
+        if (!input || !cat) return;
+        var opt = Array.prototype.find.call(document.querySelectorAll('#menu-products option'),
+            function (o) { return o.value === input.value; });
+        var want = (opt && opt.getAttribute('data-cat')) || cat.getAttribute('data-default');
+        if (want && Array.prototype.some.call(cat.options, function (o) { return o.value === want; })) cat.value = want;
+    }
+    var nameEl = document.getElementById('new-name');
+    if (nameEl) nameEl.addEventListener('change', newCatFromName);
+    // "Додати рецепт" for a product: prefill the name in the new-dish sheet.
+    document.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-sheet-open="sheet-new"]');
+        if (!b) return;
+        var name = b.getAttribute('data-product') || '';
+        var input = document.getElementById('new-name');
+        if (input) input.value = name;
+        newCatFromName();
+        var h = document.getElementById('sheet-new-h');
+        if (h) h.textContent = name ? 'Рецепт: ' + name : 'Нова страва';
+    }, true);
+    var o = document.querySelector('[data-open-sheet]');
+    if (o && typeof openSheet === 'function') openSheet(o.getAttribute('data-open-sheet'));
+})();
+</script>
 {% endblock %}
