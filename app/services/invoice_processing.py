@@ -4,6 +4,7 @@ import json
 import logging
 
 from app.db import get_db
+from app.services.pack_pricing import price_and_factor, save_mapping
 from app.gopos_api import warsaw_today
 
 log = logging.getLogger(__name__)
@@ -230,9 +231,10 @@ def _classify_and_map_items(db, invoice_db_id, result, file_name, category, expe
 
     try:
         items = result.get('items', [])
-        ingredients = [dict(r) for r in db.execute('SELECT id, name, unit FROM ingredients').fetchall()]
-        existing = {r['invoice_name']: r['ingredient_id']
-                    for r in db.execute('SELECT invoice_name, ingredient_id FROM ingredient_mappings').fetchall()}
+        ingredients = [dict(r) for r in db.execute('SELECT id, name, unit, unit_price FROM ingredients').fetchall()]
+        mapping_rows = db.execute('SELECT invoice_name, ingredient_id, pack_factor FROM ingredient_mappings').fetchall()
+        existing = {r['invoice_name']: r['ingredient_id'] for r in mapping_rows}
+        pack_factors = {r['invoice_name']: r['pack_factor'] for r in mapping_rows if r['pack_factor']}
 
         llm_classification = classify_invoice(result.get('vendor', ''), file_name, items)
 
@@ -241,7 +243,7 @@ def _classify_and_map_items(db, invoice_db_id, result, file_name, category, expe
             'SELECT DISTINCT product_name FROM sales ORDER BY product_name'
         ).fetchall()]
 
-        llm_mappings = map_items_to_ingredients(items, ingredients, existing, pos_products)
+        llm_mappings = map_items_to_ingredients(items, ingredients, existing, pos_products, pack_factors)
 
         db.execute(
             'UPDATE parsed_invoices SET category = ?, vendor = ? WHERE id = ?',
@@ -276,10 +278,10 @@ def _process_item_mapping(db, m: dict, invoice_db_id: int):
 
     db.execute('''
         INSERT INTO invoice_items_pending
-        (parsed_invoice_id, invoice_name, quantity, unit_price, status, ingredient_id, suggested_ingredient, confidence)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (parsed_invoice_id, invoice_name, quantity, unit_price, status, ingredient_id, suggested_ingredient, confidence, pack_factor)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (invoice_db_id, m['invoice_name'], m.get('quantity', 0), m.get('unit_price', 0),
-          status, ing_id, m.get('suggested_name', ''), confidence))
+          status, ing_id, m.get('suggested_name', ''), confidence, m.get('pack_factor')))
 
 
 def _handle_resale_mapping(db, m: dict, invoice_db_id: int) -> tuple:
@@ -308,20 +310,15 @@ def _handle_resale_mapping(db, m: dict, invoice_db_id: int) -> tuple:
         )
         ing_id = cur.lastrowid
 
-    db.execute(
-        'INSERT OR REPLACE INTO ingredient_mappings (invoice_name, ingredient_id, action) VALUES (?, ?, ?)',
-        (m['invoice_name'], ing_id, 'resale')
-    )
+    save_mapping(db, m['invoice_name'], ing_id, 'resale')   # 1 pack = 1 unit
     return ing_id, 'confirmed'
 
 
 def _handle_match_mapping(db, m: dict, ing_id: int, invoice_db_id: int) -> tuple:
     """Handle auto-confirmation of matched ingredient — update price + create delivery."""
-    db.execute(
-        'INSERT OR REPLACE INTO ingredient_mappings (invoice_name, ingredient_id, action) VALUES (?, ?, ?)',
-        (m['invoice_name'], ing_id, 'match')
-    )
-    new_price = m.get('unit_price', 0)
+    # The invoice prices ONE invoice unit (a carton, a crate); the ingredient is priced per kg / L / szt.
+    new_price, factor = price_and_factor(db, m['invoice_name'], ing_id, m.get('unit_price', 0), m.get('pack_factor'))
+    save_mapping(db, m['invoice_name'], ing_id, 'match', pack_factor=factor)
 
     if new_price > 0:
         old_row = db.execute('SELECT unit_price FROM ingredients WHERE id = ?', (ing_id,)).fetchone()

@@ -200,6 +200,28 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 8. On approve → checks ingredient_mappings, updates prices, sends alerts
 9. Telegram notification with summary
 
+### Invoice prices are per INVOICE unit — convert (found 2026-11-26)
+An invoice line prices one invoice unit (a carton of 12 × 1 L, a 15 kg crate, a 10 L can); an ingredient is
+priced per kg / L / szt. Until 2026-11 the line price was stored as printed, so "Mleko 3.2%" cost 39.48 zł/L
+(a carton), oranges 113.99 zł/kg (a crate), fresh orange juice 285 zł/L, and every milk drink was 1–9 zł
+too expensive in COGS. Now `app/services/pack_pricing.py` converts: price per unit = invoice price ÷ pack
+factor (ingredient units per invoice unit), in all three paths that set `ingredients.unit_price` from an invoice
+(auto import, "approve", confirm of a pending item). Candidates per line, best first: the mapping's stored
+`ingredient_mappings.pack_factor` (a real pack size, never 1), the model's conversion (`converted_qty / quantity`;
+the prompt shows each ingredient's current price so it can pick a fit; a low-confidence line keeps it on
+`invoice_items_pending.pack_factor`), then 1. **The first candidate whose price per unit lies within 0.4x–2.5x
+of the ingredient's current price wins**, because one name is sold both ways ("LAC.MLEKO UHT 3,2% 1L" is a
+carton at 39–50 zł and single litres at 4.42 zł). No fit → the first candidate, and the 0.2x–5x guard (auto
+import and approve) skips an implausible jump. A manual confirm also takes a typed `pack_factor`.
+**The size in the name ("200 G", "15KG") is NOT read**: a dry run on prod showed Makro prices many such lines
+per kg (butter "200 G" at 42.49 zł/kg would have become 212 zł/kg). Mappings are written only through
+`save_mapping()`, which keeps an existing factor. Fix a factor by hand:
+`UPDATE ingredient_mappings SET pack_factor = 12 WHERE invoice_name = '...'` (back up first).
+Known gap: a mapping with no stored factor (every mapping before 2026-11-26) keeps the old behaviour until its
+factor is set; a prod dry run found about 34 ingredients whose price looks per-pack. Also found: some mappings
+are plainly wrong (turkey fillet mapped to a micro-greens line, balsamic vinegar to a 5 L spirit vinegar), so
+review mappings before trusting a price.
+
 ## LLM Setup (active)
 - **Primary:** Claude Haiku 4.5 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`) on Bedrock us-west-2
 - **Fallback:** AWS Textract `analyze_expense` (used only if Claude fails)

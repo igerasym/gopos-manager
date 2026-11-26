@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
 from app.gopos_api import warsaw_today
+from app.services.pack_pricing import price_and_factor, price_per_unit, save_mapping
 
 log = logging.getLogger(__name__)
 
@@ -346,7 +347,12 @@ async def approve_invoice(invoice_id: int, category: str = Form('Продукт�
                 'SELECT unit_price FROM ingredients WHERE id = ?', (ing_id,)
             ).fetchone()
             old_price = old_price_row['unit_price'] if old_price_row else 0
-            new_price = item['unit_price']
+            # invoice price is per invoice unit: convert to the ingredient's unit
+            new_price = price_per_unit(db, item['name'], ing_id, item['unit_price'], item.get('quantity'))
+            if old_price and not (0.2 <= new_price / old_price <= 5.0):
+                # same guard as the automatic import: a 12x jump is a pack size, not a price change
+                log.warning(f'Skipping price update for ingredient {ing_id}: {old_price} -> {new_price}')
+                continue
 
             db.execute(
                 'INSERT INTO ingredient_price_history (ingredient_id, price, invoice_id) VALUES (?, ?, ?)',
@@ -454,7 +460,7 @@ def _process_invoices_sync(current_month: str):
 
 
 @router.post('/expenses/items/confirm/{item_id}')
-async def confirm_item_mapping(item_id: int, action: str = Form(...), ingredient_id: Optional[int] = Form(None), new_name: Optional[str] = Form('')):
+async def confirm_item_mapping(item_id: int, action: str = Form(...), ingredient_id: Optional[int] = Form(None), new_name: Optional[str] = Form(''), pack_factor: Optional[float] = Form(None)):
     """Confirm a single item mapping: match existing / create new / skip."""
     db = get_db()
     item = db.execute('SELECT * FROM invoice_items_pending WHERE id = ?', (item_id,)).fetchone()
@@ -464,6 +470,7 @@ async def confirm_item_mapping(item_id: int, action: str = Form(...), ingredient
 
     invoice_name = item['invoice_name']
     final_ingredient_id = None
+    factor_used = None
 
     if action == 'match' and ingredient_id:
         final_ingredient_id = ingredient_id
@@ -471,10 +478,17 @@ async def confirm_item_mapping(item_id: int, action: str = Form(...), ingredient
         if item['unit_price'] > 0:
             old_row = db.execute('SELECT unit_price FROM ingredients WHERE id = ?', (ingredient_id,)).fetchone()
             old_price = old_row['unit_price'] if old_row else 0
-            db.execute('UPDATE ingredients SET unit_price = ? WHERE id = ?', (item['unit_price'], ingredient_id))
+            # what the person typed, else the model's guess kept on the pending row, else the stored one
+            suggested = pack_factor if pack_factor and pack_factor > 0 else item['pack_factor']
+            if pack_factor and pack_factor > 0:
+                factor_used = pack_factor                      # typed by a person: take it as is
+                new_price = item['unit_price'] / factor_used
+            else:
+                new_price, factor_used = price_and_factor(db, invoice_name, ingredient_id, item['unit_price'], suggested)
+            db.execute('UPDATE ingredients SET unit_price = ? WHERE id = ?', (new_price, ingredient_id))
             db.execute(
                 'INSERT INTO ingredient_price_history (ingredient_id, price, invoice_id) VALUES (?, ?, ?)',
-                (ingredient_id, item['unit_price'], item['parsed_invoice_id'])
+                (ingredient_id, new_price, item['parsed_invoice_id'])
             )
             # Recalculate any sub-recipes (напівфабрикати) that use this ingredient
             from app.services.recipes import recalc_sub_recipes_for_ingredient
@@ -483,7 +497,7 @@ async def confirm_item_mapping(item_id: int, action: str = Form(...), ingredient
             try:
                 from app.gdrive_invoices import check_price_alerts
                 from app.telegram_bot import send_message
-                alert = check_price_alerts(ingredient_id, item['unit_price'], old_price)
+                alert = check_price_alerts(ingredient_id, new_price, old_price)
                 if alert:
                     send_message("⚠️ <b>Зміна ціни</b>\n\n" + alert)
             except Exception:
@@ -498,10 +512,7 @@ async def confirm_item_mapping(item_id: int, action: str = Form(...), ingredient
         final_ingredient_id = cur.lastrowid
 
     # Save mapping
-    db.execute(
-        'INSERT OR REPLACE INTO ingredient_mappings (invoice_name, ingredient_id, action) VALUES (?, ?, ?)',
-        (invoice_name, final_ingredient_id, action)
-    )
+    save_mapping(db, invoice_name, final_ingredient_id, action, pack_factor=factor_used)
     # Update pending item
     db.execute(
         'UPDATE invoice_items_pending SET status = ?, ingredient_id = ? WHERE id = ?',

@@ -230,7 +230,16 @@ Reply with ONLY valid JSON:
     return json.loads(response)
 
 
-def map_items_to_ingredients(invoice_items: list, ingredients: list, existing_mappings: dict = None, pos_products: list = None) -> list:
+def _factor(converted_qty, quantity):
+    """Ingredient units per invoice unit, from the model's conversion of one line."""
+    try:
+        c, q = float(converted_qty), float(quantity)
+    except (TypeError, ValueError):
+        return None
+    return c / q if c > 0 and q > 0 else None
+
+
+def map_items_to_ingredients(invoice_items: list, ingredients: list, existing_mappings: dict = None, pos_products: list = None, pack_factors: dict = None) -> list:
     """Map invoice items to existing ingredients using LLM.
 
     Args:
@@ -238,6 +247,7 @@ def map_items_to_ingredients(invoice_items: list, ingredients: list, existing_ma
         ingredients: [{'id': int, 'name': str, 'unit': str}, ...]
         existing_mappings: {invoice_name: ingredient_id} for already-mapped items
         pos_products: list of product names from sales (for resale matching)
+        pack_factors: {invoice_name: ingredient units per invoice unit} stored with the mappings
 
     Returns:
         [{'invoice_name': str, 'ingredient_id': int|None, 'action': 'match'|'new'|'skip'|'resale',
@@ -245,6 +255,7 @@ def map_items_to_ingredients(invoice_items: list, ingredients: list, existing_ma
     """
     existing_mappings = existing_mappings or {}
     pos_products = pos_products or []
+    pack_factors = pack_factors or {}
 
     results = []
     items_to_map = []
@@ -262,6 +273,7 @@ def map_items_to_ingredients(invoice_items: list, ingredients: list, existing_ma
                 'suggested_name': '',
                 'unit_price': item.get('unit_price', 0),
                 'quantity': item.get('quantity', 0),
+                'pack_factor': pack_factors.get(name),
             })
         else:
             items_to_map.append(item)
@@ -269,7 +281,11 @@ def map_items_to_ingredients(invoice_items: list, ingredients: list, existing_ma
     if not items_to_map:
         return results
 
-    ing_list = '\n'.join([f"  {i['id']}: {i['name']} ({i['unit']})" for i in ingredients])
+    def _ing_line(i):
+        price = i.get('unit_price') or 0
+        return f"  {i['id']}: {i['name']} ({i['unit']})" + (f", now {price:.2f} zł per {i['unit']}" if price else '')
+
+    ing_list = '\n'.join(_ing_line(i) for i in ingredients)
 
     items_list = '\n'.join([f"  {idx}: {it.get('name', '')} ({it.get('quantity', 0)} szt, {it.get('unit_price', 0):.2f} zł/szt)"
                             for idx, it in enumerate(items_to_map)])
@@ -301,11 +317,21 @@ For each invoice item, decide:
 IMPORTANT — QUANTITY CONVERSION:
 For "match" items, convert the invoice quantity to the ingredient's unit:
 - "MC JAJA WOLNY WYBIEG L 20 SZT" qty=12 → ingredient "Jaja (szt)" → converted_qty = 12 × 20 = 240
-- "LACIATE MLEKO UHT 3,2% 1L" qty=2 → ingredient "Mleko 3.2% (L)" → converted_qty = 2 × 1 = 2
+- "LACIATE MLEKO UHT 3,2% 1L" qty=2, sold by the carton of 12 (about 39 zł per carton) → ingredient "Mleko 3.2% (L)" → converted_qty = 2 × 12 = 24
+- "KINLEY TONIC 1L" qty=11 at 5.28 zł each (single bottles) → ingredient "Tonic (L)" → converted_qty = 11 × 1 = 11
 - "Łosoś filet" qty=5.9 (sold by kg) → ingredient "Łosoś filet (kg)" → converted_qty = 5.9
 - "MASLO EXTRA 200G" qty=8 → ingredient "Masło (kg)" → converted_qty = 8 × 0.2 = 1.6
 - "ALPRO KOKOS-SOJA 750ML" qty=10 → ingredient "Mleko kokos-soja (L)" → converted_qty = 10 × 0.75 = 7.5
 For "resale" items: converted_qty = invoice quantity (1 pack = 1 unit)
+
+IMPORTANT — PRICE IS PER INVOICE UNIT, AND SO IS THE QUANTITY:
+The line price is for ONE invoice unit (a carton, a crate, a can), and the app divides it by
+converted_qty / quantity to get the price per ingredient unit. So an invoice unit that holds
+several items must be converted too: "LACIATE MLEKO UHT 3,2% 1L" bought at Makro in cartons of 12
+(39.48 zł per carton) with qty=4 is 4 × 12 = 48 L, not 4 L. Use the ingredient's current price
+("now X zł per unit") as a check: choose converted_qty so that
+(quantity × invoice price) / converted_qty is close to it. If it still cannot be close and the pack
+size is not in the name, lower the confidence below 0.7 so a person looks at it.
 
 For "resale" items: confidence should be high (>0.85). Use POS product list as authoritative source.
 For "match" items: confidence >= 0.7.
@@ -346,6 +372,7 @@ Reply with ONLY valid JSON array:
             'unit_price': item.get('unit_price', 0),
             'quantity': item.get('quantity', 0),
             'converted_qty': m.get('converted_qty', item.get('quantity', 0)),
+            'pack_factor': _factor(m.get('converted_qty'), item.get('quantity')),
         })
 
     return results
