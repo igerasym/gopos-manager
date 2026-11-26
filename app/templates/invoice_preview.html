@@ -14,7 +14,7 @@
 {% else %}
 
 <form method="post" action="/inventory/upload/confirm">
-    <input type="hidden" name="item_count" value="{{ result.items|length }}">
+    <input type="hidden" name="item_count" value="{{ result['items']|length }}">
     <input type="hidden" name="invoice_note" value="{{ filename }}">
 
     <div class="card" style="margin-bottom:16px; padding:14px 20px;">
@@ -44,7 +44,7 @@
                 </tr>
             </thead>
             <tbody>
-                {% for item in result.items %}
+                {% for item in result['items'] %}
                 <tr>
                     <td>
                         <input type="checkbox" name="skip_{{ loop.index0 }}" value="1"

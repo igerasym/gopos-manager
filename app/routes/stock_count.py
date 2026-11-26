@@ -14,6 +14,18 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates'
 
 router = APIRouter()
 
+# A difference smaller than this (in the item's unit) is rounding noise, not a shortage.
+DIFF_EPS = 0.05
+
+
+def diff_status(difference: float) -> str:
+    """'short' (нестача), 'over' (надлишок) or 'match' (збіг, |difference| < DIFF_EPS)."""
+    if difference <= -DIFF_EPS:
+        return 'short'
+    if difference >= DIFF_EPS:
+        return 'over'
+    return 'match'
+
 
 @router.get('/inventory/count', response_class=HTMLResponse)
 async def stock_count_page(request: Request):
@@ -84,29 +96,27 @@ async def stock_count_detail(request: Request, count_id: int):
         db.close()
         return RedirectResponse('/inventory/history', status_code=302)
 
-    items = db.execute('''
-        SELECT sci.*, i.name, i.unit
+    rows = db.execute('''
+        SELECT sci.*, i.name, i.unit, COALESCE(i.unit_price, 0) AS unit_price
         FROM stock_count_items sci
         JOIN ingredients i ON sci.ingredient_id = i.id
         WHERE sci.stock_count_id = ?
         ORDER BY i.name
     ''', (count_id,)).fetchall()
-
-    # Ingredients not yet in this count
-    counted_ids = [it['ingredient_id'] for it in items]
     all_ingredients = db.execute('SELECT id, name, unit FROM ingredients ORDER BY name').fetchall()
-
-    total_diff_value = sum(
-        abs(it['difference']) * (db.execute(
-            'SELECT COALESCE(unit_price, 0) as p FROM ingredients WHERE id = ?',
-            (it['ingredient_id'],)
-        ).fetchone()['p'] or 0)
-        for it in items if it['difference'] < 0
-    )
-
     db.close()
+
+    items = []
+    for r in rows:
+        d = dict(r)
+        d['status'] = diff_status(d['difference'])
+        items.append(d)
+    # Only real shortages count as a loss, at the current unit price.
+    total_diff_value = sum(-d['difference'] * d['unit_price'] for d in items if d['status'] == 'short')
+
     return templates.TemplateResponse(request, 'stock_count_detail.html', context={
         'count': count, 'items': items, 'total_diff_value': total_diff_value,
+        'short_count': sum(1 for d in items if d['status'] == 'short'),
         'all_ingredients': all_ingredients,
     })
 
@@ -182,13 +192,13 @@ async def stock_count_history(request: Request):
         SELECT sc.id, sc.date, sc.time, sc.note, sc.created_at,
                u.display_name, u.username,
                COUNT(sci.id) as item_count,
-               SUM(CASE WHEN sci.difference < 0 THEN 1 ELSE 0 END) as shortage_count
+               SUM(CASE WHEN sci.difference <= -? THEN 1 ELSE 0 END) as shortage_count
         FROM stock_counts sc
         LEFT JOIN users u ON sc.user_id = u.id
         LEFT JOIN stock_count_items sci ON sci.stock_count_id = sc.id
         GROUP BY sc.id
         ORDER BY sc.date DESC, sc.id DESC
-    ''').fetchall()
+    ''', (DIFF_EPS,)).fetchall()
     db.close()
     return templates.TemplateResponse(request, 'stock_count_history.html', context={
         'counts': counts,

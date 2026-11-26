@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
-from app.services.recipes import get_recipe_map_with_costs, get_selling_prices
+from app.services.recipes import get_recipe_map_with_costs, get_selling_prices, parse_num
 from app.services.units import from_display
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
@@ -102,15 +102,17 @@ async def delete_recipe(recipe_id: int):
 @router.post('/recipes/update/{recipe_id}')
 async def update_recipe(request: Request, recipe_id: int):
     form = await request.form()
-    db = get_db()
 
     if 'display_amount' in form:
-        display_amount = float(form.get('display_amount', 0))
+        display_amount = parse_num(form.get('display_amount'))
         base_unit = form.get('base_unit', '')
-        amount = from_display(display_amount, base_unit)
+        amount = from_display(display_amount, base_unit) if display_amount is not None else None
     else:
-        amount = float(form.get('amount', 0))
+        amount = parse_num(form.get('amount'))
+    if amount is None or amount <= 0:  # '1,5' is fine; empty/junk/zero leaves the line as it was
+        return RedirectResponse('/recipes', status_code=303)
 
+    db = get_db()
     db.execute('UPDATE recipes SET amount = ? WHERE id = ?', (amount, recipe_id))
     db.commit()
     db.close()
