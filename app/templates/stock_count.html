@@ -1,60 +1,114 @@
 {% extends "base.html" %}
-{% from "_ui.html" import page_header %}
 
-{% block page_title %}Інвентаризація{% endblock %}
-{% block main_class %}{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="/static/pages/stock.css?v=1">{% endblock %}
-{% block section_tabs %}{% with stock_tab='count' %}{% include "_stock_tabs.html" %}{% endwith %}{% endblock %}
+{% block extra_style %}
+.count-input {
+    width: 90px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 1em; text-align: right; transition: border-color .15s;
+}
+.count-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(67,97,238,.1); }
+.count-row td { vertical-align: middle; padding: 8px; }
+.current-qty { font-size: .85em; color: var(--text-secondary); }
+/* Mobile: stack cards, larger tap targets */
+@media (max-width: 768px) {
+    .count-input { width: 86px; font-size: 1.15em; padding: 10px 8px; }
+    .count-row td { padding: 10px 6px; }
+    /* Hide "Системна к-сть" column on small screens — show it inside the name cell */
+    .count-sys-col { display: none; }
+    .count-name-cell { display: flex; flex-direction: column; gap: 2px; }
+    .count-name-cell .sys-qty-inline { font-size: .78em; color: var(--text-secondary); }
+    /* Sticky save bar */
+    .count-save-bar { position: sticky; bottom: 0; background: var(--card-bg, #fff);
+        padding: 12px 16px; box-shadow: 0 -2px 8px rgba(0,0,0,.08); margin: 0 -20px -20px; border-top: 1px solid var(--border); }
+}
+@media (min-width: 769px) {
+    .count-name-cell .sys-qty-inline { display: none; }
+    .count-save-bar { margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+}
+{% endblock %}
 
 {% block content %}
-{% call page_header('Нова інвентаризація', eyebrow='Склад · Інвентаризація') %}
-    <a class="btn btn-secondary" href="/inventory/history">{{ icon('clock') }}Історія</a>
-{% endcall %}
 
-<form method="post" action="/inventory/count" id="count-form"
-      data-confirm="Зберегти інвентаризацію? Залишки на складі стануть такими, як ви порахували." data-confirm-ok="Зберегти" data-confirm-tone="primary" data-confirm-title="Зберегти?">
-    <section class="card count-head" aria-labelledby="cnt-h">
-        <h2 id="cnt-h" class="sr-only">Прогрес</h2>
-        <p class="sentence">Пораховано <b class="num" data-count-done>0</b> з <span class="num">{{ items | length }}</span></p>
-        <div class="meter mt-2" aria-hidden="true"><i data-count-bar style="width:0%"></i></div>
-        <p class="small muted mt-2">Впишіть, скільки є насправді. Порожнє поле означає «не рахували», цей залишок не зміниться.</p>
-        <div class="search mt-3">{{ icon('search') }}<input class="input" type="search" id="count-search" placeholder="Пошук інгредієнта" aria-label="Пошук інгредієнта" autocomplete="off"></div>
-    </section>
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin:0;">Інвентаризація</h2>
+        <span class="text-muted" style="font-size:.85em;">Підрахуйте фактичні залишки на складі</span>
+    </div>
+    <a href="/inventory/history" class="btn btn-outline btn-sm">📋 Історія</a>
+</div>
 
-    <section class="card card-flush" aria-label="Інгредієнти">
-        <ul class="rows count-rows">
-            {% for i in items %}
-            <li class="row" data-name="{{ i['name'] | lower }}">
-                <label class="row-main" for="qty-{{ i['id'] }}">
-                    <span class="row-title">{{ i['name'] }}</span>
-                    <span class="row-sub">у системі {{ i['quantity'] | qty(i['unit']) }}</span>
-                </label>
-                <span class="input-group count-input">
-                    <input class="input" id="qty-{{ i['id'] }}" name="qty_{{ i['id'] }}" inputmode="decimal" autocomplete="off"
-                           pattern="[0-9]+([.,][0-9]+)?" enterkeyhint="next">
-                    <span class="input-suffix">{{ i['unit'] | unit_ua }}</span>
-                </span>
-            </li>
-            {% endfor %}
-        </ul>
-        <p class="empty-text center hidden" id="stock-nothing">Нічого не знайдено.</p>
-    </section>
-
-    <section class="card mt-4" aria-labelledby="note-h">
-        <div class="field">
-            <label class="field-label" for="c-note" id="note-h">Примітка <span class="optional">(необовʼязково)</span></label>
-            <input class="input" id="c-note" name="note" autocomplete="off" placeholder="Напр. щотижневий підрахунок">
+<form method="post" action="/inventory/count">
+    <div class="card" style="margin-bottom: 16px; padding: 14px 20px;">
+        <div class="form-row">
+            <div class="form-group" style="flex:1;">
+                <label>Примітка (необовʼязково)</label>
+                <input name="note" class="form-control" placeholder="напр. Щотижневий підрахунок, неділя ввечері">
+            </div>
         </div>
-    </section>
+    </div>
 
-    <div class="save-bar">
-        <span class="small muted"><b class="num" data-count-done>0</b> з {{ items | length }}</span>
-        <a class="btn btn-ghost" href="/inventory/history">Скасувати</a>
-        <button class="btn btn-primary" type="submit">{{ icon('check') }}Зберегти</button>
+    <div class="card">
+        <input type="text" id="count-search" placeholder="Пошук інгредієнтів..."
+               style="width:100%; padding:8px 12px; border:1px solid var(--border); border-radius:8px; font-size:.9em; margin-bottom:12px;">
+        <table id="count-table">
+            <thead>
+                <tr>
+                    <th>Інгредієнт</th>
+                    <th>Одиниця</th>
+                    <th class="text-right count-sys-col">Системна к-сть</th>
+                    <th class="text-right">Фактична к-сть</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in items %}
+                <tr class="count-row">
+                    <td>
+                        <div class="count-name-cell">
+                            <span>{{ i['name'] }}</span>
+                            <span class="sys-qty-inline">сист.: {{ '{:.1f}'.format(i['quantity']) }} {{ i['unit'] }}</span>
+                        </div>
+                    </td>
+                    <td class="text-muted">{{ i['unit'] }}</td>
+                    <td class="text-right current-qty count-sys-col">{{ '{:.1f}'.format(i['quantity']) }}</td>
+                    <td class="text-right">
+                        <input type="number" name="qty_{{ i['id'] }}" class="count-input"
+                               step="0.01" placeholder="—"
+                               onfocus="if(!this.value)this.value=this.placeholder=='—'?'':'0'">
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="count-save-bar">
+        <span class="text-muted" style="font-size:.8em; align-self:center;">Порожні поля = не рахував (буде пропущено)</span>
+        <a href="/inventory" class="btn btn-outline">Скасувати</a>
+        <button type="submit" class="btn btn-primary" onclick="return confirm('Зберегти інвентаризацію? Це оновить усі залишки.');">
+            ✓ Зберегти інвентаризацію
+        </button>
     </div>
 </form>
+
 {% endblock %}
 
 {% block extra_js %}
-<script src="/static/pages/stock.js?v=1"></script>
+<script>
+document.getElementById('count-search').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('#count-table tbody tr').forEach(tr => {
+        const name = tr.children[0].textContent.toLowerCase();
+        tr.style.display = name.includes(q) ? '' : 'none';
+    });
+});
+// Enter → next input (mobile friendly)
+document.querySelectorAll('.count-input').forEach((input, idx, all) => {
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const next = all[idx + 1];
+            if (next) { next.focus(); next.select(); }
+        }
+    });
+});
+</script>
 {% endblock %}

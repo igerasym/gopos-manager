@@ -1,7 +1,6 @@
-"""Wastage (Списання) routes."""
+"""Wastage (списання псування) routes."""
 import csv
 import io
-import re
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
@@ -11,50 +10,24 @@ from fastapi.templating import Jinja2Templates
 from app.db import get_db
 from app.services.recipes import get_cost_lookup
 from app.gopos_api import warsaw_today
-from app.routes.inventory import low_stock_count, parse_decimal
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 router = APIRouter()
 
 REASONS = ['write-off', 'spoiled', 'broken', 'expired', 'overproduction', 'other']
 REASON_UA = {
-    'write-off': 'Списано на касі',
+    'write-off': 'Списання (GoPos)',
     'spoiled': 'Зіпсовано',
-    'broken': 'Розбито / розлито',
+    'broken': 'Розбито/розлито',
     'expired': 'Прострочено',
-    'overproduction': 'Залишилось / перевиробництво',
+    'overproduction': 'Перевиробництво',
     'other': 'Інше',
 }
-MONTHS_UA = ['січень', 'лютий', 'березень', 'квітень', 'травень', 'червень',
-             'липень', 'серпень', 'вересень', 'жовтень', 'листопад', 'грудень']
-_MONTH_RE = re.compile(r'^\d{4}-(0[1-9]|1[0-2])$')
-_DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
-
-
-def manual_reason_choices() -> list[tuple[str, str]]:
-    """Reasons a person can pick (GoPOS write-offs are a source, not a reason)."""
-    return [(r, REASON_UA[r]) for r in REASONS if r != 'write-off']
 
 
 def _is_admin(request: Request) -> bool:
     user = getattr(request.state, 'user', None)
     return bool(user and user['role'] == 'admin')
-
-
-def _month_bounds(month: str) -> tuple[str, str]:
-    year, mon = int(month[:4]), int(month[5:7])
-    end = f'{year + 1 if mon == 12 else year}-{1 if mon == 12 else mon + 1:02d}-01'
-    return month + '-01', end
-
-
-def shift_month(month: str, delta: int) -> str:
-    year, mon = int(month[:4]), int(month[5:7]) - 1 + delta
-    year += mon // 12
-    return f'{year}-{mon % 12 + 1:02d}'
-
-
-def month_label(month: str) -> str:
-    return f'{MONTHS_UA[int(month[5:7]) - 1]} {month[:4]}'
 
 
 def _price_rows(rows) -> list:
@@ -73,16 +46,23 @@ def _price_rows(rows) -> list:
             unit_cost = product_cost.get(d['label'], 0) or 0
             d['cost'] = d['quantity'] * unit_cost
             d['cost_known'] = unit_cost > 0
-            d['unit'] = 'szt'
+            d['unit'] = 'шт'
         else:
             d['cost_known'] = d['cost'] > 0
         out.append(d)
     return out
 
 
-def month_rows(db, month: str) -> list:
-    """All wastage rows of a month (GoPOS write-offs by product + manual by ingredient), priced."""
-    month_start, month_end = _month_bounds(month)
+@router.get('/wastage', response_class=HTMLResponse)
+async def wastage_page(request: Request, month: str = ''):
+    current_month = month or warsaw_today()[:7]
+    month_start = current_month + '-01'
+    year, mon = int(current_month[:4]), int(current_month[5:7])
+    month_end = f'{year + 1 if mon == 12 else year}-{1 if mon == 12 else mon + 1:02d}-01'
+
+    db = get_db()
+
+    # Combined view: GoPos write-offs (by product) + manual (by ingredient)
     rows = db.execute('''
         SELECT w.id, w.date, w.quantity, w.reason, w.note, w.source,
                COALESCE(i.name, w.product_name, '—') as label,
@@ -96,66 +76,45 @@ def month_rows(db, month: str) -> list:
         WHERE w.date >= ? AND w.date < ?
         ORDER BY w.date DESC, w.id DESC
     ''', (month_start, month_end)).fetchall()
-    return _price_rows(rows)
 
+    rows = _price_rows(rows)
+    total_cost = sum(r['cost'] for r in rows)
+    unpriced = sorted({r['label'] for r in rows if r['source'] == 'gopos' and not r['cost_known']})
+    gopos_count = sum(1 for r in rows if r['source'] == 'gopos')
+    manual_count = len(rows) - gopos_count
 
-def summarize(rows: list) -> dict:
-    """Known-cost total, top losses (known cost only), names without a cost, and by-reason
-    totals where every GoPOS write-off counts under 'write-off' (its source, not a reason)."""
-    total_cost = sum(r['cost'] for r in rows if r['cost_known'])
-    unpriced = sorted({r['label'] for r in rows if not r['cost_known']})
-    by_item = {}
-    for r in rows:
-        if not r['cost_known']:
-            continue
-        d = by_item.setdefault(r['label'], {'qty': 0.0, 'cost': 0.0, 'unit': r['unit'], 'source': r['source']})
-        d['qty'] += r['quantity']
-        d['cost'] += r['cost']
-    top = sorted(by_item.items(), key=lambda x: x[1]['cost'], reverse=True)[:10]
+    # By reason
     by_reason = {}
     for r in rows:
-        key = 'write-off' if r['source'] == 'gopos' else r['reason']
-        d = by_reason.setdefault(key, {'count': 0, 'cost': 0.0})
-        d['count'] += 1
-        d['cost'] += r['cost'] if r['cost_known'] else 0
-    reasons = sorted(by_reason.items(), key=lambda x: (-x[1]['cost'], -x[1]['count']))
-    return {'total_cost': total_cost, 'unpriced': unpriced, 'top_losers': top, 'by_reason': reasons}
+        key = r['reason']
+        by_reason.setdefault(key, {'count': 0, 'cost': 0.0})
+        by_reason[key]['count'] += 1
+        by_reason[key]['cost'] += r['cost']
 
+    # By product/ingredient (top losers — only where cost is known)
+    by_item = {}
+    for r in rows:
+        key = r['label']
+        by_item.setdefault(key, {'qty': 0.0, 'cost': 0.0, 'unit': r['unit']})
+        by_item[key]['qty'] += r['quantity']
+        by_item[key]['cost'] += r['cost']
+    top_losers = sorted(by_item.items(), key=lambda x: x[1]['cost'], reverse=True)[:10]
 
-@router.get('/wastage', response_class=HTMLResponse)
-async def wastage_page(request: Request, month: str = '', saved: str = ''):
-    today = warsaw_today()
-    current_month = month if _MONTH_RE.match(month or '') else today[:7]
-    prev_month = shift_month(current_month, -1)
-    next_month = shift_month(current_month, 1)
-
-    db = get_db()
-    rows = month_rows(db, current_month)
-    summary = summarize(rows)
-    prev_total = summarize(month_rows(db, prev_month))['total_cost']
-    month_start, month_end = _month_bounds(current_month)
-    revenue = db.execute('SELECT COALESCE(SUM(total_money), 0) FROM sales WHERE date >= ? AND date < ?',
-                         (month_start, month_end)).fetchone()[0]
     ingredients = db.execute('SELECT id, name, unit FROM ingredients ORDER BY name').fetchall()
+    months = db.execute('''
+        SELECT DISTINCT substr(date, 1, 7) as month FROM wastage ORDER BY month DESC
+    ''').fetchall()
     db.close()
 
-    gopos_count = sum(1 for r in rows if r['source'] == 'gopos')
     return templates.TemplateResponse(request, 'wastage.html', context={
-        'rows': rows, 'current_month': current_month, 'month_label': month_label(current_month),
-        'prev_month': prev_month, 'next_month': next_month if next_month <= today[:7] else '',
-        'is_current_month': current_month == today[:7],
-        'total_cost': summary['total_cost'], 'unpriced': summary['unpriced'],
-        'top_losers': summary['top_losers'], 'by_reason': summary['by_reason'],
-        'prev_total': prev_total, 'prev_month_label': month_label(prev_month),
-        'revenue': revenue,
-        'share_pct': summary['total_cost'] / revenue * 100 if revenue else None,
-        'reason_ua': REASON_UA,
-        'wastage_reasons': manual_reason_choices(),
-        'wastage_ingredients': ingredients,
-        'gopos_count': gopos_count, 'manual_count': len(rows) - gopos_count,
+        'rows': rows, 'total_cost': total_cost, 'current_month': current_month,
+        'by_reason': by_reason, 'reason_ua': REASON_UA,
+        'manual_reasons': [r for r in REASONS if r != 'write-off'],
+        'top_losers': top_losers, 'ingredients': ingredients, 'months': months,
+        'gopos_count': gopos_count, 'manual_count': manual_count,
         'is_admin': _is_admin(request),
-        'now_date': today, 'saved': saved,
-        'low_count': low_stock_count(),
+        'unpriced': unpriced,
+        'now_date': warsaw_today(),
     })
 
 
@@ -163,32 +122,29 @@ async def wastage_page(request: Request, month: str = '', saved: str = ''):
 async def add_wastage(
     request: Request,
     ingredient_id: int = Form(...),
-    quantity: str = Form(...),
+    quantity: float = Form(...),
     reason: str = Form('spoiled'),
     note: str = Form(''),
     date: str = Form(''),
 ):
     user = request.state.user
-    today = date if _DATE_RE.match(date or '') else warsaw_today()
+    today = date or warsaw_today()
     month = today[:7]
-    qty_v = parse_decimal(quantity, 0)
-    if reason not in REASON_UA or reason == 'write-off':
-        reason = 'other'
 
     db = get_db()
     # Deduct from stock
     db.execute(
         'UPDATE ingredients SET quantity = MAX(0, quantity - ?) WHERE id = ?',
-        (qty_v, ingredient_id)
+        (quantity, ingredient_id)
     )
     db.execute(
         'INSERT INTO wastage (date, ingredient_id, quantity, reason, note, source, user_id) '
         'VALUES (?,?,?,?,?,\'manual\',?)',
-        (today, ingredient_id, qty_v, reason, note, user['id'])
+        (today, ingredient_id, quantity, reason, note, user['id'])
     )
     db.commit()
     db.close()
-    return RedirectResponse(f'/wastage?month={month}&saved=add', status_code=303)
+    return RedirectResponse(f'/wastage?month={month}', status_code=303)
 
 
 @router.post('/wastage/delete/{wastage_id}')
@@ -211,13 +167,15 @@ async def delete_wastage(wastage_id: int):
     else:
         month = warsaw_today()[:7]
     db.close()
-    return RedirectResponse(f'/wastage?month={month}&saved=delete', status_code=303)
+    return RedirectResponse(f'/wastage?month={month}', status_code=303)
 
 
 @router.get('/export/wastage.csv')
 async def export_wastage_csv(request: Request, month: str = ''):
-    current_month = month if _MONTH_RE.match(month or '') else warsaw_today()[:7]
-    month_start, month_end = _month_bounds(current_month)
+    current_month = month or warsaw_today()[:7]
+    month_start = current_month + '-01'
+    year, mon = int(current_month[:4]), int(current_month[5:7])
+    month_end = f'{year + 1 if mon == 12 else year}-{1 if mon == 12 else mon + 1:02d}-01'
 
     db = get_db()
     rows = db.execute('''
@@ -245,7 +203,7 @@ async def export_wastage_csv(request: Request, month: str = ''):
         if show_cost:
             row.append(round(r['cost'], 2))
         w.writerow(row + [REASON_UA.get(r['reason'], r['reason']),
-                          'Каса' if r['source'] == 'gopos' else 'Вручну', r['note'] or ''])
+                          'GoPos' if r['source'] == 'gopos' else 'Вручну', r['note'] or ''])
     buf.seek(0)
     return StreamingResponse(
         iter([buf.getvalue()]),

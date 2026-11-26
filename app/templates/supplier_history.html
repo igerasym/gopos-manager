@@ -1,67 +1,121 @@
 {% extends "base.html" %}
-{% from "_ui.html" import page_header, empty_state %}
-{% block page_title %}Постачальники{% endblock %}
-{% block main_class %}{% endblock %}
-
-{% block extra_style %}
-.sup-list a.row[aria-current=true] { background: var(--accent-soft); margin: 0 -12px; padding-left: 12px; padding-right: 12px; border-radius: 12px; }
-.sup-month { padding-top: var(--s3); }
-.sup-month + .sup-month { border-top: 1px solid var(--border); margin-top: var(--s2); }
-.sup-month .card-head { margin-bottom: 0; }
-@media (max-width: 1023px) { .sup-detail { order: -1; } }
-{% endblock %}
-
 {% block content %}
-{% call page_header('Постачальники', eyebrow='Скільки витратили за фактурами') %}
-  <a class="btn btn-secondary" href="/expenses">{{ icon('chevron-left') }}Гроші</a>
-{% endcall %}
 
-{% if not vendors %}
-<section class="card">{{ empty_state('truck', 'Доданих фактур ще немає', 'Тут зʼявляться постачальники, щойно ви підтвердите першу фактуру.', '/expenses#invoices', 'До фактур') }}</section>
-{% else %}
-<div class="cols-2">
-  <section class="card sup-list" aria-labelledby="v-h">
-    <header class="card-head"><h2 id="v-h">Усі постачальники</h2><span class="small muted num">{{ vendors_total | zl(0) }} разом</span></header>
-    <ul class="rows">
-      {% for v in vendors %}
-      <li><a class="row" href="/suppliers/history?vendor={{ v['vendor'] | urlencode }}"{% if selected_vendor == v['vendor'] %} aria-current="true"{% endif %}>
-        <span class="row-lead">{{ icon('truck') }}</span>
-        <span class="row-main"><span class="row-title">{{ v['vendor'] }}</span>
-          <span class="row-sub">{{ v['count'] }} {{ v['count'] | plural('фактура', 'фактури', 'фактур') }}{% if v['span'] %} · {{ v['span'] }}{% endif %}</span></span>
-        <span class="row-trail"><span class="row-value num">{{ v['total_sum'] | zl(0) }}</span></span>
-        <span class="row-chev">{{ icon('chevron-right') }}</span>
-      </a></li>
-      {% endfor %}
-    </ul>
-  </section>
-
-  <section class="card sup-detail{% if not selected_vendor %} only-desktop{% endif %}" aria-labelledby="d-h">
-    {% if selected_vendor %}
-    <header class="card-head"><h2 id="d-h">{{ selected_vendor }}</h2>
-      <span class="small muted">{{ invoices | length }} {{ invoices | length | plural('фактура', 'фактури', 'фактур') }} · <span class="num">{{ invoices | sum(attribute='total') | zl }}</span></span></header>
-    {% if by_month %}
-      {% for m in by_month %}
-      <div class="sup-month">
-        <header class="card-head"><h3 class="qlabel">{{ m.label | capitalize }}</h3><span class="num strong">{{ m.total | zl }}</span></header>
-        <ul class="rows">
-          {% for inv in m['items'] %}
-          <li class="row">
-            <span class="row-main"><span class="row-title">{% if inv['invoice_number'] %}№ {{ inv['invoice_number'] }}{% else %}{{ inv['file_name'] }}{% endif %}</span>
-              <span class="row-sub">{{ inv['category'] }}</span></span>
-            <span class="row-value num">{{ inv['total'] | zl }}</span>
-            {% if inv['file_id'] %}<a class="btn btn-quiet btn-icon" href="https://drive.google.com/file/d/{{ inv['file_id'] }}/view" target="_blank" rel="noopener" aria-label="Відкрити фактуру у Google Drive" title="Відкрити фактуру">{{ icon('file') }}</a>{% endif %}
-          </li>
-          {% endfor %}
-        </ul>
-      </div>
-      {% endfor %}
-    {% else %}
-      {{ empty_state('file', 'Фактур немає', 'Для цього постачальника ще немає доданих фактур.') }}
-    {% endif %}
-    {% else %}
-      {{ empty_state('truck', 'Оберіть постачальника', 'Тут буде список його фактур по місяцях.') }}
-    {% endif %}
-  </section>
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; gap:12px; flex-wrap:wrap;">
+    <h2 style="margin:0;">Фактури по постачальнику</h2>
+    <a href="/expenses" class="btn btn-outline btn-sm">← Витрати</a>
 </div>
-{% endif %}
+
+<div class="grid-2" style="margin-bottom:0; gap:16px; align-items:start;">
+
+    <!-- Left: vendors list -->
+    <div class="card" style="max-height:calc(100vh - 160px); overflow-y:auto;">
+        <div class="card-header"><div class="card-title">Постачальники</div></div>
+        {% if vendors %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Постачальник</th>
+                    <th class="text-right">Фактур</th>
+                    <th class="text-right">Разом zł</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in vendors %}
+                <tr style="cursor:pointer; {% if selected_vendor == v['vendor'] %}background:var(--accent-light, #eef2ff);{% endif %}"
+                    onclick="window.location='/suppliers/history?vendor={{ v['vendor']|urlencode }}'">
+                    <td>
+                        <span style="font-weight:{% if selected_vendor == v['vendor'] %}700{% else %}500{% endif %};">
+                            {{ v['vendor'] }}
+                        </span>
+                        <div style="font-size:.75em; color:var(--text-secondary);">{{ v['first_month'] }}{% if v['first_month'] != v['last_month'] %} → {{ v['last_month'] }}{% endif %}</div>
+                    </td>
+                    <td class="text-right text-muted">{{ v['count'] }}</td>
+                    <td class="text-right" style="font-weight:600; color:var(--red);">{{ '{:,.0f}'.format(v['total_sum']) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr style="border-top:2px solid var(--border); font-weight:700;">
+                    <td>Разом</td>
+                    <td class="text-right">{{ vendors|sum(attribute='count') }}</td>
+                    <td class="text-right" style="color:var(--red);">{{ '{:,.0f}'.format(vendors|sum(attribute='total_sum')) }} zł</td>
+                </tr>
+            </tfoot>
+        </table>
+        {% else %}
+        <p style="padding:24px; text-align:center; color:var(--text-secondary);">Немає схвалених фактур</p>
+        {% endif %}
+    </div>
+
+    <!-- Right: invoice list for selected vendor -->
+    <div class="card">
+        {% if selected_vendor %}
+        <div class="card-header">
+            <div>
+                <div class="card-title">{{ selected_vendor }}</div>
+                <div class="card-subtitle">{{ invoices|length }} фактур · {{ '{:,.2f}'.format(invoices|sum(attribute='total')) }} zł</div>
+            </div>
+        </div>
+        {% if invoices %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Місяць</th>
+                    <th>Фактура №</th>
+                    <th>Категорія</th>
+                    <th class="text-right">Сума</th>
+                    <th style="width:40px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set months_seen = namespace(last='') %}
+                {% set month_total = namespace(val=0) %}
+                {% for inv in invoices %}
+                {% if inv['month'] != months_seen.last %}
+                    {% if months_seen.last %}
+                    <tr style="background:var(--bg); font-size:.8em;">
+                        <td colspan="3" class="text-muted" style="padding-left:16px;">Разом {{ months_seen.last }}</td>
+                        <td class="text-right" style="font-weight:600; color:var(--red);">{{ '{:,.2f}'.format(month_total.val) }} zł</td>
+                        <td></td>
+                    </tr>
+                    {% endif %}
+                    {% set months_seen.last = inv['month'] %}
+                    {% set month_total.val = 0 %}
+                {% endif %}
+                {% set month_total.val = month_total.val + inv['total'] %}
+                <tr>
+                    <td class="text-muted" style="font-size:.85em;">{{ inv['month'] }}</td>
+                    <td style="font-size:.85em;">{{ inv['invoice_number'] or inv['file_name'][:30] }}</td>
+                    <td><span class="badge badge-orange" style="font-size:.72em;">{{ inv['category'] }}</span></td>
+                    <td class="text-right" style="font-weight:600;">{{ '{:,.2f}'.format(inv['total']) }} zł</td>
+                    <td class="text-right">
+                        {% if inv['file_id'] %}
+                        <a href="https://drive.google.com/file/d/{{ inv['file_id'] }}/view" target="_blank"
+                           class="text-muted" style="font-size:.8em;" title="Відкрити у Drive">📄</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if months_seen.last %}
+                <tr style="background:var(--bg); font-size:.8em;">
+                    <td colspan="3" class="text-muted" style="padding-left:16px;">Разом {{ months_seen.last }}</td>
+                    <td class="text-right" style="font-weight:600; color:var(--red);">{{ '{:,.2f}'.format(month_total.val) }} zł</td>
+                    <td></td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="padding:24px; text-align:center; color:var(--text-secondary);">Немає фактур</p>
+        {% endif %}
+        {% else %}
+        <div style="padding:40px; text-align:center; color:var(--text-secondary);">
+            <div style="font-size:2em; margin-bottom:8px;">📄</div>
+            <div>Оберіть постачальника зліва</div>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
 {% endblock %}

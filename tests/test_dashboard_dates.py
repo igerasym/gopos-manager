@@ -41,36 +41,27 @@ def _get(**params):
 def test_default_opens_on_yesterday_when_nothing_sold_today():
     _sale(YESTERDAY, 500)
     html = _get()
-    assert 'Виручка за вчора' in html
-    assert '500,00' in html
-    assert '-100' not in html and '−100' not in html
+    assert f'value="{YESTERDAY}"' in html          # the date inputs
+    assert '500 zł' in html
+    assert '-100' not in html
 
 
 def test_default_opens_on_today_once_there_are_sales():
     _sale(YESTERDAY, 500)
     _sale(TODAY, 120)
     html = _get()
-    assert 'Виручка сьогодні' in html
-    assert 'День ще триває' in html                # no half-day vs full-day percentage
-    assert '-100' not in html and '−100' not in html
-
-
-def test_running_day_is_not_compared_with_a_full_day():
-    _sale(WEEK_AGO, 400)
-    _sale(TODAY, 120)
-    html = _get()
-    assert 'chip-ok' not in html.split('id="hero-h"')[1].split('stat-row')[0]
-    assert '400 zł' in html.replace('\u202f', ' ').replace('\xa0', ' ')   # last Wednesday, as a fact
-    assert 'минулої середи' in html
+    assert f'value="{TODAY}"' in html
+    assert 'день ще триває' in html                # no half-day vs full-day percentage
+    assert '-100' not in html
 
 
 def test_single_day_compares_with_same_weekday_last_week():
     _sale(WEEK_AGO, 400)
     _sale(YESTERDAY, 500)
     _sale('2026-11-17', 100)  # the day before WEEK_AGO must not be the yardstick
-    html = _get(date=YESTERDAY)
-    assert 'минулого вівторка' in html             # 24.11 is a Tuesday -> 17.11
-    assert '400%' in html                          # 500 vs 100
+    html = _get(date_from=YESTERDAY, date_to=YESTERDAY)
+    assert 'vs вт 17.11' in html                   # 24.11 is a Tuesday -> 17.11
+    assert '+400.0%' in html                       # 500 vs 100
 
 
 def test_multi_day_compares_with_previous_period_of_same_length():
@@ -79,64 +70,15 @@ def test_multi_day_compares_with_previous_period_of_same_length():
     _sale('2026-11-12', 300)
     _sale('2026-11-13', 300)
     html = _get(date_from='2026-11-12', date_to='2026-11-13')
-    assert 'попереднього періоду' in html
-    assert '200%' in html                          # 600 vs 200
-
-
-def test_week_compares_completed_days_only():
-    _sale('2026-11-16', 100)   # last Monday
-    _sale('2026-11-17', 100)   # last Tuesday
-    _sale('2026-11-23', 200)   # Monday
-    _sale('2026-11-24', 200)   # Tuesday
-    _sale(TODAY, 50)           # running Wednesday: left out of the comparison
-    html = _get(p='week')
-    assert 'минулого тижня за ті самі дні' in html
-    assert '100%' in html                          # 400 vs 200
-    assert 'день ще триває' in html
-
-
-def test_month_period_and_custom_range_sheet():
-    _sale('2026-11-02', 100)
-    html = _get(p='month')
-    assert 'Виручка за місяць' in html
-    assert 'id="sheet-range"' in html and 'name="date_from"' in html
+    assert 'vs попередній період' in html
+    assert '+200.0%' in html                       # 600 vs 200
 
 
 def test_empty_period_does_not_show_minus_100():
     _sale('2026-11-01', 300)
     html = _get(date_from='2026-11-20', date_to='2026-11-21')
-    assert '-100' not in html and '−100' not in html
-    assert 'продажів ще немає' in html
-
-
-def test_week_bars_have_ghost_and_link_to_day():
-    _sale(WEEK_AGO, 400)
-    _sale(TODAY, 120)
-    html = _get()
-    assert 'class="bar-ghost"' in html and 'is-partial' in html
-    assert f'href="/?date={YESTERDAY}"' in html
-
-
-def test_products_page_lists_sales_and_flags_missing_recipes():
-    _sale(TODAY, 120)
-    c = TestClient(app, follow_redirects=False)
-    c.cookies.set('session', sign_cookie('admin'))
-    html = c.get('/dashboard/products').text
-    assert 'Усі страви' in html and 'Latte' in html
-    assert 'Неповні дані' in html and 'Без рецепту' in html   # never "норма" without a recipe
-    assert 'ABC' not in html
-
-
-def test_products_page_is_admin_only():
-    db = get_db()
-    db.execute("INSERT INTO users (username, password_hash, role, display_name) VALUES ('chef', ?, 'chef', 'C')",
-               (hash_password('x'),))
-    db.commit()
-    db.close()
-    c = TestClient(app, follow_redirects=False)
-    c.cookies.set('session', sign_cookie('chef'))
-    assert c.get('/dashboard/products').status_code in (302, 303, 403)
-    assert c.get('/').status_code in (302, 303, 403)
+    assert '-100' not in html
+    assert 'немає попередніх даних' in html
 
 
 def test_csv_default_uses_warsaw_business_day():

@@ -5,7 +5,6 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.db import init_db, get_db
 from app.auth import hash_password, sign_cookie
-from app.templating import zl
 
 
 @pytest.fixture(autouse=True)
@@ -34,14 +33,14 @@ def _client(user):
 
 def test_inventory_hides_prices_from_chef():
     html = _client('chef').get('/inventory').text
-    assert 'Вартість запасу' not in html and 'zł' not in html
+    assert 'Ціна/од.' not in html
     assert 'name="unit_price"' not in html
     assert 'name="price"' not in html
 
 
 def test_inventory_shows_prices_to_admin():
-    html = _client('admin').get('/inventory?tab=stock').text
-    assert 'Вартість запасу' in html
+    html = _client('admin').get('/inventory').text
+    assert 'Ціна/од.' in html
     assert 'name="unit_price"' in html
 
 
@@ -75,8 +74,8 @@ def test_wastage_page_hides_costs_from_chef():
 
 def test_wastage_page_shows_costs_to_admin():
     html = _client('admin').get('/wastage').text
-    assert 'Втрати за' in html
-    assert zl(8.4) in html  # 2 L x 4.20
+    assert 'Вартість списань' in html
+    assert '8.40 zł' in html  # 2 L x 4.20
 
 
 def test_wastage_csv_has_cost_column_only_for_admin():

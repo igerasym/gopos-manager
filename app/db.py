@@ -243,18 +243,6 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_wastage_ingredient ON wastage(ingredient_id);
         CREATE INDEX IF NOT EXISTS idx_wastage_product ON wastage(product_name);
 
-        -- "Що потребує уваги" rows a user hid with "Сховати до завтра".
-        -- (kind, key) as produced by app/services/attention.py; hidden while today < until.
-        CREATE TABLE IF NOT EXISTS attention_dismissed (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL REFERENCES users(id),
-            kind TEXT NOT NULL,
-            key TEXT NOT NULL DEFAULT '',
-            until TEXT NOT NULL,
-            created_at TEXT DEFAULT (datetime('now')),
-            UNIQUE(user_id, kind, key)
-        );
-
         CREATE TABLE IF NOT EXISTS pos_products (
             product_name TEXT PRIMARY KEY,
             pos_kind TEXT NOT NULL DEFAULT 'unclassified',
