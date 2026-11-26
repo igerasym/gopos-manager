@@ -1,0 +1,44 @@
+{#- Quick-add wastage sheet (id="sheet-wastage"), shared by Склад and Списання.
+    Needs: wastage_ingredients (id, name, unit), wastage_reasons [(key, label)], now_date. -#}
+<dialog class="sheet" id="sheet-wastage" aria-labelledby="sheet-wastage-h">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head"><h2 id="sheet-wastage-h">Списати</h2>
+        <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+    <form method="post" action="/wastage/add" style="display:contents" data-unit-form>
+        <div class="sheet-body form">
+            <div class="field">
+                <label class="field-label" for="w-find">Інгредієнт</label>
+                <div class="search">{{ icon('search') }}<input class="input" type="search" id="w-find" placeholder="Пошук" autocomplete="off" data-filter-select="w-ing" aria-label="Пошук інгредієнта"></div>
+                <select class="select mt-2" id="w-ing" name="ingredient_id" required data-unit-source>
+                    <option value="">Оберіть інгредієнт</option>
+                    {% for i in wastage_ingredients %}
+                    <option value="{{ i['id'] }}" data-unit="{{ i['unit'] | unit_ua }}">{{ i['name'] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-grid">
+                <div class="field">
+                    <label class="field-label" for="w-q">Кількість</label>
+                    <div class="input-group"><input class="input" id="w-q" name="quantity" inputmode="decimal" autocomplete="off" required pattern="[0-9]+([.,][0-9]+)?"><span class="input-suffix" data-unit-target>—</span></div>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="w-d">Дата</label>
+                    <input class="input" id="w-d" name="date" type="date" value="{{ now_date }}">
+                </div>
+            </div>
+            <fieldset class="field reason-field">
+                <legend class="field-label">Причина</legend>
+                <div class="reason-chips">
+                    {% for key, label in wastage_reasons %}
+                    <label class="reason-chip"><input type="radio" name="reason" value="{{ key }}"{% if loop.first %} checked{% endif %}><span>{{ label }}</span></label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+            <div class="field">
+                <label class="field-label" for="w-n">Примітка <span class="optional">(необовʼязково)</span></label>
+                <input class="input" id="w-n" name="note" autocomplete="off">
+            </div>
+        </div>
+        <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button><button class="btn btn-primary" type="submit">Списати</button></div>
+    </form>
+</dialog>
