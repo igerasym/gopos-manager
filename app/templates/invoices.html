@@ -1,105 +1,83 @@
 {% extends "base.html" %}
+{% from "_ui.html" import page_header, empty_state %}
+{% block page_title %}Фактури в Google Drive{% endblock %}
+{% block main_class %}{% endblock %}
+
 {% block content %}
+{% call page_header('Фактури в Google Drive', eyebrow='Гроші') %}
+  <a class="btn btn-secondary" href="/expenses#invoices">{{ icon('chevron-left') }}Гроші</a>
+{% endcall %}
 
-<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <h2 style="margin:0;">📄 Фактури (Google Drive)</h2>
-</div>
+<div class="stack">
+  {% if error %}
+  <div class="notice notice-danger">{{ icon('x-circle') }}
+    <div class="notice-body"><div class="notice-title">Не вдалося відкрити Google Drive</div>{{ error }}</div></div>
+  {% endif %}
 
-{% if error %}
-<div class="card" style="border-left:4px solid var(--red); margin-bottom:16px;">
-    <p style="color:var(--red);">Помилка: {{ error }}</p>
-</div>
-{% endif %}
-
-<div class="card">
-    <div class="card-header"><div class="card-title">Файли ({{ files|length }})</div></div>
+  <section class="card" aria-labelledby="f-h">
+    <header class="card-head"><h2 id="f-h">Файли</h2><span class="small muted">{{ files | length }} {{ files | length | plural('файл', 'файли', 'файлів') }}</span></header>
     {% if files %}
-    <table>
-        <thead>
-            <tr>
-                <th>Файл</th>
-                <th>Тип</th>
-                <th>Дата</th>
-                <th style="width:100px;"></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for f in files %}
-            <tr>
-                <td style="font-weight:500;">{{ f['path'] or f['name'] }}</td>
-                <td class="text-muted" style="font-size:.85em;">
-                    {% if 'pdf' in f['mimeType'] %}PDF{% elif 'image' in f['mimeType'] %}IMG{% else %}{{ f['mimeType']|truncate(20) }}{% endif %}
-                </td>
-                <td class="text-muted" style="font-size:.85em;">{{ f.get('createdTime', '')[:10] }}</td>
-                <td class="text-right">
-                    {% if f['mimeType'] in ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff'] %}
-                    <button class="btn btn-primary btn-sm" style="font-size:.75em;"
-                            onclick="parseInvoice('{{ f['id'] }}', this)">Парсити</button>
-                    {% else %}
-                    <span class="text-muted" style="font-size:.75em;">—</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <ul class="rows">
+      {% for f in files %}
+      <li class="row">
+        <span class="row-lead">{{ icon('file') }}</span>
+        <span class="row-main"><span class="row-title">{{ f['path'] or f['name'] }}</span>
+          <span class="row-sub">{% if 'pdf' in f['mimeType'] %}PDF{% elif 'image' in f['mimeType'] %}Фото{% else %}{{ f['mimeType'] | truncate(20) }}{% endif %}
+            {%- if f.get('createdTime') %} · {{ f.get('createdTime', '')[:10] | shortdate }}{% endif %}</span></span>
+        {% if f['mimeType'] in supported %}
+        <button class="btn btn-secondary" type="button" data-parse="{{ f['id'] }}">Розпізнати</button>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
     {% else %}
-    <p class="text-muted" style="padding:20px; text-align:center;">
-        Немає файлів. Перевірте що папка розшарена на service account.
-    </p>
+    {{ empty_state('file', 'Файлів немає', 'Перевірте, що папку з фактурами відкрито для сервісного акаунта.') }}
     {% endif %}
+  </section>
 </div>
 
-<!-- Parse result modal -->
-<div id="parse-result" style="display:none; margin-top:16px;">
-    <div class="card">
-        <div class="card-header"><div class="card-title">Результат парсингу</div></div>
-        <div id="parse-content"></div>
-    </div>
-</div>
-
+<dialog class="sheet sheet-wide" id="sheet-parse" aria-labelledby="sheet-parse-h">
+  <div class="sheet-grip" aria-hidden="true"></div>
+  <div class="sheet-head"><h2 id="sheet-parse-h">Що розпізнали</h2>
+    <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+  <div class="sheet-body" id="parse-content"></div>
+</dialog>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-function parseInvoice(fileId, btn) {
+// Results come from a vendor PDF via OCR: every value goes through esc().
+function money(v) { return v ? Number(v).toFixed(2).replace('.', ',') + '\u00a0zł' : '—'; }
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-parse]');
+    if (!btn) return;
     btn.disabled = true;
-    btn.textContent = '⏳...';
-    fetch('/invoices/parse/' + fileId, { method: 'POST', credentials: 'same-origin' })
+    btn.setAttribute('aria-busy', 'true');
+    fetch('/invoices/parse/' + encodeURIComponent(btn.dataset.parse), { method: 'POST', credentials: 'same-origin' })
         .then(r => r.json())
         .then(data => {
-            btn.textContent = '✓';
-            if (data.error) {
-                document.getElementById('parse-content').innerHTML = 
-                    '<p style="color:var(--red); padding:12px;">Помилка: ' + esc(data.error) + '</p>';
+            btn.disabled = false;
+            btn.removeAttribute('aria-busy');
+            if (data.error) { toast('Не вдалося розпізнати: ' + String(data.error).substring(0, 80), { type: 'error' }); return; }
+            let html = '<p class="sentence"><b>' + esc(data.vendor || 'Постачальник невідомий') + '</b> · ' + esc(data.date || 'без дати') +
+                ' · <b class="num">' + esc(money(data.total)) + '</b></p>';
+            if (data.items && data.items.length) {
+                html += '<div class="table-wrap mt-3"><table class="table table-stack"><thead><tr><th scope="col">Товар</th><th scope="col" class="num">Кількість</th>' +
+                    '<th scope="col" class="num">Ціна</th><th scope="col" class="num">Сума</th></tr></thead><tbody>';
+                data.items.forEach(it => {
+                    html += '<tr><td class="cell-primary" data-label="Товар">' + esc(it.name || '') + '</td>' +
+                        '<td class="num" data-label="Кількість">' + esc(String(it.quantity || '').replace('.', ',')) + '</td>' +
+                        '<td class="num" data-label="Ціна">' + esc(money(it.unit_price)) + '</td>' +
+                        '<td class="num" data-label="Сума">' + esc(money(it.total)) + '</td></tr>';
+                });
+                html += '</tbody></table></div>';
             } else {
-                let html = '<div style="padding:12px;">';
-                html += '<p><strong>Постачальник:</strong> ' + esc(data.vendor || '—') + '</p>';
-                html += '<p><strong>Дата:</strong> ' + esc(data.date || '—') + '</p>';
-                html += '<p><strong>Сума:</strong> ' + (data.total || 0).toFixed(2) + ' zł</p>';
-                if (data.items && data.items.length > 0) {
-                    html += '<table><thead><tr><th>Товар</th><th>К-сть</th><th>Ціна</th><th>Сума</th></tr></thead><tbody>';
-                    data.items.forEach(item => {
-                        html += '<tr><td>' + esc(item.name || '') + '</td>';
-                        html += '<td class="text-right">' + esc(item.quantity || '') + '</td>';
-                        html += '<td class="text-right">' + (item.unit_price ? item.unit_price.toFixed(2) : '') + '</td>';
-                        html += '<td class="text-right">' + (item.total ? item.total.toFixed(2) : '') + '</td></tr>';
-                    });
-                    html += '</tbody></table>';
-                } else {
-                    html += '<p class="text-muted">Товари не розпізнані</p>';
-                }
-                html += '</div>';
-                document.getElementById('parse-content').innerHTML = html;
+                html += '<p class="muted mt-3">Позиції не розпізнано.</p>';
             }
-            document.getElementById('parse-result').style.display = 'block';
+            document.getElementById('parse-content').innerHTML = html;
+            openSheet('sheet-parse', btn);
         })
-        .catch(err => {
-            btn.textContent = '✗';
-            document.getElementById('parse-content').innerHTML = 
-                '<p style="color:var(--red); padding:12px;">Помилка запиту</p>';
-            document.getElementById('parse-result').style.display = 'block';
-        });
-}
+        .catch(() => { btn.disabled = false; btn.removeAttribute('aria-busy'); toast('Не вдалося розпізнати', { type: 'error' }); });
+});
 </script>
 {% endblock %}

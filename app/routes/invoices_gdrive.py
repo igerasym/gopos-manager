@@ -6,26 +6,28 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from app.gdrive_invoices import list_invoices, download_file, parse_invoice_textract, update_ingredient_prices
+from app.gdrive_invoices import list_invoices, download_file, parse_invoice_textract, update_ingredient_prices  # noqa: F401
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 log = logging.getLogger(__name__)
 
 router = APIRouter()
 
+SUPPORTED = ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']
+
 
 @router.get('/invoices', response_class=HTMLResponse)
 async def invoices_page(request: Request):
     """Show list of invoices from Google Drive."""
+    error = ''
     try:
         files = list_invoices()
     except Exception as e:
         log.error(f"Error listing invoices: {e}")
-        files = []
+        files, error = [], str(e)
 
     return templates.TemplateResponse(request, 'invoices.html', context={
-        'files': files,
-        'error': str(e) if not files and 'e' in dir() else '',
+        'files': files, 'error': error, 'supported': SUPPORTED,
     })
 
 

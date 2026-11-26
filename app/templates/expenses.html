@@ -1,589 +1,593 @@
 {% extends "base.html" %}
+{% from "_ui.html" import page_header %}
+{% block page_title %}Гроші{% endblock %}
+{% block main_class %}{% endblock %}
+
+{% block extra_style %}
+.month-switch { display: inline-flex; align-items: center; gap: var(--s2); }
+.month-switch .month-name { min-width: 8.5rem; text-align: center; font-weight: 600; }
+.month-switch [aria-disabled=true] { opacity: .4; pointer-events: none; }
+
+.mres > header { padding: 20px 20px 0; }
+.eq { display: grid; padding: 8px 20px; }
+.eq-it { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); min-width: 0; }
+.eq-it:first-child { border-top: 0; }
+.eq-op, .eq-opc { font-size: 1.5rem; color: var(--text-muted); text-align: center; font-weight: 500; }
+.eq-opc { display: none; }
+.eq-lb { color: var(--text-muted); font-weight: 500; font-size: .9375rem; }
+.eq-vl { font-size: 1.25rem; font-weight: 700; white-space: nowrap; text-align: right; }
+.eq-vl small { font-weight: 500; color: var(--text-muted); font-size: var(--fs-small); }
+.eq-res { margin: 6px -20px 0; padding: 14px 20px; background: var(--ok-bg); border-top: 0; }
+.eq-res.is-warn { background: var(--warn-bg); }
+.eq-res.is-loss { background: var(--danger-bg); }
+.eq-res .eq-lb { color: var(--text); font-weight: 700; }
+.eq-res .eq-vl { font-family: var(--f-serif); font-size: 1.75rem; color: var(--text); }
+.eq-tag { display: block; font-family: var(--f-ui); font-size: var(--fs-caption); font-weight: 700; color: var(--warn); }
+.mres .notice { border-radius: 0; padding: 16px 20px; }
+.forecast { display: flex; flex-direction: column; gap: 2px; margin: 10px 0 2px; }
+.forecast .big { font-size: 1.75rem; }
+.cmp { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 20px 4px; }
+.pnl { padding: 0 20px 16px; }
+.pnl summary, .cat > summary, .more-inv > summary { cursor: pointer; list-style: none; }
+.pnl summary::-webkit-details-marker, .cat > summary::-webkit-details-marker, .more-inv > summary::-webkit-details-marker { display: none; }
+.pnl summary { display: inline-flex; align-items: center; gap: 6px; min-height: var(--tap); color: var(--accent-text-on, var(--accent)); font-weight: 600; }
+.pnl[open] summary svg.i, .cat[open] > summary .row-chev svg.i { transform: rotate(180deg); }
+.pnl dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 0 var(--s4); }
+.pnl dt, .pnl dd { padding: 10px 0; border-top: 1px solid var(--border); margin: 0; }
+.pnl dd { text-align: right; font-weight: 600; white-space: nowrap; }
+.pnl dt small { display: block; color: var(--text-muted); font-size: var(--fs-small); }
+.pnl .total { font-weight: 700; }
+.cat > summary .row-value { min-width: 6.5rem; text-align: right; }
+.cat > summary .row-title { white-space: normal; }
+.cat-pct { color: var(--text-muted); font-size: var(--fs-small); width: 3rem; text-align: right; }
+.cat-items { padding: 0 0 8px 26px; }
+.cat-items .row { min-height: 52px; }
+.miss { border: 1.5px dashed var(--warn); border-radius: 12px; padding: 12px 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.miss > svg.i { color: var(--warn); }
+.miss .flex-1 { flex: 1 1 200px; }
+.inv { list-style: none; margin: 0; padding: 0; }
+.inv > li { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 14px 0; border-top: 1px solid var(--border); align-items: center; }
+.inv > li:first-child { border-top: 0; }
+.inv-v { font-weight: 600; overflow-wrap: anywhere; }
+.inv-d { font-size: var(--fs-small); color: var(--text-muted); overflow-wrap: anywhere; }
+.inv-a { text-align: right; font-weight: 700; white-space: nowrap; grid-column: 2; grid-row: 1; }
+.inv-st { grid-column: 1 / 3; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+.inv-st .btn { margin-left: auto; }
+.inv > li.inv-fail { display: block; background: var(--danger-bg); margin: 0 -20px; padding: 14px 20px; border-top: 0; }
+.inv-fail .inv-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+#invoices { container-type: inline-size; }
+@container (min-width: 460px) {
+  .inv > li { grid-template-columns: 1fr auto auto; }
+  .inv-st { grid-column: 2; grid-row: 1 / 3; margin: 0; justify-content: flex-end; }
+  .inv-a { grid-column: 3; grid-row: 1 / 3; min-width: 7rem; }
+  .inv-st .btn { margin-left: 0; }
+}
+.more-inv > summary { min-height: var(--tap); display: flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 600; border-top: 1px solid var(--border); }
+.miss-item { padding: 12px 0; border-top: 1px solid var(--border); }
+.miss-item:first-child { border-top: 0; }
+.miss-item .form-actions { display: flex; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s2); }
+.map-table td { vertical-align: middle; }
+@media (min-width: 1024px) {
+  .eq { grid-template-columns: 1fr 28px 1fr 28px 1fr 28px 1.15fr; align-items: center; padding: 24px 20px 18px; gap: 6px; }
+  .eq-it { display: block; border: 0; padding: 0; }
+  .eq-it .eq-op { display: none; }
+  .eq-opc { display: block; font-size: 1.75rem; }
+  .eq-lb { display: block; }
+  .eq-vl { text-align: left; font-size: 1.5rem; margin-top: 4px; }
+  .eq-res { margin: 0; padding: 14px 16px; border-radius: 12px; }
+  .eq-res .eq-vl { text-align: left; }
+}
+{% endblock %}
+
 {% block content %}
+{% macro exp_row(e) -%}
+<li><button class="row" type="button" data-sheet-open="sheet-edit" data-exp-id="{{ e.id }}" data-exp-name="{{ e.name }}"
+    data-exp-cat="{{ e.category }}" data-exp-amount="{{ e.amount | num(2) }}" data-exp-show="{{ e.amount | zl }}"
+    data-exp-note="{{ e.note or '' }}" data-exp-file="{{ e.invoice_file_id }}" aria-label="Змінити {{ e.name }}, {{ e.amount | zl }}">
+  <span class="row-main"><span class="row-title">{{ e.name }}</span>
+    {%- if e.note or e.recurring %}<span class="row-sub">{% if e.recurring %}Постійна{% endif %}{% if e.note and e.recurring %} · {% endif %}{{ e.note or '' }}</span>{% endif %}</span>
+  <span class="row-value num">{{ e.amount | zl }}</span>
+  <span class="row-chev">{{ icon('pencil', 18) }}</span>
+</button></li>
+{%- endmacro %}
+{% if done_message %}<div hidden data-toast-now="{{ done_message }}" data-toast-type="ok"></div>{% endif %}
+{% set r_incomplete = r.missing or r.coverage_incomplete %}
 
-<!-- Header -->
-<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; gap:12px; flex-wrap:wrap;">
-    <h2 style="margin:0;">Витрати</h2>
-    <div style="display:flex; gap:8px; align-items:center;">
-        <a href="/suppliers/history" class="btn btn-sm btn-outline">📄 По постачальниках</a>
-        <form method="get" action="/expenses" style="display:inline;">
-            <input type="month" name="month" value="{{ current_month }}" class="form-control" style="font-size:.85em;" onchange="this.form.submit()">
-        </form>
-        <button class="btn btn-outline btn-sm" onclick="document.getElementById('add-modal').classList.add('open')">+ Додати</button>
-    </div>
-</div>
-
-<!-- P&L Summary -->
-<div class="card" style="margin-bottom:16px; {% if net_profit >= 0 %}border-left:4px solid var(--green);{% else %}border-left:4px solid var(--red);{% endif %}">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; padding:4px 0;">
-        <div style="text-align:center;">
-            <div class="text-muted" style="font-size:.75em;">Виручка</div>
-            <div style="font-size:1.2em; font-weight:700; color:var(--green);">{{ '{:,.0f}'.format(revenue) }} zł</div>
-        </div>
-        <div style="font-size:1.2em; color:var(--text-muted);">−</div>
-        <div style="text-align:center;">
-            <div class="text-muted" style="font-size:.75em;">Витрати</div>
-            <div style="font-size:1.2em; font-weight:700; color:var(--red);">{{ '{:,.0f}'.format(total) }} zł</div>
-        </div>
-        <div style="font-size:1.2em; color:var(--text-muted);">=</div>
-        <div style="text-align:center;">
-            <div class="text-muted" style="font-size:.75em;">Прибуток</div>
-            <div style="font-size:1.2em; font-weight:700; {% if net_profit >= 0 %}color:var(--green);{% else %}color:var(--red);{% endif %}">
-                {{ '{:,.0f}'.format(net_profit) }} zł
-            </div>
-        </div>
-        {% if revenue > 0 %}
-        <div style="text-align:center;">
-            <div class="text-muted" style="font-size:.75em;">Рентабельність</div>
-            <div style="font-size:1.2em; font-weight:700;">{{ '{:.0f}'.format(net_profit / revenue * 100) }}%</div>
-        </div>
-        {% endif %}
-    </div>
-</div>
-
-<!-- Categories breakdown -->
-{% if by_category %}
-<div class="card" style="margin-bottom:16px;">
-    <div class="card-header">
-        <div class="card-title">📊 По категоріях</div>
-    </div>
-    <table>
-        <tbody>
-            {% for c in by_category %}
-            <tr>
-                <td style="font-weight:500;">{{ c['category'] }}</td>
-                <td class="text-right" style="font-weight:600;">{{ '{:,.2f}'.format(c['total']) }} zł</td>
-                <td class="text-right text-muted" style="font-size:.85em; width:60px;">
-                    {{ '{:.0f}'.format(c['total'] / total * 100) if total > 0 else 0 }}%
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% endif %}
-
-<!-- Pending alert -->
-{% if pending_invoices %}
-<div class="card" style="margin-bottom:16px; border-left:4px solid #fbbf24;">
-    <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0;">
-        <div>
-            <strong>⚠️ {{ pending_invoices|length }} фактур чекає підтвердження</strong>
-            <span class="text-muted" style="font-size:.85em; margin-left:8px;">
-                на суму {{ '{:,.0f}'.format(pending_invoices|sum(attribute='total')) }} zł
-            </span>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="document.getElementById('pending-section').scrollIntoView({behavior:'smooth'})">
-            Розглянути →
-        </button>
-    </div>
-</div>
-{% endif %}
-
-<!-- Expenses list -->
-<div class="card">
-    <div class="card-header">
-        <div class="card-title">💰 Всі витрати — {{ current_month }}</div>
-        <a href="/export/expenses.csv?month={{ current_month }}"
-           class="btn btn-sm btn-outline" download>⬇ CSV</a>
-    </div>
-    {% if expenses %}
-    <table>
-        <thead>
-            <tr>
-                <th>Назва</th>
-                <th>Категорія</th>
-                <th class="text-right">Сума</th>
-                <th class="text-right" style="width:60px;">К-сть</th>
-                <th style="width:40px;"></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for e in expenses %}
-            <tr {% if e['count'] > 1 %}style="cursor:pointer;" onclick="toggleGroup('{{ loop.index }}')"{% endif %}>
-                <td style="font-weight:500;">
-                    {% if e['count'] > 1 %}<span style="font-size:.8em; color:var(--text-muted);">▸</span>{% endif %}
-                    {{ e['name'] }}
-                </td>
-                <td><span class="badge badge-orange">{{ e['category'] }}</span></td>
-                <td class="text-right" style="font-weight:600;">
-                    {% if e['count'] == 1 %}
-                    <span style="cursor:pointer; border-bottom:1px dashed var(--border);"
-                          onclick="event.stopPropagation(); editAmount(this, {{ e['items'][0]['id'] }}, {{ e['items'][0]['amount'] }})" title="Редагувати">
-                        {{ '{:,.2f}'.format(e['amount']) }} zł
-                    </span>
-                    {% else %}
-                    {{ '{:,.2f}'.format(e['amount']) }} zł
-                    {% endif %}
-                </td>
-                <td class="text-right text-muted" style="font-size:.85em;">
-                    {% if e['count'] > 1 %}×{{ e['count'] }}{% endif %}
-                </td>
-                <td class="text-right">
-                    {% if e['count'] == 1 %}
-                    {% set inv = e['items'][0].get('invoice') %}
-                    {% if inv %}
-                        <a href="https://drive.google.com/file/d/{{ inv['file_id'] }}/view" target="_blank"
-                           class="text-muted" style="font-size:.7em; margin-right:4px;" title="Відкрити фактуру"
-                           onclick="event.stopPropagation()">📄</a>
-                    {% endif %}
-                    <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
-                            onclick="event.stopPropagation(); deleteExpense('/expenses/delete/{{ e['items'][0]['id'] }}', '{{ e['name'] }}')">✕</button>
-                    {% endif %}
-                </td>
-            </tr>
-            {% if e['count'] > 1 %}
-            <tr id="group-{{ loop.index }}" style="display:none; background:var(--bg);">
-                <td colspan="5" style="padding:0;">
-                    <table style="width:100%; margin:0;">
-                        {% for item in e['items'] %}
-                        <tr>
-                            <td style="padding-left:32px; font-size:.85em;" class="text-muted">
-                                {% if item.get('invoice') and item['invoice']['invoice_number'] %}
-                                    Фактура #{{ item['invoice']['invoice_number'] }}
-                                {% elif item.get('invoice') %}
-                                    {{ item['invoice']['file_name'][:40] }}
-                                {% else %}
-                                    {{ item['note'] or '—' }}
-                                {% endif %}
-                            </td>
-                            <td class="text-right" style="font-size:.85em;">
-                                <span style="cursor:pointer; border-bottom:1px dashed var(--border);"
-                                      onclick="editAmount(this, {{ item['id'] }}, {{ item['amount'] }})" title="Редагувати">
-                                    {{ '{:,.2f}'.format(item['amount']) }} zł
-                                </span>
-                            </td>
-                            <td class="text-right" style="width:80px; padding-right:16px; white-space:nowrap;">
-                                {% if item.get('invoice') %}
-                                <a href="https://drive.google.com/file/d/{{ item['invoice']['file_id'] }}/view" target="_blank"
-                                   class="text-muted" style="font-size:.75em; margin-right:6px;" title="Відкрити фактуру">📄</a>
-                                {% endif %}
-                                <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
-                                        onclick="deleteExpense('/expenses/delete/{{ item['id'] }}', '{{ e['name'] }}')">✕</button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </table>
-                </td>
-            </tr>
-            {% endif %}
-            {% endfor %}
-        </tbody>
-    </table>
+{% call page_header('Гроші', eyebrow=((today | shortdate) ~ ' · ' ~ month_nom) if r.is_current else '') %}
+  <nav class="month-switch" aria-label="Місяць">
+    <a class="btn btn-secondary btn-icon" href="/expenses?month={{ prev_month }}" aria-label="Попередній місяць: {{ prev_nom }}">{{ icon('chevron-left') }}</a>
+    <span class="month-name" aria-current="date">{{ month_nom | capitalize }}</span>
+    {% if has_next %}
+    <a class="btn btn-secondary btn-icon" href="/expenses?month={{ next_month }}" aria-label="Наступний місяць: {{ next_nom }}">{{ icon('chevron-right') }}</a>
     {% else %}
-    <p class="text-muted" style="padding:20px 0; text-align:center;">Немає витрат за цей місяць.</p>
+    <span class="btn btn-secondary btn-icon" aria-disabled="true" aria-label="Наступного місяця ще немає">{{ icon('chevron-right') }}</span>
     {% endif %}
-</div>
+  </nav>
+  <button class="btn btn-primary only-desktop" type="button" data-sheet-open="sheet-add">{{ icon('plus') }}Витрата</button>
+{% endcall %}
 
-<!-- Invoices section (unified: pending + all) -->
-<div id="pending-section" class="card" style="margin-top:16px;">
-    <div class="card-header">
-        <div class="card-title">📄 Фактури {% if pending_invoices %}<span style="color:#fbbf24; font-size:.85em;">· {{ pending_invoices|length }} чекають</span>{% endif %}</div>
-        <div style="display:flex; gap:8px;">
-            <button class="btn btn-outline btn-sm" onclick="scanDrive(this)" title="Знайти нові фактури в Google Drive">🔍 Знайти нові</button>
-            <form method="post" action="/expenses/process-invoices" style="display:inline;">
-                <input type="hidden" name="month" value="{{ current_month }}">
-                <button class="btn btn-primary btn-sm" type="submit" title="Розпізнати через Textract + AI">⚡ Розпізнати</button>
-            </form>
-        </div>
+<div class="stack">
+  {# ── Результат місяця ── #}
+  <section class="card card-flush mres" id="result" aria-labelledby="r-h">
+    <header class="card-head"><h2 id="r-h">Результат {{ month_gen }}</h2>
+      <span class="small muted">{{ r.from[8:] | int }}–{{ r.to | shortdate(weekday=False) }}</span></header>
+    <div class="eq" role="group" aria-label="Виручка мінус собівартість продуктів мінус інші витрати дорівнює прибуток">
+      <div class="eq-it"><span class="eq-op" aria-hidden="true"></span><span class="eq-lb">Виручка</span><span class="eq-vl num">{{ r.revenue | num(2) }} <small>zł</small></span></div>
+      <span class="eq-opc" aria-hidden="true">−</span>
+      <div class="eq-it"><span class="eq-op" aria-hidden="true">−</span><span class="eq-lb">Собівартість продуктів</span><span class="eq-vl num">{{ r.cogs | num(2) }} <small>zł</small></span></div>
+      <span class="eq-opc" aria-hidden="true">−</span>
+      <div class="eq-it"><span class="eq-op" aria-hidden="true">−</span><span class="eq-lb">Інші витрати</span><span class="eq-vl num">{{ r.other | num(2) }} <small>zł</small></span></div>
+      <span class="eq-opc" aria-hidden="true">=</span>
+      <div class="eq-it eq-res{% if r.profit < 0 %} is-loss{% elif r_incomplete %} is-warn{% endif %}"><span class="eq-op" aria-hidden="true">=</span>
+        <span class="eq-lb">{{ 'Збиток' if r.profit < 0 else 'Прибуток' }}{% if r.is_current or r_incomplete %} <span class="muted">поки що</span>{% endif %}</span>
+        <span class="eq-vl num">{{ r.profit | num(2) }} <small>zł</small>{% if r_incomplete %}<span class="eq-tag">неповний</span>{% endif %}</span></div>
     </div>
-    <div id="scan-result-info" style="display:none; padding:8px 0; border-bottom:1px solid var(--border); margin-bottom:8px;"></div>
 
-    <!-- Pending section first -->
-    {% if pending_invoices %}
-    <div style="margin-bottom:16px;">
-        <p style="font-weight:600; color:#92400e; margin:8px 0 8px 0;">⏳ Чекають підтвердження</p>
-        <table>
-            <thead>
-                <tr>
-                    <th>Постачальник</th>
-                    <th class="text-right">Сума</th>
-                    <th>Категорія</th>
-                    <th style="width:140px;"></th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for inv in pending_invoices %}
-                <tr>
-                    <td style="font-weight:500;">
-                        {{ inv['vendor'] or '—' }}
-                        <a href="https://drive.google.com/file/d/{{ inv['file_id'] }}/view" target="_blank"
-                           class="text-muted" style="font-size:.85em; margin-left:4px;" title="Відкрити PDF">📄</a>
-                    </td>
-                    <td class="text-right" style="font-weight:600;">{{ '{:,.2f}'.format(inv['total']) }} zł</td>
-                    <td>
-                        <form method="post" action="/expenses/approve-invoice/{{ inv['id'] }}" style="display:inline;" id="approve-form-{{ inv['id'] }}">
-                            <select name="category" class="form-control" style="font-size:.8em; padding:2px 6px; width:auto;">
-                                {% for c in categories %}<option value="{{ c }}" {% if c == inv['category'] %}selected{% endif %}>{{ c }}</option>{% endfor %}
-                            </select>
-                        </form>
-                    </td>
-                    <td class="text-right" style="white-space:nowrap;">
-                        <button class="btn btn-primary btn-sm" style="font-size:.75em;"
-                                onclick="document.getElementById('approve-form-{{ inv['id'] }}').submit()">✓ Додати</button>
-                        <form method="post" action="/expenses/skip-invoice/{{ inv['id'] }}" style="display:inline;">
-                            <button class="btn btn-outline btn-sm" style="font-size:.75em;" type="submit">✗</button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    {% if r.missing %}
+    <div class="notice notice-warn" id="missing" role="status">{{ icon('alert') }}
+      <div class="notice-body">
+        <div><b class="notice-title">Ще не внесено:</b> {{ r.missing_categories | join(', ') }}. У {{ prev_loc }} на це пішло близько <span class="num">{{ r.missing_total | zl(0) }}</span>, тож справжній прибуток буде меншим.</div>
+        <div class="forecast"><span class="qlabel">Очікуваний прибуток, якщо витрати як у {{ prev_loc }}</span>
+          <span class="big num">≈ {{ r.forecast | num }}<small>zł</small></span>
+          {% if r.forecast_per100 is not none %}<span class="small muted">З кожних 100 zł виручки лишиться близько {{ r.forecast_per100 | num }} zł</span>{% endif %}</div>
+        <div class="notice-actions">
+          <button class="btn btn-primary" type="button" data-sheet-open="sheet-missing">Внести витрати</button>
+          <form method="post" action="/expenses/copy-recurring"><input type="hidden" name="month" value="{{ current_month }}">
+            <button class="btn btn-secondary" type="submit">{{ icon('copy') }}Скопіювати з {{ prev_gen }}</button></form>
+        </div>
+      </div>
+    </div>
+    {% elif r.per100 is not none and r.revenue > 0 %}
+    <p class="sentence" style="padding: 0 20px">З кожних 100 zł виручки лишається <b class="num">{{ r.per100 | num }} zł</b>.</p>
+    {% endif %}
+
+    {% if r.coverage_incomplete %}
+    <div class="notice notice-info">{{ icon('info') }}
+      <div class="notice-body"><span class="notice-title">Собівартість неповна.</span>
+        {{ r.without_recipe }} {{ r.without_recipe | plural('страва', 'страви', 'страв') }} без рецепту ({{ r.uncovered_pct | pct }} виручки), тож справжня собівартість більша.
+        <div class="notice-actions"><a class="btn btn-secondary" href="/recipes#no-recipe">Додати рецепти</a></div></div>
     </div>
     {% endif %}
 
-    <!-- All processed invoices -->
-    <div>
-        <p style="font-weight:600; color:var(--text-muted); margin:8px 0; font-size:.85em;">
-            Всі фактури · <button class="btn-link" onclick="document.getElementById('all-invoices-section').classList.toggle('hidden')" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:.85em;">згорнути ↕</button>
-        </p>
-        <div id="all-invoices-section">
-            {% if all_invoices %}
-            <table>
-                <thead>
-                    <tr>
-                        <th>Постачальник</th>
-                        <th class="text-right">Сума</th>
-                        <th style="width:80px;">Парсинг</th>
-                        <th style="width:80px;">Витрати</th>
-                        <th style="width:120px;">Товари</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for inv in all_invoices %}
-                    <tr {% if inv['parse_status'] == 'processing' %}class="processing-row"{% endif %}>
-                        <td style="font-size:.85em;">
-                            <span style="font-weight:500;">{{ inv['vendor'] or '—' }}</span>
-                            <a href="https://drive.google.com/file/d/{{ inv['file_id'] }}/view" target="_blank"
-                               class="text-muted" style="font-size:.85em; margin-left:4px;" title="Відкрити PDF">📄</a>
-                        </td>
-                        <td class="text-right" style="font-weight:600; font-size:.9em;">{{ '{:,.2f}'.format(inv['total']) }} zł</td>
-                        <td class="text-center">
-                            {% if inv['parse_status'] == 'parsed' %}<span style="color:var(--green);" title="Розпізнано">✅</span>
-                            {% elif inv['parse_status'] == 'error' %}<span style="color:var(--red);" title="Помилка">❌</span>
-                            {% elif inv['parse_status'] == 'processing' %}<span class="spinner" title="Обробка...">⚙️</span>
-                            {% elif inv['parse_status'] == 'duplicate' %}<span class="text-muted" title="Дублікат">⊘</span>
-                            {% else %}<span class="text-muted" title="Очікує">⏳</span>{% endif %}
-                        </td>
-                        <td class="text-center">
-                            {% if inv['expense_status'] == 'added' %}<span style="color:var(--green);" title="Додано">✅</span>
-                            {% elif inv['expense_status'] == 'skipped' %}<span class="text-muted" title="Пропущено">⊘</span>
-                            {% else %}<span style="color:#fbbf24;" title="Чекає">⏳</span>{% endif %}
-                        </td>
-                        <td class="text-center">
-                            {% set pending_cnt = pending_items_counts.get(inv['id'], 0) %}
-                            {% if pending_cnt > 0 %}
-                                <button class="btn btn-outline btn-sm" style="font-size:.7em; padding:2px 6px;"
-                                        onclick="showItems({{ inv['id'] }}, '{{ inv['vendor']|e }}')">{{ pending_cnt }} 🔧</button>
-                            {% elif inv['parse_status'] == 'parsed' %}
-                                <button class="btn btn-outline btn-sm" style="font-size:.7em; padding:2px 6px;"
-                                        onclick="llmClassify({{ inv['id'] }}, this)" title="Класифікувати з AI">🤖</button>
-                            {% else %}
-                                <span class="text-muted" style="font-size:.75em;">—</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <p class="text-muted" style="font-size:.85em; margin:8px 0;">
-                Натисніть 🔍 Знайти нові → ⚡ Розпізнати щоб додати фактури
-            </p>
-            {% endif %}
-        </div>
+    {% if r.has_prev %}
+    <div class="cmp" aria-label="Порівняння з {{ prev_nom }}">
+      {% set t = trend(r.revenue, r.prev_revenue) %}
+      {% if t %}<span class="chip chip-{{ t.css }}">{{ icon(t.icon, 14) }}Виручка {{ t.sign }}{{ t.text }} до {{ prev_gen }}</span>{% endif %}
+      {% if r.revenue > 0 %}<span class="chip chip-neutral">Продукти {{ r.food_share | pct }} виручки{% if r.prev_food_share %} (у {{ prev_loc }} {{ r.prev_food_share | pct }}){% endif %}</span>{% endif %}
+      <span class="chip chip-neutral">{{ prev_nom | capitalize }}{% if r.prev_partial %} до {{ r.prev_days }}-го{% endif %}: {{ r.prev_revenue | zl }}</span>
+      <span class="chip chip-neutral">Прибуток у {{ prev_loc }}: {{ r.prev_profit_full | zl(0) }}</span>
     </div>
+    {% endif %}
+
+    <details class="pnl">
+      <summary>Як рахуємо{{ icon('chevron-down', 18) }}</summary>
+      <dl>
+        <dt>Виручка</dt><dd class="num">{{ r.revenue | zl }}</dd>
+        <dt>Знижки<small>вже враховані у виручці</small></dt><dd class="num">{{ r.discounts | zl }}</dd>
+        <dt>Виручка без ПДВ (VAT)</dt><dd class="num">{{ r.net_revenue | zl }}</dd>
+        <dt>Собівартість продуктів<small>скільки коштували інгредієнти проданого</small></dt><dd class="num">{{ r.cogs | zl }}</dd>
+        <dt>Заробіток після продуктів</dt><dd class="num">{{ r.gross_profit | zl }}</dd>
+        <dt>% що лишається після продуктів</dt><dd class="num">{{ r.gross_margin | pct(1) }}</dd>
+        <dt>Інші витрати<small>оренда, зарплати, рахунки…</small></dt><dd class="num">{{ r.other | zl }}</dd>
+        <dt class="total">Чистий прибуток (після всіх витрат)</dt><dd class="num total">{{ r.profit | zl }}</dd>
+        <dt>Закупівля продуктів за фактурами<small>не віднімаємо окремо: замість неї рахуємо собівартість проданого</small></dt><dd class="num">{{ r.food_purchases | zl }}</dd>
+      </dl>
+    </details>
+  </section>
+
+  <div class="cols-2">
+    {# ── Витрати за категоріями ── #}
+    <section class="card" id="costs" aria-labelledby="c-h">
+      <header class="card-head"><h2 id="c-h">Витрати за категоріями</h2>
+        {% if has_expenses %}<span class="num small muted">{{ other_total | zl }} внесено</span>{% endif %}</header>
+      {% if not has_expenses %}
+      <div class="empty">
+        <span class="empty-icon">{{ icon('wallet') }}</span>
+        <div class="empty-title">За {{ month_nom }} ще немає витрат</div>
+        {% if r.missing %}
+        <p class="empty-text">Скопіювати постійні витрати з {{ prev_gen }}?</p>
+        <form method="post" action="/expenses/copy-recurring"><input type="hidden" name="month" value="{{ current_month }}">
+          <button class="btn btn-primary" type="submit">{{ icon('copy') }}Скопіювати</button></form>
+        {% else %}
+        <button class="btn btn-primary" type="button" data-sheet-open="sheet-add">{{ icon('plus') }}Додати витрату</button>
+        {% endif %}
+      </div>
+      {% else %}
+      {% if bar %}
+      <div class="stacked" role="img" aria-label="{% for b in bar %}{{ b.label }} {{ b.pct | pct }}{{ ', ' if not loop.last }}{% endfor %}">
+        {% for b in bar %}<i class="c-{{ b.slot }}" style="width:{{ '%.1f' | format(b.pct) }}%"></i>{% endfor %}
+      </div>
+      {% endif %}
+      <ul class="rows">
+        {% for c in other_cats %}
+        <li><details class="cat">
+          <summary class="row"><span class="swatch c-{{ c.slot }}"></span>
+            <span class="row-main"><span class="row-title">{{ c.category }}</span><span class="row-sub">{{ c['items'] | length }} {{ c['items'] | length | plural('запис', 'записи', 'записів') }}<span class="only-phone"> · {{ c.pct | pct }}</span></span></span>
+            <span class="cat-pct num hide-phone">{{ c.pct | pct }}</span>
+            <span class="row-value num">{{ c.total | zl }}</span>
+            <span class="row-chev">{{ icon('chevron-down') }}</span></summary>
+          <ul class="rows cat-items">
+            {% for e in c['items'] %}{{ exp_row(e) }}{% endfor %}
+          </ul>
+        </details></li>
+        {% endfor %}
+        {% if food %}
+        <li><details class="cat">
+          <summary class="row"><span class="row-lead">{{ icon('cart') }}</span>
+            <span class="row-main"><span class="row-title">Закупівля продуктів</span><span class="row-sub">За фактурами</span></span>
+            <span class="row-value num">{{ food.total | zl }}</span>
+            <span class="row-chev">{{ icon('chevron-down') }}</span></summary>
+          <p class="small muted cat-items">У прибутку не віднімаємо: замість закупівлі рахуємо собівартість проданого.</p>
+          <ul class="rows cat-items">
+            {% for e in food['items'] %}{{ exp_row(e) }}{% endfor %}
+          </ul>
+        </details></li>
+        {% endif %}
+      </ul>
+      {% endif %}
+      {% if r.missing and has_expenses %}
+      <div class="miss">{{ icon('alert') }}
+        <span class="flex-1"><b>Не внесено</b> <span class="muted">{{ r.missing_categories | join(' · ') }}</span></span>
+        <button class="btn btn-secondary" type="button" data-sheet-open="sheet-missing">Внести</button></div>
+      {% endif %}
+      <div class="btn-row mt-4">
+        <a class="link" href="/suppliers/history">По постачальниках{{ icon('chevron-right', 18) }}</a>
+        {% if has_expenses %}<a class="btn btn-quiet" href="/export/expenses.csv?month={{ current_month }}" download>{{ icon('download') }}CSV</a>{% endif %}
+      </div>
+    </section>
+
+    {# ── Фактури ── #}
+    <section class="card" id="invoices" aria-labelledby="i-h">
+      <header class="card-head"><h2 id="i-h">Фактури</h2>
+        {% if waiting %}<span class="chip chip-info">{{ icon('clock', 14) }}{{ waiting | length }} {{ waiting | length | plural('чекає', 'чекають', 'чекають') }} · <span class="num">{{ waiting_total | zl }}</span></span>{% endif %}</header>
+      {% if all_invoices %}
+      <ul class="inv">
+        {% for inv in all_invoices %}
+        {% if loop.index == 9 %}</ul><details class="more-inv"><summary>Показати ще {{ all_invoices | length - 8 }}{{ icon('chevron-down', 18) }}</summary><ul class="inv">{% endif %}
+        {% set d = (inv.parsed_at or '')[:10] %}
+        {% if inv.state == 'failed' %}
+        <li class="inv-fail">
+          <div class="inv-head"><div><div class="inv-v">{{ inv.vendor or 'Постачальник невідомий' }}</div>
+            <div class="inv-d">{% if d %}{{ d | shortdate }} · {% endif %}файл {{ inv.file_name }}</div></div>
+            <span class="chip chip-danger">{{ icon('x-circle', 14) }}Не розпізнано</span></div>
+          <p class="small mt-2">Не вдалося прочитати суму й позиції. Файл може бути нечітким.</p>
+          <div class="btn-row mt-2">
+            <a class="btn btn-secondary" href="https://drive.google.com/file/d/{{ inv.file_id }}/view" target="_blank" rel="noopener">{{ icon('file') }}Відкрити файл</a>
+            {% if inv.expense_status == 'pending' %}<button class="btn btn-secondary" type="button" data-sheet-open="sheet-manual-{{ inv.id }}">{{ icon('pencil') }}Ввести вручну</button>{% endif %}
+          </div>
+        </li>
+        {% else %}
+        <li>
+          <div><div class="inv-v">{{ inv.vendor or inv.file_name }}</div>
+            <div class="inv-d">{% if d %}{{ d | shortdate }}{% endif %}{% if inv.invoice_number %}{{ ' · ' if d }}№ {{ inv.invoice_number }}{% endif %}</div></div>
+          <div class="inv-st">
+            {% if inv.state == 'waiting' %}<span class="chip chip-info">{{ icon('clock', 14) }}Чекає</span>
+              <button class="btn btn-secondary" type="button" data-sheet-open="sheet-inv-{{ inv.id }}">Підтвердити</button>
+            {% elif inv.state == 'added' %}<span class="chip chip-ok">{{ icon('check', 14) }}Додано</span>
+              {% if inv.pending_items %}<button class="btn btn-quiet" type="button" data-items-open="{{ inv.id }}" data-vendor="{{ inv.vendor }}">{{ inv.pending_items }} без привʼязки</button>{% endif %}
+            {% elif inv.state == 'processing' %}<span class="chip chip-info">{{ icon('refresh', 14) }}Розпізнаємо…</span>
+            {% elif inv.state == 'new' %}<span class="chip chip-neutral">Ще не розпізнано</span>
+            {% elif inv.state == 'skipped' %}<span class="chip chip-neutral">Пропущено</span>
+            {% else %}<span class="chip chip-neutral">Дублікат</span>{% endif %}
+          </div>
+          <div class="inv-a num">{{ inv.total | zl if inv.total else '—' }}</div>
+        </li>
+        {% endif %}
+        {% if loop.last and loop.length > 8 %}</ul></details>{% endif %}
+        {% endfor %}
+      {% if all_invoices | length <= 8 %}</ul>{% endif %}
+      {% else %}
+      <div class="empty">
+        <span class="empty-icon">{{ icon('file') }}</span>
+        <div class="empty-title">Фактур за {{ month_nom }} ще немає</div>
+        <p class="empty-text">Нові фактури зʼявляться тут після пошуку в Google Drive.</p>
+      </div>
+      {% endif %}
+      <div class="btn-row mt-4">
+        <button class="btn btn-secondary" type="button" id="scan-btn" data-month="{{ current_month }}">{{ icon('search') }}Знайти нові</button>
+        <form method="post" action="/expenses/process-invoices" id="process-form"><input type="hidden" name="month" value="{{ current_month }}">
+          <button class="btn btn-secondary" type="submit">{{ icon('refresh') }}Розпізнати</button></form>
+        <a class="btn btn-quiet" href="/inventory/upload">{{ icon('upload') }}Завантажити накладну</a>
+      </div>
+    </section>
+  </div>
 </div>
 
-<!-- Add manual expense modal -->
-<div id="add-modal" class="modal-overlay">
-    <div class="modal" style="max-width:500px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h3 style="margin:0;">Додати витрату вручну</h3>
-            <button class="btn btn-outline btn-sm" onclick="document.getElementById('add-modal').classList.remove('open')">✕</button>
-        </div>
-        <form method="post" action="/expenses/add">
-            <input type="hidden" name="month" value="{{ current_month }}">
-            <div class="form-group" style="margin-bottom:12px;">
-                <label>Назва</label>
-                <input name="name" class="form-control" required placeholder="напр. Жабка, таксі, квіти">
-            </div>
-            <div class="form-row" style="margin-bottom:12px;">
-                <div class="form-group" style="flex:1;">
-                    <label>Категорія</label>
-                    <select name="category" class="form-control">
-                        {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
-                    </select>
-                </div>
-                <div class="form-group" style="flex:1;">
-                    <label>Сума (zł)</label>
-                    <input name="amount" type="number" step="0.01" class="form-control" required>
-                </div>
-            </div>
-            <div class="form-group" style="margin-bottom:16px;">
-                <label>Примітка</label>
-                <input name="note" class="form-control" placeholder="опціонально">
-            </div>
-            <div style="display:flex; gap:8px; justify-content:flex-end;">
-                <button type="button" class="btn btn-outline" onclick="document.getElementById('add-modal').classList.remove('open')">Скасувати</button>
-                <button type="submit" class="btn btn-primary">+ Додати</button>
-            </div>
-        </form>
-    </div>
-</div>
+<button class="fab" type="button" data-sheet-open="sheet-add" aria-label="Додати витрату">{{ icon('plus') }}</button>
 
-<!-- Items mapping modal -->
-<div id="items-modal-overlay" class="modal-overlay">
-    <div class="modal" style="max-width:900px; max-height:85vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h3 id="items-modal-title" style="margin:0;">Маппінг товарів</h3>
-            <button class="btn btn-outline btn-sm" onclick="document.getElementById('items-modal-overlay').classList.remove('open')">✕</button>
-        </div>
-        <div id="items-modal-content"></div>
+{# ── Sheets ── #}
+<dialog class="sheet" id="sheet-add" aria-labelledby="sheet-add-h">
+  <div class="sheet-grip" aria-hidden="true"></div>
+  <div class="sheet-head"><h2 id="sheet-add-h">Нова витрата</h2>
+    <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+  <form method="post" action="/expenses/add" style="display:contents">
+    <input type="hidden" name="month" value="{{ current_month }}">
+    <div class="sheet-body form">
+      <div class="field"><label class="field-label" for="a-name">Назва</label>
+        <input class="input" id="a-name" name="name" required autocomplete="off"><span class="field-help">Наприклад: Żabka, таксі, квіти</span></div>
+      <div class="form-grid">
+        <div class="field"><label class="field-label" for="a-cat">Категорія</label>
+          <select class="select" id="a-cat" name="category">{% for c in categories %}<option value="{{ c }}"{% if c == 'Інше' %} selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="field-label" for="a-amount">Сума</label>
+          <div class="input-group"><input class="input" id="a-amount" name="amount" inputmode="decimal" required pattern="[0-9 ]*[.,]?[0-9]*"><span class="input-suffix">zł</span></div></div>
+      </div>
+      <div class="field"><label class="field-label" for="a-note">Примітка <span class="optional">(необовʼязково)</span></label>
+        <input class="input" id="a-note" name="note"></div>
+      <label class="check"><input type="checkbox" name="recurring" value="1"> Постійна витрата (щомісяця)</label>
     </div>
-</div>
+    <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button><button class="btn btn-primary" type="submit">Додати</button></div>
+  </form>
+</dialog>
 
+<dialog class="sheet" id="sheet-edit" aria-labelledby="sheet-edit-h">
+  <div class="sheet-grip" aria-hidden="true"></div>
+  <div class="sheet-head"><h2 id="sheet-edit-h">Витрата</h2>
+    <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+  <form method="post" action="" id="edit-form" style="display:contents">
+    <div class="sheet-body form">
+      <div class="field"><label class="field-label" for="e-name">Назва</label><input class="input" id="e-name" name="name" required></div>
+      <div class="form-grid">
+        <div class="field"><label class="field-label" for="e-cat">Категорія</label>
+          <select class="select" id="e-cat" name="category">{% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="field-label" for="e-amount">Сума</label>
+          <div class="input-group"><input class="input" id="e-amount" name="amount" inputmode="decimal" required><span class="input-suffix">zł</span></div></div>
+      </div>
+      <p class="small muted" id="e-note" hidden></p>
+      <a class="link" id="e-file" href="#" target="_blank" rel="noopener" hidden>{{ icon('file', 18) }}Відкрити фактуру</a>
+    </div>
+    <div class="sheet-foot">
+      <button class="btn btn-danger" type="submit" form="delete-form">{{ icon('trash') }}Видалити</button>
+      <button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button>
+      <button class="btn btn-primary" type="submit">Зберегти</button></div>
+  </form>
+</dialog>
+<form method="post" action="" id="delete-form" data-confirm="Видалити витрату?" data-confirm-ok="Видалити" hidden></form>
+
+{% if r.missing %}
+<dialog class="sheet" id="sheet-missing" aria-labelledby="sheet-missing-h">
+  <div class="sheet-grip" aria-hidden="true"></div>
+  <div class="sheet-head"><h2 id="sheet-missing-h">Ще не внесено</h2>
+    <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+  <div class="sheet-body">
+    <p class="muted mb-3">Суми як у {{ prev_loc }}. Змініть, якщо цього місяця інакше.</p>
+    {% for m in r.missing %}
+    <div class="miss-item">
+      <form method="post" action="/expenses/add" class="form">
+        <input type="hidden" name="name" value="{{ m.name }}"><input type="hidden" name="category" value="{{ m.category }}">
+        <input type="hidden" name="month" value="{{ current_month }}"><input type="hidden" name="recurring" value="1">
+        <div class="field"><label class="field-label" for="m-{{ loop.index }}">{{ m.name }} <span class="optional">· {{ m.category }}</span></label>
+          <div class="input-group"><input class="input" id="m-{{ loop.index }}" name="amount" inputmode="decimal" value="{{ m.amount | num(2) }}" required><span class="input-suffix">zł</span></div></div>
+        <div class="form-actions"><button class="btn btn-secondary" type="submit">{{ icon('plus') }}Внести</button>
+          <button class="btn btn-quiet" type="submit" form="dismiss-{{ loop.index }}">Цього місяця не буде</button></div>
+      </form>
+      <form method="post" action="/expenses/dismiss-missing" id="dismiss-{{ loop.index }}" hidden>
+        <input type="hidden" name="name" value="{{ m.name }}"><input type="hidden" name="month" value="{{ current_month }}"></form>
+    </div>
+    {% endfor %}
+  </div>
+  <form method="post" action="/expenses/copy-recurring" class="sheet-foot"><input type="hidden" name="month" value="{{ current_month }}">
+    <button class="btn btn-ghost" type="button" data-sheet-close>Закрити</button>
+    <button class="btn btn-primary" type="submit">Внести всі як у {{ prev_loc }}</button></form>
+</dialog>
+{% endif %}
+
+{% for inv in all_invoices %}
+{% if inv.state == 'waiting' %}
+<dialog class="sheet" id="sheet-inv-{{ inv.id }}" aria-labelledby="sheet-inv-{{ inv.id }}-h">
+  <div class="sheet-grip" aria-hidden="true"></div>
+  <div class="sheet-head"><h2 id="sheet-inv-{{ inv.id }}-h">{{ inv.vendor }}</h2>
+    <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+  <form method="post" action="/expenses/approve-invoice/{{ inv.id }}" style="display:contents">
+    <div class="sheet-body form">
+      <p class="sentence">Фактура{% if inv.invoice_number %} № {{ inv.invoice_number }}{% endif %} на <b class="num">{{ inv.total | zl }}</b>.</p>
+      <div class="field"><label class="field-label" for="ic-{{ inv.id }}">Категорія витрати</label>
+        <select class="select" id="ic-{{ inv.id }}" name="category">{% for c in categories %}<option value="{{ c }}"{% if c == inv.category %} selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+      <div class="btn-row">
+        <a class="btn btn-secondary" href="https://drive.google.com/file/d/{{ inv.file_id }}/view" target="_blank" rel="noopener">{{ icon('file') }}Відкрити файл</a>
+        {% if inv.pending_items %}<button class="btn btn-secondary" type="button" data-items-open="{{ inv.id }}" data-vendor="{{ inv.vendor }}">{{ icon('link') }}Привʼязати товари ({{ inv.pending_items }})</button>
+        {% else %}<button class="btn btn-secondary" type="button" data-llm="{{ inv.id }}">{{ icon('link') }}Підібрати інгредієнти</button>{% endif %}
+      </div>
+      <p class="small muted">Привʼязка оновлює ціни інгредієнтів, а з ними й собівартість страв.</p>
+    </div>
+    <div class="sheet-foot">
+      <button class="btn btn-quiet" type="submit" form="skip-{{ inv.id }}">Пропустити</button>
+      <button class="btn btn-primary" type="submit">Додати у витрати</button></div>
+  </form>
+</dialog>
+<form method="post" action="/expenses/skip-invoice/{{ inv.id }}" id="skip-{{ inv.id }}" hidden
+      data-confirm="Фактура «{{ inv.vendor }}» не потрапить у витрати." data-confirm-title="Пропустити фактуру?" data-confirm-ok="Пропустити" data-confirm-tone="primary"></form>
+{% elif inv.state == 'failed' and inv.expense_status == 'pending' %}
+<dialog class="sheet" id="sheet-manual-{{ inv.id }}" aria-labelledby="sheet-manual-{{ inv.id }}-h">
+  <div class="sheet-grip" aria-hidden="true"></div>
+  <div class="sheet-head"><h2 id="sheet-manual-{{ inv.id }}-h">Ввести фактуру вручну</h2>
+    <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+  <form method="post" action="/expenses/manual-invoice/{{ inv.id }}" style="display:contents">
+    <div class="sheet-body form">
+      <p class="small muted">Файл {{ inv.file_name }}. Подивіться суму у файлі й введіть її тут.</p>
+      <div class="field"><label class="field-label" for="mv-{{ inv.id }}">Постачальник</label><input class="input" id="mv-{{ inv.id }}" name="vendor" value="{{ inv.vendor }}" required></div>
+      <div class="form-grid">
+        <div class="field"><label class="field-label" for="mt-{{ inv.id }}">Сума</label>
+          <div class="input-group"><input class="input" id="mt-{{ inv.id }}" name="total" inputmode="decimal" required><span class="input-suffix">zł</span></div></div>
+        <div class="field"><label class="field-label" for="mc-{{ inv.id }}">Категорія</label>
+          <select class="select" id="mc-{{ inv.id }}" name="category">{% for c in categories %}<option value="{{ c }}"{% if c == (inv.category or 'Продукти') %} selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+      </div>
+    </div>
+    <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button><button class="btn btn-primary" type="submit">Додати у витрати</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endfor %}
+
+<dialog class="sheet sheet-wide" id="sheet-items" aria-labelledby="sheet-items-h">
+  <div class="sheet-grip" aria-hidden="true"></div>
+  <div class="sheet-head"><h2 id="sheet-items-h">Привʼязка до інгредієнтів</h2>
+    <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
+  <div class="sheet-body" id="items-content"></div>
+  <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Закрити</button>
+    <button class="btn btn-primary" type="button" id="items-confirm-all">Підтвердити всі</button></div>
+</dialog>
 {% endblock %}
 
 {% block extra_js %}
-<style>
-.spinner {
-    display: inline-block;
-    animation: spin 1.2s linear infinite;
-}
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-.processing-row {
-    background: linear-gradient(90deg, transparent, rgba(251,191,36,.1), transparent);
-    background-size: 200% 100%;
-    animation: shimmer 2s infinite;
-}
-@keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-}
-.hidden { display: none; }
-</style>
 <script>
-// Auto-refresh if there are processing invoices
-{% set has_processing = all_invoices | selectattr('parse_status', 'equalto', 'processing') | list | length %}
-{% if has_processing > 0 %}
-setTimeout(() => location.reload(), 5000);
-{% endif %}
+{% if has_processing %}setTimeout(() => location.reload(), 5000);{% endif %}
 
-// Auto-refresh after clicking "Розпізнати"
-document.addEventListener('DOMContentLoaded', function() {
-    const processForm = document.querySelector('form[action="/expenses/process-invoices"]');
-    if (processForm) {
-        processForm.addEventListener('submit', function() {
-            setTimeout(() => location.reload(), 3000);
-        });
-    }
+// Edit sheet: filled from the row's data attributes before app.js opens it (capture phase).
+document.addEventListener('click', function (e) {
+    const b = e.target.closest('[data-exp-id]');
+    if (!b) return;
+    const id = b.dataset.expId;
+    document.getElementById('edit-form').action = '/expenses/update/' + encodeURIComponent(id);
+    const del = document.getElementById('delete-form');
+    del.action = '/expenses/delete/' + encodeURIComponent(id);
+    del.setAttribute('data-confirm', 'Видалити «' + b.dataset.expName + '» на ' + b.dataset.expShow + '?');
+    document.getElementById('e-name').value = b.dataset.expName;
+    document.getElementById('e-cat').value = b.dataset.expCat;
+    document.getElementById('e-amount').value = b.dataset.expAmount;
+    const note = document.getElementById('e-note');
+    note.textContent = b.dataset.expNote || '';
+    note.hidden = !b.dataset.expNote;
+    const file = document.getElementById('e-file');
+    file.hidden = !b.dataset.expFile;
+    if (b.dataset.expFile) file.href = 'https://drive.google.com/file/d/' + encodeURIComponent(b.dataset.expFile) + '/view';
+}, true);
+
+document.getElementById('process-form').addEventListener('submit', function () {
+    toast('Розпізнаємо фактури, це займе хвилину');
+    setTimeout(() => location.reload(), 3000);
 });
 
-function toggleGroup(idx) {
-    const row = document.getElementById('group-' + idx);
-    if (row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
-}
-
-function showInfoModal(title, html) {
-    const modal = document.getElementById('confirm-modal');
-    document.getElementById('modal-title').textContent = title;
-    document.getElementById('modal-name').textContent = '';
-    const details = document.getElementById('modal-details');
-    details.innerHTML = html;
-    details.style.display = 'block';
-    document.getElementById('modal-warning').style.display = 'none';
-    const form = document.getElementById('modal-form');
-    if (form) form.style.display = 'none';
-    const cancelBtn = document.querySelector('#confirm-modal .modal-actions .btn-outline');
-    cancelBtn.textContent = 'OK';
-    cancelBtn.onclick = function() {
-        closeModal();
-        cancelBtn.textContent = 'Скасувати';
-        cancelBtn.onclick = closeModal;
-        if (form) form.style.display = 'inline';
-    };
-    modal.classList.add('open');
-}
-
-function editAmount(el, id, currentAmount) {
-    if (document.querySelector('.inline-edit-form')) return;
-    const td = el.parentElement;
-    const originalHTML = td.innerHTML;
-    td.innerHTML = `
-        <form method="post" action="/expenses/update/${id}" class="inline-edit-form" style="display:flex; gap:4px; align-items:center; justify-content:flex-end;">
-            <input type="number" name="amount" step="0.01" value="${currentAmount}" 
-                   style="width:100px; padding:2px 6px; font-size:.85em; text-align:right; border:1px solid var(--primary); border-radius:4px;"
-                   autofocus onfocus="this.select()">
-            <button type="submit" class="btn btn-primary btn-sm" style="padding:2px 8px; font-size:.75em;">✓</button>
-        </form>
-    `;
-    const input = td.querySelector('input');
-    input.focus();
-    function cancelEdit(e) {
-        if (!td.contains(e.target)) { td.innerHTML = originalHTML; document.removeEventListener('mousedown', cancelEdit); }
-    }
-    input.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') { td.innerHTML = originalHTML; document.removeEventListener('mousedown', cancelEdit); }
-    });
-    setTimeout(() => document.addEventListener('mousedown', cancelEdit), 0);
-}
-
-function deleteExpense(url, name) {
-    if (!confirm(`Видалити "${name}"?`)) return;
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = url;
-    document.body.appendChild(form);
-    form.submit();
-}
-
-function scanDrive(btn) {
+document.getElementById('scan-btn').addEventListener('click', function () {
+    const btn = this;
     btn.disabled = true;
-    btn.textContent = '⏳ Скануємо...';
-    const month = '{{ current_month }}';
-    fetch('/expenses/scan-drive?month=' + month, { credentials: 'same-origin' })
+    fetch('/expenses/scan-drive?month=' + encodeURIComponent(btn.dataset.month), { credentials: 'same-origin' })
         .then(r => r.json())
-        .then(data => {
-            if (data.new_count > 0) {
-                location.reload();
-            } else {
-                btn.textContent = '🔍 Знайти нові';
-                btn.disabled = false;
-                const el = document.getElementById('scan-result-info');
-                el.style.display = 'block';
-                el.innerHTML = '<p style="color:var(--green); font-size:.85em; margin:0;">✓ Нових фактур немає</p>';
-            }
+        .then(d => {
+            btn.disabled = false;
+            if (d.error) { toast('Не вдалося перевірити Google Drive', { type: 'error' }); return; }
+            if (d.new_count > 0) { toast('Знайдено нових фактур: ' + d.new_count, { type: 'ok' }); setTimeout(() => location.reload(), 1200); }
+            else toast('Нових фактур немає');
         })
-        .catch(() => { btn.textContent = '🔍 Знайти нові'; btn.disabled = false; });
-}
+        .catch(() => { btn.disabled = false; toast('Не вдалося перевірити Google Drive', { type: 'error' }); });
+});
 
-function llmClassify(invoiceId, btn) {
-    btn.disabled = true;
-    btn.textContent = '⏳';
-    fetch('/expenses/llm-classify/' + invoiceId, { method: 'POST', credentials: 'same-origin' })
+document.addEventListener('click', function (e) {
+    const b = e.target.closest('[data-llm]');
+    if (!b) return;
+    b.disabled = true;
+    toast('Підбираємо інгредієнти…');
+    fetch('/expenses/llm-classify/' + encodeURIComponent(b.dataset.llm), { method: 'POST', credentials: 'same-origin' })
         .then(r => r.json())
-        .then(data => {
-            if (data.error) { showInfoModal('❌ Помилка', data.error); btn.textContent = '🤖'; btn.disabled = false; }
-            else { location.reload(); }
+        .then(d => {
+            if (d.error) { toast('Не вдалося: ' + String(d.error).substring(0, 80), { type: 'error' }); b.disabled = false; }
+            else location.reload();
         })
-        .catch(() => { btn.textContent = '🤖'; btn.disabled = false; });
-}
+        .catch(() => { b.disabled = false; toast('Не вдалося підібрати', { type: 'error' }); });
+});
 
-// esc() lives in /static/app.js: invoice text comes from vendor PDFs via the LLM
+// ── Привʼязка товарів з фактури до інгредієнтів (invoice text is untrusted: esc()) ──
+let currentItems = [];
+document.addEventListener('click', function (e) {
+    const b = e.target.closest('[data-items-open]');
+    if (b) showItems(b.dataset.itemsOpen, b.dataset.vendor || '');
+});
+
 function showItems(invoiceId, vendor) {
-    const modal = document.getElementById('items-modal-overlay');
-    document.getElementById('items-modal-title').textContent = 'Товари: ' + vendor;
-    document.getElementById('items-modal-content').innerHTML = '<p class="text-muted">Завантаження...</p>';
-    modal.classList.add('open');
-
-    fetch('/expenses/items/' + invoiceId, { credentials: 'same-origin' })
+    document.getElementById('sheet-items-h').textContent = 'Товари: ' + vendor;
+    const box = document.getElementById('items-content');
+    box.innerHTML = '<div class="skeleton skeleton-text" style="width:60%"></div><div class="skeleton skeleton-text"></div>';
+    openSheet('sheet-items');
+    fetch('/expenses/items/' + encodeURIComponent(invoiceId), { credentials: 'same-origin' })
         .then(r => r.json())
         .then(data => {
-            const items = data.items || [];
-            const ingredients = data.ingredients || [];
-            // Build datalist for autocomplete
-            let datalistHtml = '<datalist id="ing-datalist">';
-            ingredients.forEach(ing => {
-                datalistHtml += '<option value="' + esc(ing.name) + '" data-id="' + esc(ing.id) + '">';
-            });
-            datalistHtml += '</datalist>';
-
-            let html = datalistHtml + '<table><thead><tr><th>Товар з фактури</th><th>К-сть</th><th>Ціна</th><th>Дія</th><th>Інгредієнт</th><th></th></tr></thead><tbody>';
-            items.forEach(item => {
-                const isPending = item.status === 'pending';
-                const conf = item.confidence ? ' (' + Math.round(item.confidence * 100) + '%)' : '';
-                html += '<tr id="item-' + item.id + '" style="' + (isPending ? '' : 'opacity:.5;') + '">';
-                html += '<td style="font-size:.85em;">' + esc(item.invoice_name) + '</td>';
-                html += '<td class="text-right">' + (item.quantity || '') + '</td>';
-                html += '<td class="text-right">' + (item.unit_price ? item.unit_price.toFixed(2) : '') + '</td>';
-                if (isPending) {
-                    html += '<td><select id="action-' + item.id + '" onchange="onActionChange(' + item.id + ')" style="font-size:.8em;">';
-                    html += '<option value="match"' + (item.status === 'match' ? ' selected' : '') + '>✓ Замапити</option>';
-                    html += '<option value="new"' + (item.status === 'new' ? ' selected' : '') + '>➕ Новий</option>';
-                    html += '<option value="skip"' + (item.status === 'skip' ? ' selected' : '') + '>⊘ Пропустити</option>';
-                    html += '</select></td>';
-                    html += '<td><div id="ing-input-' + item.id + '">';
-                    if (item.status === 'match' || item.status === 'pending') {
-                        html += '<input type="text" id="ing-search-' + item.id + '" list="ing-datalist" value="' + esc(item.ingredient_name || '') + '" placeholder="Пошук інгредієнту..." style="width:200px; font-size:.85em;" data-id="' + esc(item.ingredient_id || '') + '">';
-                    } else if (item.status === 'new') {
-                        html += '<input type="text" id="new-name-' + item.id + '" value="' + esc(item.suggested_ingredient || item.invoice_name) + '" placeholder="Назва нового" style="width:200px; font-size:.85em;">';
-                    } else {
-                        html += '<span class="text-muted">—</span>';
-                    }
-                    html += '</div></td>';
-                    html += '<td><button class="btn btn-primary btn-sm" style="font-size:.75em;" onclick="confirmItem(' + item.id + ')">OK</button></td>';
+            currentItems = data.items || [];
+            let html = '<datalist id="ing-datalist">';
+            (data.ingredients || []).forEach(i => { html += '<option value="' + esc(i.name) + '" data-id="' + esc(i.id) + '">'; });
+            html += '</datalist><div class="table-wrap"><table class="table table-stack map-table"><thead><tr>' +
+                '<th scope="col">Товар з фактури</th><th scope="col" class="num">Кількість</th><th scope="col" class="num">Ціна</th>' +
+                '<th scope="col">Що зробити</th><th scope="col">Інгредієнт</th><th scope="col"><span class="sr-only">Дії</span></th></tr></thead><tbody>';
+            currentItems.forEach(item => {
+                const id = Number(item.id);
+                const price = item.unit_price ? Number(item.unit_price).toFixed(2).replace('.', ',') + ' zł' : '—';
+                html += '<tr id="item-' + id + '">';
+                html += '<td class="cell-primary" data-label="Товар">' + esc(item.invoice_name) + '</td>';
+                html += '<td class="num" data-label="Кількість">' + esc(String(item.quantity || '').replace('.', ',')) + '</td>';
+                html += '<td class="num" data-label="Ціна">' + esc(price) + '</td>';
+                if (item.status === 'pending') {
+                    html += '<td data-label="Що зробити"><select class="select" id="action-' + id + '" data-action-for="' + id + '" aria-label="Що зробити">' +
+                        '<option value="match">Привʼязати до наявного</option><option value="new">Новий інгредієнт</option><option value="skip">Пропустити</option></select></td>';
+                    html += '<td data-label="Інгредієнт"><div id="ing-input-' + id + '">' + ingInput(item, 'match') + '</div></td>';
+                    html += '<td class="cell-actions"><button class="btn btn-secondary" type="button" data-confirm-item="' + id + '">OK</button></td>';
                 } else {
-                    html += '<td colspan="3" class="text-muted" style="font-size:.85em;">' + esc(item.status) + ': ' + esc(item.ingredient_name || item.suggested_ingredient || '—') + conf + '</td>';
+                    html += '<td colspan="3" data-label="Стан"><span class="chip chip-ok">Готово</span> ' + esc(item.ingredient_name || item.suggested_ingredient || '') + '</td>';
                 }
                 html += '</tr>';
             });
-            html += '</tbody></table>';
-            html += '<p style="margin-top:12px;"><button class="btn btn-primary" onclick="confirmAllItems()">✓ Підтвердити всі автоматично</button></p>';
-            document.getElementById('items-modal-content').innerHTML = html;
-            window._currentItems = items;
-        });
+            html += '</tbody></table></div>';
+            box.innerHTML = currentItems.length ? html : '<p class="muted">Товарів у фактурі не знайдено.</p>';
+        })
+        .catch(() => { box.innerHTML = ''; toast('Не вдалося завантажити товари', { type: 'error' }); });
 }
 
-function onActionChange(itemId) {
-    const action = document.getElementById('action-' + itemId).value;
-    const div = document.getElementById('ing-input-' + itemId);
-    const item = (window._currentItems || []).find(i => i.id === itemId) || {};
-    if (action === 'match') {
-        div.innerHTML = '<input type="text" id="ing-search-' + itemId + '" value="' + esc(item.ingredient_name || '') + '" placeholder="Пошук інгредієнту..." style="width:200px; font-size:.85em;" data-id="' + esc(item.ingredient_id || '') + '">';
-    } else if (action === 'new') {
-        div.innerHTML = '<input type="text" id="new-name-' + itemId + '" value="' + esc(item.suggested_ingredient || item.invoice_name) + '" placeholder="Назва нового" style="width:200px; font-size:.85em;">';
-    } else {
-        div.innerHTML = '<span class="text-muted">—</span>';
-    }
+function ingInput(item, action) {
+    const id = Number(item.id);
+    if (action === 'match') return '<input class="input" type="text" id="ing-search-' + id + '" list="ing-datalist" aria-label="Інгредієнт" value="' +
+        esc(item.ingredient_name || '') + '" data-id="' + esc(item.ingredient_id || '') + '">';
+    if (action === 'new') return '<input class="input" type="text" id="new-name-' + id + '" aria-label="Назва нового інгредієнта" value="' +
+        esc(item.suggested_ingredient || item.invoice_name) + '">';
+    return '<span class="muted">—</span>';
 }
 
-function confirmItem(itemId) {
+document.addEventListener('change', function (e) {
+    const s = e.target.closest('[data-action-for]');
+    if (!s) return;
+    const id = Number(s.dataset.actionFor);
+    const item = currentItems.find(i => Number(i.id) === id) || {};
+    document.getElementById('ing-input-' + id).innerHTML = ingInput(item, s.value);
+});
+
+document.addEventListener('click', function (e) {
+    const b = e.target.closest('[data-confirm-item]');
+    if (!b) return;
+    const itemId = Number(b.dataset.confirmItem);
     const action = document.getElementById('action-' + itemId).value;
     const fd = new FormData();
     fd.append('action', action);
     if (action === 'match') {
         const inp = document.getElementById('ing-search-' + itemId);
-        // Find ingredient_id from datalist by name
-        let id = inp.dataset.id;
+        let id = '';
         const name = inp.value.trim();
-        if (name && !id) {
-            const opt = document.querySelector('#ing-datalist option[value="' + name + '"]');
-            if (opt) id = opt.dataset.id;
-        }
-        if (!id) { showInfoModal('⚠️ Увага', 'Виберіть інгредієнт зі списку'); return; }
+        const opt = Array.from(document.querySelectorAll('#ing-datalist option')).find(o => o.value === name);
+        if (opt) id = opt.dataset.id; else if (name && name === (inp.defaultValue || '')) id = inp.dataset.id;
+        if (!id) { toast('Виберіть інгредієнт зі списку', { type: 'error' }); return; }
         fd.append('ingredient_id', id);
     } else if (action === 'new') {
         const name = document.getElementById('new-name-' + itemId).value.trim();
-        if (!name) { showInfoModal('⚠️ Увага', 'Введіть назву нового товару'); return; }
+        if (!name) { toast('Введіть назву нового інгредієнта', { type: 'error' }); return; }
         fd.append('new_name', name);
     }
     fetch('/expenses/items/confirm/' + itemId, { method: 'POST', body: fd, credentials: 'same-origin' })
         .then(r => r.json())
         .then(d => {
-            if (d.ok) document.getElementById('item-' + itemId).style.opacity = 0.5;
-            else showInfoModal('❌ Помилка', d.error || 'unknown');
+            if (d.ok) { const row = document.getElementById('item-' + itemId); if (row) row.style.opacity = 0.5; toast('Збережено', { type: 'ok' }); }
+            else toast('Не вдалося: ' + (d.error || ''), { type: 'error' });
         });
-}
+});
 
-function confirmAllItems() {
-    const items = window._currentItems || [];
+document.getElementById('items-confirm-all').addEventListener('click', function () {
+    const pending = currentItems.filter(i => i.status === 'pending');
     let count = 0;
-    const promises = items.filter(i => i.status === 'pending').map(item => {
+    Promise.all(pending.map(item => {
         const fd = new FormData();
         fd.append('action', item.status === 'match' && item.ingredient_id ? 'match' : item.status);
         if (item.ingredient_id) fd.append('ingredient_id', item.ingredient_id);
         if (item.suggested_ingredient) fd.append('new_name', item.suggested_ingredient);
         return fetch('/expenses/items/confirm/' + item.id, { method: 'POST', body: fd, credentials: 'same-origin' })
             .then(r => r.json()).then(() => count++);
+    })).then(() => {
+        toast('Підтверджено товарів: ' + count, { type: 'ok' });
+        setTimeout(() => location.reload(), 1200);
     });
-    Promise.all(promises).then(() => {
-        showInfoModal('✅ Готово', 'Підтверджено: ' + count + ' товарів');
-        setTimeout(() => location.reload(), 1500);
-    });
-}
+});
 </script>
 {% endblock %}

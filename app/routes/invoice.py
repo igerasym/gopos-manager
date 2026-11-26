@@ -13,6 +13,15 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates'
 router = APIRouter()
 
 
+def _dec(v) -> float:
+    """'1 200,50' / '1200.50' -> 1200.5; empty or bad -> 0.0 (the preview form uses comma decimals)."""
+    s = str(v or '').strip().replace(' ', '').replace(' ', '').replace(' ', '').replace(',', '.')
+    try:
+        return float(s) if s else 0.0
+    except ValueError:
+        return 0.0
+
+
 @router.get('/inventory/upload', response_class=HTMLResponse)
 async def upload_invoice_page(request: Request):
     return templates.TemplateResponse(request, 'invoice_upload.html', context={})
@@ -59,10 +68,10 @@ async def confirm_invoice(request: Request):
 
         ingredient_id = form.get(f'ingredient_id_{i}')
         ingredient_name = form.get(f'ingredient_name_{i}', '')
-        quantity = float(form.get(f'quantity_{i}', 0))
+        quantity = _dec(form.get(f'quantity_{i}'))
         unit = form.get(f'unit_{i}', 'szt')
-        price_brutto = float(form.get(f'price_brutto_{i}', 0))
-        price_per_unit = float(form.get(f'price_per_unit_{i}', 0))
+        price_brutto = _dec(form.get(f'price_brutto_{i}'))
+        price_per_unit = _dec(form.get(f'price_per_unit_{i}'))
         is_new = form.get(f'is_new_{i}') == 'true'
 
         if is_new or not ingredient_id:
