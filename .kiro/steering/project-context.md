@@ -267,7 +267,10 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   is written by `sync_orders_for_date` on every sync, so it refreshes hourly for today and fully in the
   evening. Tool `takeaway_summary`, skill `/takeaway` (last 7 complete days vs the 7 before). Past days:
   `python3 scripts/backfill_takeaway.py FROM TO` (reads GoPOS, touches nothing but that table).
-  Not available yet: sales by hour, staff/shift data, discounts by type (they need the GoPos API).
+  Shift: asked in plain words ("хто на зміні?"), the `shift_staff` tool reads LIVE from the GoPos API who
+  was logged in on the POS per order (deliberately no `/shift` command: free-form questions are the interface) (employee name, order count, first/last order time; 5-min cache). That is not a rota: nothing in the
+  system knows the schedule, and orders under the shared `Barista` account cannot be tied to a person.
+  Not available yet: sales by hour, a staff schedule, discounts by type (they need the GoPos API).
   To add a tool: write a read-only function in `telegram_tools.py`, validate inputs, cap rows, register it in
   `TOOLS` (mark finance=True if it shows costs/profit) and add a test.
 

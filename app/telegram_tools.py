@@ -332,6 +332,47 @@ def food_cost(args: dict, today: str) -> dict:
     }
 
 
+_shift_cache: dict = {}      # business day -> (fetched_at, staff list)
+SHIFT_CACHE_S = 300
+
+
+def shift_staff(args: dict, today: str) -> dict:
+    """Who rang up orders on a business day, live from the GoPOS API.
+
+    This is who was LOGGED IN on the POS, not a rota: there is no schedule in the system.
+    The shared 'Barista' account hides which person it was. Past days are cached for
+    5 minutes so repeated questions do not hit the GoPOS API.
+    """
+    import time
+    from app import gopos_api
+    day = _day(args.get('date') or today, 'date')
+    if day > today:
+        raise ValueError('date is in the future')
+    hit = _shift_cache.get(day)
+    if hit and time.time() - hit[0] < SHIFT_CACHE_S:
+        staff, orders_total = hit[1]
+    else:
+        try:
+            orders = gopos_api.fetch_closed_orders(day, 'employee')
+        except Exception as e:
+            return {'error': f'GoPOS API is not reachable right now ({type(e).__name__})'}
+        staff = gopos_api.shift_staff(orders)
+        orders_total = len(orders)
+        _shift_cache[day] = (time.time(), (staff, orders_total))
+    from zoneinfo import ZoneInfo
+    from datetime import datetime
+    return {
+        'date': day, 'orders_total': orders_total,
+        'now_warsaw': datetime.now(ZoneInfo('Europe/Warsaw')).strftime('%H:%M'),
+        'staff': [{'name': s['name'], 'orders': s['orders'], 'first_order': s['first'],
+                   'last_order': s['last']} for s in staff],
+        'note': 'This is who was logged in on the POS when orders were closed, not a schedule. '
+                'Orders under the shared "Barista" account cannot be tied to a person. '
+                'Someone with orders in the last hour or two is most likely on shift now.',
+        **{('freshness_note' if k == 'note' else k): v for k, v in _freshness(day, today).items()},
+    }
+
+
 # ── registry ──
 
 _DATE_PROPS = {
@@ -351,6 +392,7 @@ TOOLS = {
     'weekday_averages': (_spec('weekday_averages', 'Average daily revenue per weekday over a date range (shows which weekdays are strong or weak).', _DATE_PROPS, ['date_from', 'date_to']), weekday_averages, False),
     'top_products': (_spec('top_products', 'Best-selling products in a date range, ranked by revenue or quantity.', {**_DATE_PROPS, 'by': {'type': 'string', 'enum': ['revenue', 'quantity']}, 'limit': {'type': 'integer', 'description': 'max 15, default 7'}}, ['date_from']), top_products, False),
     'product_sales': (_spec('product_sales', 'Sales of products whose name contains the given text, for a date range.', {**_DATE_PROPS, 'product': {'type': 'string'}}, ['date_from', 'product']), product_sales, False),
+    'shift_staff': (_spec('shift_staff', 'Who worked on a business day: the employees logged in on the POS, with their order counts and first/last order times (live from GoPOS). Use for "who is on shift".', {'date': {'type': 'string', 'description': 'YYYY-MM-DD, default today'}}), shift_staff, False),
     'takeaway_summary': (_spec('takeaway_summary', 'Takeaway vs dine-in: share of orders and revenue and average check for each, for a date range (takeaway = order with a To-go cup/box).', _DATE_PROPS, ['date_from']), takeaway_summary, False),
     'low_stock': (_spec('low_stock', 'Ingredients at or below their minimum stock level right now.', {}), low_stock, False),
     'stock_item': (_spec('stock_item', 'Current stock of ingredients whose name contains the given text.', {'ingredient': {'type': 'string'}}, ['ingredient']), stock_item, False),
