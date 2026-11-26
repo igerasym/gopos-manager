@@ -230,10 +230,24 @@ def test_top_products_limit_is_capped():
     assert len(out['products']) <= tt.MAX_PRODUCTS
 
 
+def test_after_midnight_the_prompt_says_the_business_day_is_still_yesterday():
+    from datetime import datetime
+    p = tc.system_prompt(TODAY, False, datetime(2026, 11, 26, 0, 20))
+    assert 'BUSINESS DAY IS STILL 2026-11-25' in p and '25.11' in p and '00:20' in p
+    day = tc.system_prompt(TODAY, False, datetime(2026, 11, 25, 14, 0))
+    assert 'STILL' not in day and '14:00' in day
+
+
+def test_model_bold_markdown_becomes_telegram_bold_and_stays_escaped():
+    assert tc.to_telegram_html('**4277 zł** & <x>') == '<b>4277 zł</b> &amp; &lt;x&gt;'
+    assert tc.to_telegram_html('**<script>**') == '<b>&lt;script&gt;</b>'
+
+
 def test_system_prompt_names_the_date_and_scope():
-    p = tc.system_prompt(TODAY, finance=False)
+    from datetime import datetime
+    p = tc.system_prompt(TODAY, finance=False, now=datetime(2026, 11, 25, 12, 0))
     assert '2026-11-25 (середа)' in p and 'недоступні' in p
-    assert 'можете відповідати і про витрати' in tc.system_prompt(TODAY, finance=True)
+    assert 'можете відповідати і про витрати' in tc.system_prompt(TODAY, True, datetime(2026, 11, 25, 12, 0))
 
 
 # ── commands and startup ──

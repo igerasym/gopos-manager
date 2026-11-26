@@ -387,7 +387,9 @@ def rule_sales_stale(c: _Ctx):
     else:
         try:
             from app import gopos_api
-            hhmm = gopos_api.LAST_INTRADAY_SYNC
+            # only today's refresh counts: a leftover 'HH:MM' from yesterday would read as fresh
+            hhmm = (gopos_api.LAST_INTRADAY_SYNC
+                    if gopos_api.LAST_INTRADAY_DAY == gopos_api.warsaw_today() else None)
         except Exception:
             hhmm = None
         if hhmm and c.now.hour in OPEN_HOURS:
@@ -416,7 +418,9 @@ def data_freshness(db=None, now: datetime | None = None) -> dict:
     at = None
     try:
         from app import gopos_api
-        hhmm = gopos_api.LAST_INTRADAY_SYNC
+        # only today's refresh counts: a leftover 'HH:MM' from yesterday would read as fresh
+        hhmm = (gopos_api.LAST_INTRADAY_SYNC
+                if gopos_api.LAST_INTRADAY_DAY == gopos_api.warsaw_today() else None)
     except Exception:
         hhmm = None
     if hhmm:

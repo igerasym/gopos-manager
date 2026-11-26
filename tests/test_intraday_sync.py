@@ -17,6 +17,8 @@ TODAY = '2026-11-25'
 def setup(tmp_path, monkeypatch):
     monkeypatch.setattr('app.db.DB_PATH', tmp_path / 'test.db')
     monkeypatch.setattr(gopos_api, 'LAST_INTRADAY_SYNC', None)
+    monkeypatch.setattr(gopos_api, 'LAST_INTRADAY_DAY', TODAY)
+    monkeypatch.setattr(gopos_api, 'warsaw_today', lambda: TODAY)
     monkeypatch.setattr('app.routes.dashboard.warsaw_today', lambda: TODAY)
     init_db()
     db = get_db()
@@ -62,7 +64,7 @@ def test_bot_marks_ranges_that_include_today_as_partial(monkeypatch):
     out = tt.sales_summary({'date_from': TODAY}, TODAY)
     assert out['includes_today_still_running'] is True
     assert out['today_last_refreshed_warsaw'] == '14:45'
-    assert 'partial' in out['note']
+    assert 'still running' in out['note'] and 'final' in out['note']
     past = tt.sales_summary({'date_from': '2026-11-24'}, TODAY)
     assert 'includes_today_still_running' not in past
     for name, args in (('daily_revenue', {'date_from': TODAY}), ('top_products', {'date_from': TODAY}),
@@ -93,3 +95,21 @@ def test_scheduler_registers_the_intraday_job():
     import inspect
     src = inspect.getsource(__import__('app.main', fromlist=['x']))
     assert "scheduled_intraday" in src and "minute='15'" in src and "timezone='Europe/Warsaw'" in src
+
+
+
+def test_refresh_time_from_yesterday_is_not_shown_for_a_new_day(monkeypatch):
+    monkeypatch.setattr(gopos_api, 'LAST_INTRADAY_SYNC', '22:15')
+    monkeypatch.setattr(gopos_api, 'LAST_INTRADAY_DAY', '2026-11-24')
+    assert gopos_api.today_refreshed_at() is None
+
+
+def test_refresh_time_falls_back_to_sync_log_after_restart():
+    db = get_db()
+    db.execute("INSERT INTO sync_log (started_at, finished_at, status, message) VALUES "
+               "('2026-11-25 19:00:00', '2026-11-25 19:00:40', 'done', 'Synced 2026-11-25: 40 products via API')")
+    db.execute("INSERT INTO sync_log (started_at, finished_at, status, message) VALUES "
+               "('2026-11-25 04:30:00', '2026-11-25 04:30:30', 'done', 'Synced 2026-11-24: 50 products via API')")
+    db.commit()
+    db.close()
+    assert gopos_api.today_refreshed_at() == '20:00'      # 19:00:40 UTC = 20:00 Warsaw (CET)

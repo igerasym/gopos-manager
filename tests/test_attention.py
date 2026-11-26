@@ -20,6 +20,9 @@ CHEF = {'id': 2, 'username': 'chef', 'role': 'chef', 'display_name': 'Тарас
 def setup_db(tmp_path, monkeypatch):
     monkeypatch.setattr('app.db.DB_PATH', tmp_path / 'test.db')
     monkeypatch.setattr(gopos_api, 'LAST_INTRADAY_SYNC', None)
+    # the tests' clock is 2026-11-25: refreshes only count when they are from that business day
+    monkeypatch.setattr(gopos_api, 'warsaw_today', lambda: '2026-11-25')
+    monkeypatch.setattr(gopos_api, 'LAST_INTRADAY_DAY', '2026-11-25')
     init_db()
     db = get_db()
     db.execute("INSERT INTO users (id, username, password_hash, role, display_name) VALUES (1, 'admin', ?, 'admin', 'Оля')",

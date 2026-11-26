@@ -352,6 +352,7 @@ def sync_today():
 # Wall-clock time (Warsaw, 'HH:MM') of the last successful intraday refresh; None until the
 # first one after a restart. Read by the Telegram chat to say how fresh today's numbers are.
 LAST_INTRADAY_SYNC: Optional[str] = None
+LAST_INTRADAY_DAY: Optional[str] = None   # business day that refresh belongs to
 _intraday_lock = threading.Lock()
 
 
@@ -363,16 +364,42 @@ def sync_intraday() -> Optional[int]:
     deduct stock or log write-offs (the evening sync does both, and re-syncing the day is
     idempotent), and it skips silently when a previous run is still going.
     """
-    global LAST_INTRADAY_SYNC
+    global LAST_INTRADAY_SYNC, LAST_INTRADAY_DAY
     if not _intraday_lock.acquire(blocking=False):
         return None
     try:
-        count = sync_orders_for_date(warsaw_today())
+        day = warsaw_today()
+        count = sync_orders_for_date(day)
         from zoneinfo import ZoneInfo
         LAST_INTRADAY_SYNC = datetime.now(ZoneInfo('Europe/Warsaw')).strftime('%H:%M')
+        LAST_INTRADAY_DAY = day
         return count
     finally:
         _intraday_lock.release()
+
+
+def today_refreshed_at() -> Optional[str]:
+    """Warsaw 'HH:MM' of the last refresh of today's sales, or None if unknown.
+
+    The hourly refresh keeps it in RAM; after a restart, fall back to the last finished
+    sync_log row for today (the 19:00 UTC full sync writes 'Synced <date>: ...').
+    """
+    today = warsaw_today()
+    if LAST_INTRADAY_SYNC and LAST_INTRADAY_DAY == today:
+        return LAST_INTRADAY_SYNC
+    try:
+        db = get_db()
+        row = db.execute(
+            "SELECT finished_at FROM sync_log WHERE status = 'done' AND message LIKE ? "
+            "ORDER BY id DESC LIMIT 1", (f'Synced {today}:%',)).fetchone()
+        db.close()
+    except Exception:
+        return None
+    if not row or not row[0]:
+        return None
+    from zoneinfo import ZoneInfo
+    utc = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=ZoneInfo('UTC'))
+    return utc.astimezone(ZoneInfo('Europe/Warsaw')).strftime('%H:%M')
 
 
 def sync_date(date_str: str):
@@ -685,6 +712,12 @@ def get_selling_prices() -> dict:
     return {item['name']: item.get('price', {}).get('amount', 0) for item in items}
 
 
+def _mask_token(text) -> str:
+    """The webhook URL carries ?token=<secret>: never let it reach a log line."""
+    import re
+    return re.sub(r'(token=)[^&\s"\']*', r'\1***', str(text))
+
+
 def register_webhook(callback_url: str):
     """Register a webhook in GoPos to receive real-time notifications."""
     token = get_token()
@@ -696,7 +729,7 @@ def register_webhook(callback_url: str):
         existing = r.json().get('data', [])
         for wh in existing:
             if wh.get('url') == callback_url:
-                log.info(f'Webhook already registered: {callback_url}')
+                log.info(f'Webhook already registered: {_mask_token(callback_url)}')
                 return wh
 
     # Register new webhook
@@ -711,8 +744,8 @@ def register_webhook(callback_url: str):
     }, json=payload, timeout=15)
 
     if r.status_code in (200, 201):
-        log.info(f'Webhook registered: {callback_url}')
+        log.info(f'Webhook registered: {_mask_token(callback_url)}')
         return r.json()
     else:
-        log.warning(f'Webhook registration failed: {r.status_code} {r.text[:200]}')
+        log.warning(f'Webhook registration failed: {r.status_code} {_mask_token(r.text[:200])}')
         return None

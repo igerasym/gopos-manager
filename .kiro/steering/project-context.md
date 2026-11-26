@@ -65,7 +65,11 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   TODAY's rows in `sales` only (no stock deduction, no write-offs: the evening sync does both). Before this,
   prod had no rows for the current day until 19:00 UTC, because the GoPos webhook was NOT delivering (zero
   hits in the app and nginx logs, `processed_orders` only filled by the full syncs). `gopos_api.LAST_INTRADAY_SYNC`
-  holds the last refresh time (Warsaw 'HH:MM', RAM only); the dashboard and the Telegram chat show it.
+  holds the last refresh time (Warsaw 'HH:MM', RAM only, bound to `LAST_INTRADAY_DAY`); read it through
+  `today_refreshed_at()`, which ignores a time from a previous business day and falls back to the last
+  finished `sync_log` row for today after a restart. The dashboard and the Telegram chat show it.
+  The bot's prompt gets the Warsaw clock as well as the business day: between 00:00 and 05:00 it answers
+  "today" for the previous calendar date and says so. Model `**bold**` is converted to Telegram `<b>`.
   A failing refresh alerts the admin once per outage. If the webhook is ever connected, the refresh stays
   harmless (the day is replaced idempotently).
 - `sync_orders_for_date` **replaces** the day (DELETE + INSERT in one transaction) and rewrites
@@ -85,6 +89,11 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   id 1, `http://52.39.186.224/api/webhook/gopos` without a token, resource_type ORDER, **disabled by GoPOS on
   2026-11-06 08:01 after one HTTP 400**: PR #8 (deployed that night) accepted digits-only ids, and GoPOS sends
   the uid. Orders have `id` (int, e.g. 44607) and `uid` (UUID); `GET orders/<id>` and `orders/<uid>` both work.
+  **2026-11-26 00:05 Warsaw:** fix #21 deployed, `GOPOS_WEBHOOK_TOKEN` added to prod `.env` (backup
+  `.env.bak.webhook-20261125`), container restarted, new webhook **id 2** "The Frame Manager sync (token)"
+  registered with `?token=`. Delete id 1 once id 2 shows deliveries in Logs → Requests. The URL is plain HTTP,
+  so the token travels unencrypted; moving the webhook to HTTPS is the next hardening step.
+  Never log the webhook URL: it carries the token (`_mask_token()` in gopos_api.py).
 - Missing days are NOT auto-detected on start (only products are synced on startup).
 - No Playwright, no Chromium, no swap needed
 
@@ -261,6 +270,26 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
   Not available yet: sales by hour, staff/shift data, discounts by type (they need the GoPos API).
   To add a tool: write a read-only function in `telegram_tools.py`, validate inputs, cap rows, register it in
   `TOOLS` (mark finance=True if it shows costs/profit) and add a test.
+
+## Web UI (redesigned 2026-11, direction "Ранкова кава")
+- **Read `.kiro/steering/design-system.md` before touching any template or CSS**: tokens, components with
+  copy-paste snippets, the jargon -> plain-Ukrainian glossary, number/date filters (`zl`, `num`, `qty`, `pct`,
+  `shortdate`, `trend`). No emoji icons (use `icon(name)`), forms live in sheets, tables become card rows on
+  phones, amounts and units keep a non-breaking space (`1 690,02 zł`).
+- Navigation (same on sidebar and phone bottom bar): **Сьогодні** `/`, **Гроші** `/expenses`, **Склад**
+  `/inventory` (tabs Запаси · Що замовити · Поставки · Інвентаризація · Списання), **Меню** `/recipes`,
+  **Ще** `/more` (users, sync, theme, logout). Chef/barista get Склад · Порахувати · Списати · Рецепти · Ще.
+  Role gating and "no money for chef/barista" are unchanged (`tests/test_role_visibility.py`).
+- **"Що потребує уваги"** (`app/services/attention.py`): 11 read-only rules (invoices waiting, stock below
+  minimum, dishes without a recipe, month costs incomplete, count overdue, stale sales data...). Rows hide
+  until tomorrow via `attention_dismissed`; the same rules feed the nav badges. Add a rule = one function +
+  an entry in `RULES` + a test.
+- **Month result** (Гроші): profit = revenue - ALL expenses (product purchases included). The recipe-based
+  cost of sold goods is shown only as a reference, because recipes cover ~80 % of the menu and the rest would
+  silently cost 0. Missing recurring costs show "поки що" and a forecast. `compute_pnl` lives in
+  `app/routes/dashboard.py` and is shared by Сьогодні and Гроші.
+- The business day ends at 05:00 Warsaw (Сьогодні says so between 00:00 and 05:00). Styled 404/403/500 pages:
+  `app/errors.py`. Local preview without prod data or network: see the foundation notes in design-system.md.
 
 ## Pages & Features
 
