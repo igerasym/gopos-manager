@@ -111,10 +111,10 @@
   <section class="card card-flush mres" id="result" aria-labelledby="r-h">
     <header class="card-head"><h2 id="r-h">Результат {{ month_gen }}</h2>
       <span class="small muted">{{ r.from[8:] | int }}–{{ r.to | shortdate(weekday=False) }}</span></header>
-    <div class="eq" role="group" aria-label="Виручка мінус собівартість продуктів мінус інші витрати дорівнює прибуток">
+    <div class="eq" role="group" aria-label="Виручка мінус закупівля продуктів мінус інші витрати дорівнює прибуток">
       <div class="eq-it"><span class="eq-op" aria-hidden="true"></span><span class="eq-lb">Виручка</span><span class="eq-vl num">{{ r.revenue | num(2) }} <small>zł</small></span></div>
       <span class="eq-opc" aria-hidden="true">−</span>
-      <div class="eq-it"><span class="eq-op" aria-hidden="true">−</span><span class="eq-lb">Собівартість продуктів</span><span class="eq-vl num">{{ r.cogs | num(2) }} <small>zł</small></span></div>
+      <div class="eq-it"><span class="eq-op" aria-hidden="true">−</span><span class="eq-lb">Закупівля продуктів</span><span class="eq-vl num">{{ r.food_purchases | num(2) }} <small>zł</small></span></div>
       <span class="eq-opc" aria-hidden="true">−</span>
       <div class="eq-it"><span class="eq-op" aria-hidden="true">−</span><span class="eq-lb">Інші витрати</span><span class="eq-vl num">{{ r.other | num(2) }} <small>zł</small></span></div>
       <span class="eq-opc" aria-hidden="true">=</span>
@@ -143,8 +143,8 @@
 
     {% if r.coverage_incomplete %}
     <div class="notice notice-info">{{ icon('info') }}
-      <div class="notice-body"><span class="notice-title">Собівартість неповна.</span>
-        {{ r.without_recipe }} {{ r.without_recipe | plural('страва', 'страви', 'страв') }} без рецепту ({{ r.uncovered_pct | pct }} виручки), тож справжня собівартість більша.
+      <div class="notice-body"><span class="notice-title">Собівартість за рецептами неповна.</span>
+        {{ r.without_recipe }} {{ r.without_recipe | plural('страва', 'страви', 'страв') }} без рецепту ({{ r.uncovered_pct | pct }} виручки). Прибуток рахується із закупівлі за фактурами, тож його це не зачіпає, але частку продуктів у ціні видно неточно.
         <div class="notice-actions"><a class="btn btn-secondary" href="/recipes#no-recipe">Додати рецепти</a></div></div>
     </div>
     {% endif %}
@@ -165,12 +165,10 @@
         <dt>Виручка</dt><dd class="num">{{ r.revenue | zl }}</dd>
         <dt>Знижки<small>вже враховані у виручці</small></dt><dd class="num">{{ r.discounts | zl }}</dd>
         <dt>Виручка без ПДВ (VAT)</dt><dd class="num">{{ r.net_revenue | zl }}</dd>
-        <dt>Собівартість продуктів<small>скільки коштували інгредієнти проданого</small></dt><dd class="num">{{ r.cogs | zl }}</dd>
-        <dt>Заробіток після продуктів</dt><dd class="num">{{ r.gross_profit | zl }}</dd>
-        <dt>% що лишається після продуктів</dt><dd class="num">{{ r.gross_margin | pct(1) }}</dd>
+        <dt>Закупівля продуктів<small>що реально оплачено за фактурами цього місяця</small></dt><dd class="num">{{ r.food_purchases | zl }}</dd>
         <dt>Інші витрати<small>оренда, зарплати, рахунки…</small></dt><dd class="num">{{ r.other | zl }}</dd>
         <dt class="total">Чистий прибуток (після всіх витрат)</dt><dd class="num total">{{ r.profit | zl }}</dd>
-        <dt>Закупівля продуктів за фактурами<small>не віднімаємо окремо: замість неї рахуємо собівартість проданого</small></dt><dd class="num">{{ r.food_purchases | zl }}</dd>
+        <dt>Довідково: собівартість проданого за рецептами<small>скільки коштували інгредієнти того, що продали{% if r.coverage_incomplete %} (лише страви з рецептом){% endif %}</small></dt><dd class="num">{{ r.cogs | zl }}</dd>
       </dl>
     </details>
   </section>

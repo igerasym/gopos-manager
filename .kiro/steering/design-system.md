@@ -13,7 +13,7 @@ Files (owned by the foundation, page work should not need to edit them):
 
 | File | What |
 |---|---|
-| `app/static/style.css` | tokens, shell, all components, `LEGACY ALIASES` section at the end |
+| `app/static/style.css` | tokens, shell, all components |
 | `app/static/app.js` | theme, sheets/dialogs, `toast()`, `confirmDialog()`, data-attribute API, `esc()` |
 | `app/templates/base.html` | shell: sidebar (≥1024 px), bottom bar (<1024 px), icon sprite, confirm dialog, toasts |
 | `app/templates/_ui.html` | macros: `attention_block`, `trend_chip`, `empty_state`, `sparkline`, `page_header` |
@@ -24,8 +24,7 @@ Files (owned by the foundation, page work should not need to edit them):
 ## 1. Migrating a page: the checklist
 
 1. Keep `{% extends "base.html" %}`. Set `{% block page_title %}Склад{% endblock %}`.
-2. Opt out of the legacy styles: `{% block main_class %}{% endblock %}` (base puts `legacy` on
-   `<main>` by default). Without it old element styles (`table`, `.card` margins…) still apply.
+2. Leave `{% block main_class %}{% endblock %}` empty (old legacy styles are gone).
 3. Replace old classes with the components below; no inline colours (`#fff`, `#999`…) and no
    emoji as icons (`📦 ✅ ⚠️ 🔄 ✕`): use `{{ icon('name') }}` and a status chip with text.
 4. Page CSS, if really needed, goes in `{% block extra_style %}` (inside a `<style>`) or
@@ -35,7 +34,7 @@ Files (owned by the foundation, page work should not need to edit them):
 7. Numbers through the filters (section 4). Words from the glossary (section 5).
 8. If your page renders its own sub-navigation, override `{% block section_tabs %}{% endblock %}`
    (base renders "Запаси · Інвентаризація · Списання" tabs for admins on `/inventory*` and `/wastage`).
-9. Grep your template for legacy class names and remove them (list in section 9).
+9. Use only the classes documented here; old class names (`.kpi`, `.badge-green`, `.form-group`, …) no longer exist.
 10. Run `/Users/ygerasym/.kiro/crew/scratch/venv-gopos/bin/python -m pytest -q`; check 390 px and
     1440 px, light and dark (serve with `run_wt.sh`, section 10).
 
@@ -437,7 +436,7 @@ Sentence case everywhere, no UPPERCASE labels, no "!" in UI text.
 | `data-toast="…"`, `data-toast-now="…"` (+`data-toast-type`) | toasts |
 | `data-theme-toggle` (+ child `[data-theme-label]`) | theme switch |
 | `form[data-attention-dismiss]` | used by `attention_block` |
-| legacy: `openModal`, `closeModal`, `confirmDelete`, `openDeleteModal` | still work on unmigrated pages; replace with `data-confirm` when migrating |
+| `data-confirm` replaces the removed `openModal` / `confirmDelete` / `openDeleteModal` | |
 
 Server side, Jinja autoescape is on: never use `|safe` on DB/user text. `icon()` and the
 `_ui.html` macros return safe markup and escape their inputs.
@@ -465,20 +464,7 @@ ring (do not remove outlines), real `<label for>`, `scope="col"` on table header
 on icon-only buttons, `lang="uk"` (base), body 16 px on phone, `inputmode="decimal"` for
 numbers, `aria-current="page"` for the active tab/nav item, `aria-live` toasts (base).
 
-## 9. Legacy aliases (temporary)
-
-`style.css` ends with `/* LEGACY ALIASES */`: old variables (`--card --red --green --orange
---text-secondary --nav --primary --card-bg --accent-light --radius`) and old classes
-(`.card-header .card-title .card-subtitle .section-title .grid-2…5 .kpi* .btn-outline
-.btn-success .btn-link .btn-sm(32px) .form-group .form-control .form-row .alert .alert-warning
-.alert-success .bar-chart .bar-row .bar-track .bar-fill .badge .badge-green/red/orange .info-tip
-.modal-overlay .modal .modal-actions .deps .hide-mobile .text-right .text-center .text-muted
-.count-input .inline-edit` and bare `table/th/td`) mapped onto the new look, mostly scoped to
-`.legacy`. Migrated pages must not use them. When the last page is migrated: delete the section,
-the `legacy` default in `{% block main_class %}`, the `#confirm-modal` markup in `base.html` and
-the legacy functions in `app.js`.
-
-## 10. Running a worktree locally
+## 9. Running a worktree locally
 
 ```
 /Users/ygerasym/.kiro/crew/scratch/redesign/run_wt.sh <worktree-dir> [port] [--reseed]

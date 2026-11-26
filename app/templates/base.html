@@ -66,7 +66,7 @@
         </aside>
 
         <div class="app-body">
-            <main class="main {% block main_class %}legacy{% endblock %}" id="main">
+            <main class="main {% block main_class %}{% endblock %}" id="main">
                 <div class="topbar">
                     <a class="brand" href="{{ '/' if tfm_admin else '/inventory' }}"><span class="brand-logo">{{ icon('cup', 18) }}</span>The Frame</a>
                     <button class="btn btn-secondary btn-icon" type="button" data-theme-toggle aria-pressed="false" aria-label="Перемкнути темну тему">{{ icon('moon') }}</button>
@@ -124,25 +124,9 @@
         </form>
     </dialog>
 
-    <!-- LEGACY: old confirmation modal (openModal / confirmDelete / openDeleteModal and expenses.html use these ids) -->
-    <div class="modal-overlay" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-        <div class="modal">
-            <h3 id="modal-title">Підтвердження</h3>
-            <p id="modal-name" style="font-weight:600; color:var(--text);"></p>
-            <div id="modal-details" class="deps" style="display:none;"></div>
-            <p id="modal-warning" style="color:var(--danger); display:none;"></p>
-            <div class="modal-actions">
-                <button class="btn btn-outline" type="button" onclick="closeModal()">Скасувати</button>
-                <form id="modal-form" method="post" style="display:inline;">
-                    <button class="btn btn-danger" id="modal-submit-btn" type="submit">Видалити</button>
-                </form>
-            </div>
-        </div>
-    </div>
-
     <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 
-    <script src="/static/app.js?v=5"></script>
+    <script src="/static/app.js?v=6"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

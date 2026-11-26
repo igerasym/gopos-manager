@@ -108,42 +108,14 @@ def _clear_badges():
         pass
 
 
-# ── Month result: revenue − cost of products sold − other costs ─────────────
-
-def _pnl_fallback(db, d_from: str, d_to: str) -> dict:
-    """Same keys as app.routes.dashboard.compute_pnl (the subset used here), for a tree without it."""
-    from app.services.recipes import get_cost_lookup
-    totals = db.execute('''
-        SELECT COALESCE(SUM(total_money),0) as revenue, COALESCE(SUM(net_total),0) as net_revenue,
-               COALESCE(SUM(discount),0) as discounts
-        FROM sales WHERE date >= ? AND date <= ?
-    ''', (d_from, d_to)).fetchone()
-    rows = db.execute('''
-        SELECT product_name, SUM(quantity) as quantity, SUM(total_money) as total_money
-        FROM sales WHERE date >= ? AND date <= ? GROUP BY product_name
-    ''', (d_from, d_to)).fetchall()
-    lookup = get_cost_lookup()
-    cogs = sum((lookup.get(r['product_name'], 0) or 0) * r['quantity'] for r in rows)
-    with_recipe = sum(1 for r in rows if r['product_name'] in lookup)
-    uncovered = sum(r['total_money'] for r in rows if r['product_name'] not in lookup)
-    rev = totals['revenue']
-    return {
-        'totals': totals, 'total_cogs': cogs, 'gross_profit': rev - cogs,
-        'gross_margin': (rev - cogs) / rev * 100 if rev else 0,
-        'avg_food_cost': cogs / rev * 100 if rev else 0,
-        'recipe_coverage': {
-            'total': len(rows), 'with_recipe': with_recipe, 'without_recipe': len(rows) - with_recipe,
-            'uncovered_revenue': uncovered, 'uncovered_pct': round(uncovered / rev * 100) if rev else 0,
-        },
-    }
-
+# ── Month result: revenue − all expenses (product purchases + other costs) ──
+# Profit is the cash view, not revenue − recipe cost: recipes cover only part of the menu
+# (the rest would silently cost 0), while invoices hold what was really paid.
+# The recipe-based cost of sold goods stays as an informative number.
 
 def month_pnl(db, d_from: str, d_to: str) -> dict:
-    """Sales side of the month result. Reuses the dashboard calculation when it is importable."""
-    try:
-        from app.routes.dashboard import compute_pnl
-    except ImportError:
-        return _pnl_fallback(db, d_from, d_to)
+    """Sales side of the month result (shares the dashboard calculation)."""
+    from app.routes.dashboard import compute_pnl
     return compute_pnl(db, d_from, d_to)
 
 
@@ -175,7 +147,7 @@ def month_result(db, month: str, today: str) -> dict:
                        (month,)).fetchall()
     food_purchases = sum(r['total'] for r in costs if r['category'] == FOOD_CATEGORY)
     other = sum(r['total'] for r in costs if r['category'] != FOOD_CATEGORY)
-    profit = revenue - cogs - other
+    profit = revenue - food_purchases - other
 
     missing = missing_recurring(db, month)
     missing_total = round(sum(r['amount'] for r in missing), 2)
@@ -188,9 +160,9 @@ def month_result(db, month: str, today: str) -> dict:
     p_to = min(p_end, f'{prev}-{days:02d}')
     prev_pnl = month_pnl(db, p_from, p_to)
     prev_full = prev_pnl if p_to == p_end else month_pnl(db, p_from, p_end)
-    prev_other = db.execute('SELECT COALESCE(SUM(amount),0) AS t FROM expenses WHERE month = ? AND category != ?',
-                            (prev, FOOD_CATEGORY)).fetchone()['t']
-    prev_profit_full = prev_full['totals']['revenue'] - prev_full['total_cogs'] - prev_other
+    prev_costs = db.execute('SELECT COALESCE(SUM(amount),0) AS t FROM expenses WHERE month = ?',
+                            (prev,)).fetchone()['t']
+    prev_profit_full = prev_full['totals']['revenue'] - prev_costs
 
     cov = pnl['recipe_coverage']
     return {
@@ -208,7 +180,7 @@ def month_result(db, month: str, today: str) -> dict:
         'coverage_incomplete': bool(cov.get('without_recipe')) and revenue > 0,
         'uncovered_pct': cov.get('uncovered_pct', 0),
         'without_recipe': cov.get('without_recipe', 0),
-        'prev': prev, 'has_prev': bool(prev_full['totals']['revenue'] or prev_other),
+        'prev': prev, 'has_prev': bool(prev_full['totals']['revenue'] or prev_costs),
         'prev_days': days, 'prev_partial': p_to != p_end,
         'prev_revenue': prev_pnl['totals']['revenue'],
         'prev_food_share': prev_pnl['avg_food_cost'],

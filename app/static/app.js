@@ -15,7 +15,7 @@
        + data-confirm-title, data-confirm-ok ("Видалити"), data-confirm-tone="danger|primary"
      data-theme-toggle             button that flips light/dark (label in [data-theme-label])
      form[data-attention-dismiss]  "Сховати до завтра" without a page reload
-   Legacy (kept for unmigrated pages): openModal, closeModal, openDeleteModal, confirmDelete, sync polling.
+   Sync polling for the 'Оновити дані з каси' button.
 */
 
 // Escape text before inserting it as HTML (server messages, invoice data).
@@ -227,73 +227,6 @@ document.addEventListener('submit', e => {
         })
         .catch(() => toast('Не вдалося сховати. Спробуйте ще раз', { type: 'error' }));
 });
-
-/* ── LEGACY: universal confirmation modal (#confirm-modal) ─────────────── */
-function openModal(options) {
-    const modal = document.getElementById('confirm-modal');
-    const form = document.getElementById('modal-form');
-    document.getElementById('modal-title').textContent = options.title || 'Підтвердження';
-    document.getElementById('modal-name').textContent = options.name || '';
-    const details = document.getElementById('modal-details');
-    const warning = document.getElementById('modal-warning');
-    const submitBtn = document.getElementById('modal-submit-btn');
-    details.style.display = 'none';
-    warning.style.display = 'none';
-    if (options.details) {
-        details.innerHTML = options.details;   // callers pass pre-escaped HTML (esc())
-        details.style.display = 'block';
-    }
-    if (options.warning) {
-        warning.textContent = options.warning;
-        warning.style.display = 'block';
-    }
-    submitBtn.textContent = options.buttonText || 'Видалити';
-    form.action = options.action;
-    modal.classList.add('open');
-    const cancel = modal.querySelector('.modal-actions .btn-outline');
-    if (cancel) cancel.focus();
-}
-
-function closeModal() {
-    document.getElementById('confirm-modal').classList.remove('open');
-}
-
-(function () {
-    const m = document.getElementById('confirm-modal');
-    if (!m) return;
-    m.addEventListener('click', function (e) { if (e.target === this) closeModal(); });
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(o => o.classList.remove('open'));
-    });
-})();
-
-/* Delete ingredient modal (with dependency loading) */
-function openDeleteModal(ingredientId) {
-    openModal({
-        title: 'Видалити інгредієнт?',
-        name: 'Завантаження...',
-        action: '/ingredients/delete/' + ingredientId,
-    });
-    fetch('/api/ingredient/' + ingredientId + '/deps')
-        .then(r => r.json())
-        .then(d => {
-            document.getElementById('modal-name').textContent = d.name;
-            const all = [...d.recipes, ...d.sub_recipes.map(s => 'заготовка: ' + s)];
-            if (all.length > 0) {
-                document.getElementById('modal-details').innerHTML =
-                    '<strong>Використовується в:</strong><br>' + all.map(n => '<span>' + esc(n) + '</span>').join(' ');
-                document.getElementById('modal-details').style.display = 'block';
-                document.getElementById('modal-warning').textContent =
-                    'Цей інгредієнт буде видалений з усіх рецептів і заготовок!';
-                document.getElementById('modal-warning').style.display = 'block';
-            }
-        });
-}
-
-/* Simple confirm modal for any delete action */
-function confirmDelete(action, name) {
-    openModal({ title: 'Видалити?', name: name || '', action: action, buttonText: 'Видалити' });
-}
 
 /* ── "Оновити дані з каси": form[action="/sync"] + #sync-btn + #sync-status ── */
 if (document.getElementById('sync-btn')) {

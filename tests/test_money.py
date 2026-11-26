@@ -43,15 +43,16 @@ def _client(user='admin'):
     return c
 
 
-def test_month_result_subtracts_cost_of_sold_not_purchases():
+def test_month_result_profit_is_revenue_minus_all_expenses():
     db = get_db()
     r = money.month_result(db, '2026-11', TODAY)
     db.close()
     assert r['revenue'] == 1600            # 1500 Latte + 100 Brownie
     assert r['cogs'] == 400                # 100 Latte x 4 zł; Brownie has no recipe
-    assert r['other'] == 5000              # Продукти purchases are not subtracted again
+    assert r['other'] == 5000              # everything except product purchases
     assert r['food_purchases'] == 700
-    assert r['profit'] == 1600 - 400 - 5000
+    # recipe cost covers only part of the menu, so profit uses what was really paid
+    assert r['profit'] == 1600 - 700 - 5000
     assert r['coverage_incomplete'] and r['without_recipe'] == 1
 
 
@@ -152,7 +153,7 @@ def test_page_renders_month_result_and_invoice_list():
     assert 'Результат листопада' in html and 'type="month"' not in html
     assert 'Ще не внесено' in html and 'Скопіювати з жовтня' in html
     assert 'Не розпізнано' in html and 'Ввести вручну' in html and 'Чекає' in html
-    assert 'Собівартість неповна' in html
+    assert 'Собівартість за рецептами неповна' in html
     assert 'Рентабельність' not in html and '✕' not in html
     assert 'href="/expenses?month=2026-10"' in html
 
