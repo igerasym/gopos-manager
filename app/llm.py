@@ -1,5 +1,4 @@
 """LLM integration via AWS Bedrock for invoice classification and ingredient mapping."""
-import base64
 import json
 import logging
 import os
@@ -165,9 +164,6 @@ def parse_invoice_with_vision(file_bytes: bytes, file_name: str = '', pdf_text: 
 
 def classify_invoice(vendor: str, file_name: str, items: list) -> dict:
     """Classify invoice into category and suggest expense name."""
-    categories = ['Оренда', 'Зарплати', 'Бухгалтерія', 'Комунальні', 'Побут',
-                  'Податки і ZUS', 'Логістика', 'Продукти', 'Інше']
-
     items_preview = '\n'.join([f"- {it.get('name', '')}" for it in items[:15]])
     if len(items) > 15:
         items_preview += f"\n...({len(items) - 15} more)"

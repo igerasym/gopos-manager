@@ -8,7 +8,7 @@ Product names, ingredient names and the like come from POS and vendor invoices, 
 untrusted text; the chat module tells the model to treat tool output as data.
 """
 import re
-from datetime import date, timedelta
+from datetime import date
 
 from app.db import get_db
 
@@ -237,30 +237,21 @@ def stock_item(args: dict, today: str) -> dict:
 
 def wastage_summary(args: dict, today: str, finance: bool = False) -> dict:
     month = _month(args, today)
-    from app.services.recipes import get_cost_lookup
+    from app.gopos_api import month_bounds
+    from app.services.wastage import price_rows
+    start, end = month_bounds(month)
     db = get_db()
     try:
-        y, m = int(month[:4]), int(month[5:])
-        end = f'{y + (m == 12)}-{1 if m == 12 else m + 1:02d}-01'
         rows = db.execute('''
             SELECT w.quantity, w.reason, w.source,
                    COALESCE(i.name, w.product_name, '—') AS label,
                    COALESCE(i.unit, '—') AS unit,
                    w.quantity * COALESCE(i.unit_price, 0) AS cost
             FROM wastage w LEFT JOIN ingredients i ON w.ingredient_id = i.id
-            WHERE w.date >= ? AND w.date < ?''', (month + '-01', end)).fetchall()
+            WHERE w.date >= ? AND w.date < ?''', (start, end)).fetchall()
     finally:
         db.close()
-    # Same pricing as the /wastage page: a GoPos write-off is a product, priced by its recipe.
-    product_cost = get_cost_lookup()
-    priced = []
-    for r in rows:
-        d = dict(r)
-        if d['source'] == 'gopos':
-            d['cost'] = d['quantity'] * (product_cost.get(d['label'], 0) or 0)
-            d['unit'] = 'шт'
-        priced.append(d)
-    rows = priced
+    rows = price_rows(rows)   # same pricing as the /wastage page
     by_reason, by_item = {}, {}
     for r in rows:
         br = by_reason.setdefault(r['reason'], {'records': 0, 'cost': 0.0})

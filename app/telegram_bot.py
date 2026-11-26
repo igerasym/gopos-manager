@@ -1,10 +1,11 @@
-"""Telegram bot for The Frame Manager — daily reports & commands."""
+"""Telegram bot for The Frame Manager: sending, daily report, admin alerts.
+
+Incoming messages (questions, slash commands) are handled in telegram_chat.py.
+"""
 import logging
 import os
-from datetime import datetime
 from pathlib import Path
 from urllib.request import urlopen, Request
-from urllib.parse import quote
 import json
 import sqlite3
 import time
@@ -134,12 +135,6 @@ def daily_report():
     except sqlite3.OperationalError:
         categories = {}
 
-    # Low stock
-    low = db.execute('''
-        SELECT name, quantity, unit
-        FROM ingredients WHERE quantity <= min_quantity AND min_quantity > 0
-    ''').fetchall()
-
     try:
         last_sync = db.execute(
             'SELECT started_at, finished_at, status, message FROM sync_log ORDER BY id DESC LIMIT 1'
@@ -237,45 +232,3 @@ def _debug_footer(db_revenue, orders, gopos_error, gopos_secs, last_sync, discou
     if not problems:
         return ''
     return '\n\n🔧 <b>debug</b>\n' + '\n'.join(f'  {p}' for p in problems)
-
-
-def handle_command(text: str, chat_id: str):
-    """Handle incoming bot commands."""
-    from app.db import get_db
-
-    cmd = text.strip().lower()
-
-    if cmd in ('/today', '/report'):
-        daily_report()
-        return
-
-    if cmd in ('/stock', '/inventory'):
-        db = get_db()
-        low = db.execute('''
-            SELECT name, quantity, unit, min_quantity
-            FROM ingredients WHERE quantity <= min_quantity AND min_quantity > 0
-            ORDER BY name
-        ''').fetchall()
-        db.close()
-
-        if low:
-            lines = ['⚠️ <b>Low stock items:</b>', '']
-            for l in low:
-                lines.append(f'• {escape(l["name"])} — {l["quantity"]:.1f} {l["unit"]} (min: {l["min_quantity"]:.0f})')
-        else:
-            lines = ['✅ All stock levels OK']
-
-        send_message('\n'.join(lines), chat_id)
-        return
-
-    if cmd == '/help':
-        send_message(
-            '☕ <b>The Frame Bot</b>\n\n'
-            '/today — daily sales report\n'
-            '/stock — low stock alerts\n'
-            '/help — this message',
-            chat_id
-        )
-        return
-
-    send_message('Unknown command. Try /help', chat_id)

@@ -20,6 +20,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app import db as db_module
+from app.auth import is_admin as _is_admin
 
 log = logging.getLogger(__name__)
 
@@ -489,10 +490,6 @@ def _dismissed(db, user_id, today: date) -> set:
         log.warning('attention_dismissed unreadable: %s', e)
         return set()
     return {(r['kind'], r['key']) for r in rows}
-
-
-def _is_admin(user) -> bool:
-    return bool(user) and (user.get('role') if isinstance(user, dict) else user['role']) == 'admin'
 
 
 def get_attention_items(user, today: date | None = None, now: datetime | None = None,

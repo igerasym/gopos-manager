@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
-from app.gopos_api import warsaw_today
+from app.gopos_api import month_bounds, warsaw_today
 from app.services.pack_pricing import price_and_factor, price_per_unit, save_mapping
 
 log = logging.getLogger(__name__)
@@ -61,12 +61,7 @@ async def expenses_page(request: Request, month: str = ''):
     total = sum(r['total'] for r in by_category)
 
     # Revenue for this month from sales
-    month_start = current_month + '-01'
-    year, mon = int(current_month[:4]), int(current_month[5:7])
-    if mon == 12:
-        month_end = f'{year + 1}-01-01'
-    else:
-        month_end = f'{year}-{mon + 1:02d}-01'
+    month_start, month_end = month_bounds(current_month)
 
     revenue_row = db.execute('''
         SELECT COALESCE(SUM(total_money), 0) as revenue
@@ -84,15 +79,12 @@ async def expenses_page(request: Request, month: str = ''):
     db.close()
 
     # Load parsed invoices from DB for this month
-    parsed_ids = set()
     pending_invoices = []
     all_invoices = []
     pending_items_counts = {}
     expense_to_invoice = {}  # expense_id -> {file_id, file_name, ...}
     try:
         db2 = get_db()
-        parsed_rows = db2.execute('SELECT file_id FROM parsed_invoices').fetchall()
-        parsed_ids = set(r['file_id'] for r in parsed_rows)
         pending_invoices = db2.execute(
             "SELECT * FROM parsed_invoices WHERE month = ? AND expense_status = 'pending' AND parse_status = 'parsed' AND total > 0 ORDER BY vendor",
             (current_month,)
@@ -375,8 +367,8 @@ async def approve_invoice(invoice_id: int, category: str = Form('Продукт�
         try:
             from app.telegram_bot import send_message
             send_message("⚠️ <b>Зміна цін</b>\n\n" + "\n".join(price_alerts))
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f'Price alert not sent: {type(e).__name__}')
 
     return RedirectResponse(f'/expenses?month={month}', status_code=303)
 
@@ -500,8 +492,8 @@ async def confirm_item_mapping(item_id: int, action: str = Form(...), ingredient
                 alert = check_price_alerts(ingredient_id, new_price, old_price)
                 if alert:
                     send_message("⚠️ <b>Зміна ціни</b>\n\n" + alert)
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning(f'Price alert not sent: {type(e).__name__}')
 
     elif action == 'new' and new_name:
         # Create new ingredient

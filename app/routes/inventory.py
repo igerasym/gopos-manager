@@ -5,6 +5,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app.auth import is_admin as _is_admin
 from app.db import get_db
 from app.gopos_api import warsaw_today
 from app.services.inventory import get_all_ingredients, get_suppliers, get_ingredient_deps
@@ -12,11 +13,6 @@ from app.services.inventory import get_all_ingredients, get_suppliers, get_ingre
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 
 router = APIRouter()
-
-
-def _is_admin(request: Request) -> bool:
-    user = getattr(request.state, 'user', None)
-    return bool(user and user['role'] == 'admin')
 
 
 def _local_path(target: str, fallback: str = '/inventory') -> str:

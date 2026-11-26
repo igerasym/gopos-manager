@@ -1,5 +1,4 @@
 """Today's sales are refreshed during the day; the bot and dashboard say how fresh they are."""
-import threading
 from unittest.mock import patch
 
 import pytest

@@ -15,8 +15,7 @@ def process_invoices_for_month(current_month: str):
 
     Flow: Download from Drive → Claude vision parse → classify → map items → auto-approve.
     """
-    from app.gdrive_invoices import list_invoices_for_month, download_file, parse_invoice_textract, classify_vendor
-    from app.llm import parse_invoice_with_vision, classify_invoice, map_items_to_ingredients
+    from app.gdrive_invoices import list_invoices_for_month
 
     db = get_db()
 
@@ -74,7 +73,7 @@ def _process_single_invoice(db, f, current_month, all_known, known_hashes,
                             known_inv_numbers, known_amounts, new_parsed, auto_approved):
     """Process a single invoice file."""
     from app.gdrive_invoices import download_file, parse_invoice_textract, classify_vendor
-    from app.llm import parse_invoice_with_vision, classify_invoice, map_items_to_ingredients
+    from app.llm import parse_invoice_with_vision
 
     # Mark as processing
     if f['id'] in all_known:

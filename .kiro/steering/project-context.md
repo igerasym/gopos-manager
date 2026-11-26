@@ -158,6 +158,11 @@ Anna Hulvanska (NIP: 9512616602). The user (Yaroslav) is the developer/co-owner.
 - Recipe costs calculated dynamically from ingredient unit_price × recipe amount
 - Auto-match resale: if ingredient name = product name in sales → COGS calculated without recipe
 - Cost/price info visible only to admin role
+- Shared helpers, use them instead of re-deriving: `auth.is_admin(user_or_request)`,
+  `gopos_api.month_bounds('YYYY-MM')` (first day, first day after), `gopos_api.fetch_closed_orders(day, include)`
+  (the only GoPOS order pagination), `services.wastage.price_rows()` (one wastage pricing for page, CSV and bot).
+- Kept on purpose though nothing in the app calls them: `gopos_api.resync_sales()` and `register_webhook()` are
+  run by hand (`docker compose exec -T cafe python -c ...`).
 
 ## Expenses System (Simplified)
 - **All expenses come from invoices** (Google Drive → Textract → approve) or manual entry
@@ -217,10 +222,13 @@ import and approve) skips an implausible jump. A manual confirm also takes a typ
 per kg (butter "200 G" at 42.49 zł/kg would have become 212 zł/kg). Mappings are written only through
 `save_mapping()`, which keeps an existing factor. Fix a factor by hand:
 `UPDATE ingredient_mappings SET pack_factor = 12 WHERE invoice_name = '...'` (back up first).
-Known gap: a mapping with no stored factor (every mapping before 2026-11-26) keeps the old behaviour until its
-factor is set; a prod dry run found about 34 ingredients whose price looks per-pack. Also found: some mappings
-are plainly wrong (turkey fillet mapped to a micro-greens line, balsamic vinegar to a 5 L spirit vinegar), so
-review mappings before trusting a price.
+**Prod fix 2026-11-26** (backup `data/backups/cafe-20261126-085142-packfix.db`): factors stored for 26 mapped
+names, prices set: Mleko 3.2% 39.48 → 3.29 zł/L (cartons of 12), Pomarańcza 113.99 → 7.60 zł/kg (15 kg crates),
+Olej rzepakowy 66.35 → 6.635 zł/L (10 L cans); the orange-juice sub-recipe recalculated to 19.00 zł/L.
+Known gap: every other mapping has no stored factor and keeps the old behaviour until one is set; a prod dry
+run found about 30 more ingredients whose price looks per-pack. Also found: some mappings are plainly wrong
+(turkey fillet mapped to a micro-greens line, balsamic vinegar to a 5 L spirit vinegar), so review mappings
+before trusting a price.
 
 ## LLM Setup (active)
 - **Primary:** Claude Haiku 4.5 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`) on Bedrock us-west-2
