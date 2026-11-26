@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
 from app.gopos_api import warsaw_today
+from app.services.recipes import parse_num
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 
@@ -14,12 +15,8 @@ router = APIRouter()
 
 
 def _dec(v) -> float:
-    """'1 200,50' / '1200.50' -> 1200.5; empty or bad -> 0.0 (the preview form uses comma decimals)."""
-    s = str(v or '').strip().replace(' ', '').replace(' ', '').replace(' ', '').replace(',', '.')
-    try:
-        return float(s) if s else 0.0
-    except ValueError:
-        return 0.0
+    """A cleared field or junk -> 0.0 instead of a 500 on confirm; '1 234,50' -> 1234.5."""
+    return parse_num(v, 0.0)
 
 
 @router.get('/inventory/upload', response_class=HTMLResponse)

@@ -1,5 +1,4 @@
-"""Expenses routes (admin only): the "Гроші" page, expenses CRUD, invoices, supplier history."""
-import calendar
+"""Expenses routes (admin only)."""
 import csv
 import io
 import json
@@ -22,257 +21,119 @@ router = APIRouter()
 
 CATEGORIES = ['Оренда', 'Зарплати', 'Бухгалтерія', 'Комунальні', 'Побут', 'Податки і ZUS', 'Логістика', 'Продукти', 'Інше']
 
-# Food purchases (invoices). The month result subtracts the cost of what was SOLD
-# (recipes x sales), so purchases are shown apart and not subtracted a second time.
-FOOD_CATEGORY = 'Продукти'
-CHART_SLOTS = 4   # categories with their own colour in the stacked bar; the rest share one
-
-MONTHS_NOM = ['січень', 'лютий', 'березень', 'квітень', 'травень', 'червень',
-              'липень', 'серпень', 'вересень', 'жовтень', 'листопад', 'грудень']
-MONTHS_GEN = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня',
-              'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня']
-MONTHS_LOC = ['січні', 'лютому', 'березні', 'квітні', 'травні', 'червні',
-              'липні', 'серпні', 'вересні', 'жовтні', 'листопаді', 'грудні']
-
-DONE_MESSAGES = {
-    'added': 'Витрату додано',
-    'updated': 'Збережено',
-    'deleted': 'Витрату видалено',
-    'copied': 'Постійні витрати скопійовано',
-    'nothing': 'Немає чого копіювати',
-    'dismissed': 'Добре, цього місяця не рахуємо',
-    'approved': 'Фактуру додано у витрати',
-    'skipped': 'Фактуру пропущено',
-    'manual': 'Фактуру внесено вручну',
-}
-
-
-def _dec(v) -> float:
-    """'12,50' / '12.50' / '1 200' -> float; empty or bad -> 0.0."""
-    if v is None:
-        return 0.0
-    s = str(v).strip().replace('\u202f', '').replace('\xa0', '').replace(' ', '').replace(',', '.')
-    try:
-        return float(s) if s else 0.0
-    except ValueError:
-        return 0.0
-
-
-def _valid_month(m: str) -> bool:
-    try:
-        y, mo = int(m[:4]), int(m[5:7])
-        return len(m) == 7 and m[4] == '-' and 1 <= mo <= 12 and 2000 <= y <= 2100
-    except (ValueError, TypeError):
-        return False
-
-
-def shift_month(m: str, delta: int) -> str:
-    y, mo = int(m[:4]), int(m[5:7]) + delta
-    while mo < 1:
-        y, mo = y - 1, mo + 12
-    while mo > 12:
-        y, mo = y + 1, mo - 12
-    return f'{y}-{mo:02d}'
-
-
-def month_label(m: str, case: str = 'nom', with_year: bool | None = None) -> str:
-    """'2026-11' -> 'листопад' (nom) / 'листопада' (gen) / 'листопаді' (loc); year added when not current."""
-    names = {'nom': MONTHS_NOM, 'gen': MONTHS_GEN, 'loc': MONTHS_LOC}[case]
-    y, mo = int(m[:4]), int(m[5:7])
-    s = names[mo - 1]
-    if with_year is None:
-        with_year = y != int(warsaw_today()[:4])
-    return f'{s} {y}' if with_year else s
-
-
-def _month_bounds(m: str) -> tuple[str, str]:
-    y, mo = int(m[:4]), int(m[5:7])
-    return f'{m}-01', f'{m}-{calendar.monthrange(y, mo)[1]:02d}'
-
-
-def _redirect(month: str = '', done: str = '', anchor: str = '') -> RedirectResponse:
-    q = []
-    if month:
-        q.append(f'month={month}')
-    if done:
-        q.append(f'done={done}')
-    url = '/expenses' + ('?' + '&'.join(q) if q else '') + (f'#{anchor}' if anchor else '')
-    return RedirectResponse(url, status_code=303)
-
-
-def _clear_badges():
-    try:
-        from app.services import attention
-        attention.clear_cache()
-    except Exception:   # badge refresh is cosmetic
-        pass
-
-
-# ── Month result: revenue − all expenses (product purchases + other costs) ──
-# Profit is the cash view, not revenue − recipe cost: recipes cover only part of the menu
-# (the rest would silently cost 0), while invoices hold what was really paid.
-# The recipe-based cost of sold goods stays as an informative number.
-
-def month_pnl(db, d_from: str, d_to: str) -> dict:
-    """Sales side of the month result (shares the dashboard calculation)."""
-    from app.routes.dashboard import compute_pnl
-    return compute_pnl(db, d_from, d_to)
-
-
-def missing_recurring(db, month: str) -> list[dict]:
-    """Recurring costs of the previous month that are not entered (nor dismissed) for `month`.
-    Same rule as the 'costs_incomplete' attention row."""
-    from app.services.attention import missing_recurring_costs
-    return missing_recurring_costs(db, month, shift_month(month, -1))
-
-
-def month_result(db, month: str, today: str) -> dict:
-    """Numbers for the 'Результат місяця' card: the month so far (or the whole past month),
-    the forecast with last month's recurring costs, and the same days of the previous month."""
-    m_from, m_to = _month_bounds(month)
-    is_current = month == today[:7]
-    is_future = m_from > today
-    d_to = min(m_to, today) if is_current else m_to
-    pnl = month_pnl(db, m_from, d_to)
-    revenue = pnl['totals']['revenue']
-    cogs = pnl['total_cogs']
-
-    costs = db.execute('SELECT category, SUM(amount) AS total FROM expenses WHERE month = ? GROUP BY category',
-                       (month,)).fetchall()
-    food_purchases = sum(r['total'] for r in costs if r['category'] == FOOD_CATEGORY)
-    other = sum(r['total'] for r in costs if r['category'] != FOOD_CATEGORY)
-    profit = revenue - food_purchases - other
-
-    missing = missing_recurring(db, month)
-    missing_total = round(sum(r['amount'] for r in missing), 2)
-    forecast = profit - missing_total
-
-    # previous month: the same number of days for sales, the whole month for costs
-    prev = shift_month(month, -1)
-    p_from, p_end = _month_bounds(prev)
-    days = int(d_to[8:10])
-    p_to = min(p_end, f'{prev}-{days:02d}')
-    prev_pnl = month_pnl(db, p_from, p_to)
-    prev_full = prev_pnl if p_to == p_end else month_pnl(db, p_from, p_end)
-    prev_costs = db.execute('SELECT COALESCE(SUM(amount),0) AS t FROM expenses WHERE month = ?',
-                            (prev,)).fetchone()['t']
-    prev_profit_full = prev_full['totals']['revenue'] - prev_costs
-
-    cov = pnl['recipe_coverage']
-    return {
-        'from': m_from, 'to': d_to, 'is_current': is_current, 'is_future': is_future,
-        'revenue': revenue, 'discounts': pnl['totals']['discounts'],
-        'net_revenue': pnl['totals']['net_revenue'],
-        'cogs': cogs, 'gross_profit': revenue - cogs,
-        'gross_margin': (revenue - cogs) / revenue * 100 if revenue else 0,
-        'food_share': cogs / revenue * 100 if revenue else 0,
-        'other': other, 'food_purchases': food_purchases, 'profit': profit,
-        'per100': profit / revenue * 100 if revenue else None,
-        'missing': missing, 'missing_total': missing_total,
-        'missing_categories': list(dict.fromkeys(r['category'] or r['name'] for r in missing)),
-        'forecast': forecast, 'forecast_per100': forecast / revenue * 100 if revenue else None,
-        'coverage_incomplete': bool(cov.get('without_recipe')) and revenue > 0,
-        'uncovered_pct': cov.get('uncovered_pct', 0),
-        'without_recipe': cov.get('without_recipe', 0),
-        'prev': prev, 'has_prev': bool(prev_full['totals']['revenue'] or prev_costs),
-        'prev_days': days, 'prev_partial': p_to != p_end,
-        'prev_revenue': prev_pnl['totals']['revenue'],
-        'prev_food_share': prev_pnl['avg_food_cost'],
-        'prev_profit_full': prev_profit_full,
-    }
-
-
-def invoice_state(inv) -> str:
-    """One status per invoice: failed | processing | new | waiting | added | skipped | duplicate."""
-    ps, es = inv['parse_status'], inv['expense_status']
-    if es == 'added':
-        return 'added'
-    if es == 'skipped':
-        return 'skipped'
-    if ps == 'duplicate':
-        return 'duplicate'
-    if ps == 'error' or (ps == 'parsed' and not (inv['total'] or 0) > 0):
-        return 'failed'
-    if ps == 'processing':
-        return 'processing'
-    if ps == 'parsed':
-        return 'waiting'
-    return 'new'
-
-
-INVOICE_ORDER = {'failed': 0, 'waiting': 1, 'processing': 2, 'new': 3, 'added': 4, 'skipped': 5, 'duplicate': 6}
-
 
 @router.get('/expenses', response_class=HTMLResponse)
-async def expenses_page(request: Request, month: str = '', done: str = ''):
-    today = warsaw_today()
-    current_month = month if _valid_month(month) else today[:7]
+async def expenses_page(request: Request, month: str = ''):
+    current_month = month or warsaw_today()[:7]
     db = get_db()
 
-    expenses_raw = [dict(r) for r in db.execute(
-        'SELECT * FROM expenses WHERE month = ? ORDER BY amount DESC', (current_month,)).fetchall()]
+    # All expenses for this month grouped by name
+    expenses_raw = db.execute('''
+        SELECT * FROM expenses WHERE month = ? ORDER BY amount DESC
+    ''', (current_month,)).fetchall()
 
-    result = month_result(db, current_month, today)
+    # Group by name (vendor) — sum amounts for same name
+    grouped = {}
+    for e in expenses_raw:
+        key = e['name']
+        if key not in grouped:
+            grouped[key] = {
+                'name': key,
+                'category': e['category'],
+                'amount': 0,
+                'count': 0,
+                'items': [],
+            }
+        grouped[key]['amount'] += e['amount']
+        grouped[key]['count'] += 1
+        grouped[key]['items'].append(dict(e))
 
-    # invoices of the month, one list
-    all_invoices = []
-    expense_to_invoice = {}
-    try:
-        all_invoices = [dict(r) for r in db.execute(
-            'SELECT * FROM parsed_invoices WHERE month = ? ORDER BY vendor', (current_month,)).fetchall()]
-        pending_items_counts = {r['parsed_invoice_id']: r['cnt'] for r in db.execute('''
-            SELECT parsed_invoice_id, COUNT(*) as cnt FROM invoice_items_pending
-            WHERE status = 'pending' GROUP BY parsed_invoice_id''').fetchall()}
-    except Exception as e:
-        log.warning(f"Could not load parsed invoices: {e}")
-        pending_items_counts = {}
-    for inv in all_invoices:
-        inv['state'] = invoice_state(inv)
-        inv['pending_items'] = pending_items_counts.get(inv['id'], 0)
-        if inv['expense_id']:
-            expense_to_invoice[inv['expense_id']] = inv
-    all_invoices.sort(key=lambda i: (INVOICE_ORDER[i['state']], -(i['total'] or 0)))
-    waiting = [i for i in all_invoices if i['state'] == 'waiting']
+    expenses = sorted(grouped.values(), key=lambda x: x['amount'], reverse=True)
+
+    # Totals by category
+    by_category = db.execute('''
+        SELECT category, SUM(amount) as total
+        FROM expenses WHERE month = ?
+        GROUP BY category ORDER BY total DESC
+    ''', (current_month,)).fetchall()
+
+    total = sum(r['total'] for r in by_category)
+
+    # Revenue for this month from sales
+    month_start = current_month + '-01'
+    year, mon = int(current_month[:4]), int(current_month[5:7])
+    if mon == 12:
+        month_end = f'{year + 1}-01-01'
+    else:
+        month_end = f'{year}-{mon + 1:02d}-01'
+
+    revenue_row = db.execute('''
+        SELECT COALESCE(SUM(total_money), 0) as revenue
+        FROM sales WHERE date >= ? AND date < ?
+    ''', (month_start, month_end)).fetchone()
+    revenue = revenue_row['revenue']
+
+    net_profit = revenue - total
+
+    # Available months
+    months = db.execute('''
+        SELECT DISTINCT month FROM expenses ORDER BY month DESC
+    ''').fetchall()
 
     db.close()
 
-    # expenses per category: other costs in the stacked bar, food purchases apart
-    by_cat = {}
-    for e in expenses_raw:
-        inv = expense_to_invoice.get(e['id'])
-        e['invoice_file_id'] = inv['file_id'] if inv else ''
-        cat = e['category'] or 'Інше'
-        c = by_cat.setdefault(cat, {'category': cat, 'total': 0, 'items': []})
-        c['total'] += e['amount']
-        c['items'].append(e)
-    other_cats = sorted((c for c in by_cat.values() if c['category'] != FOOD_CATEGORY),
-                        key=lambda c: c['total'], reverse=True)
-    other_total = sum(c['total'] for c in other_cats)
-    for i, c in enumerate(other_cats):
-        c['slot'] = min(i, CHART_SLOTS) + 1
-        c['pct'] = c['total'] / other_total * 100 if other_total else 0
-    bar = [{'slot': c['slot'], 'label': c['category'], 'pct': c['pct']} for c in other_cats[:CHART_SLOTS]]
-    rest = other_cats[CHART_SLOTS:]
-    if rest:
-        bar.append({'slot': CHART_SLOTS + 1, 'label': 'Решта', 'pct': sum(c['pct'] for c in rest)})
+    # Load parsed invoices from DB for this month
+    parsed_ids = set()
+    pending_invoices = []
+    all_invoices = []
+    pending_items_counts = {}
+    expense_to_invoice = {}  # expense_id -> {file_id, file_name, ...}
+    try:
+        db2 = get_db()
+        parsed_rows = db2.execute('SELECT file_id FROM parsed_invoices').fetchall()
+        parsed_ids = set(r['file_id'] for r in parsed_rows)
+        pending_invoices = db2.execute(
+            "SELECT * FROM parsed_invoices WHERE month = ? AND expense_status = 'pending' AND parse_status = 'parsed' AND total > 0 ORDER BY vendor",
+            (current_month,)
+        ).fetchall()
+        all_invoices = db2.execute(
+            "SELECT * FROM parsed_invoices WHERE month = ? ORDER BY expense_status, vendor",
+            (current_month,)
+        ).fetchall()
+        # Count pending items per invoice
+        rows = db2.execute('''
+            SELECT parsed_invoice_id, COUNT(*) as cnt
+            FROM invoice_items_pending
+            WHERE status = 'pending'
+            GROUP BY parsed_invoice_id
+        ''').fetchall()
+        pending_items_counts = {r['parsed_invoice_id']: r['cnt'] for r in rows}
+        # Build expense -> invoice map
+        for inv in all_invoices:
+            if inv['expense_id']:
+                expense_to_invoice[inv['expense_id']] = {
+                    'file_id': inv['file_id'],
+                    'file_name': inv['file_name'],
+                    'invoice_number': inv['invoice_number'],
+                }
+        db2.close()
+    except Exception as e:
+        log.warning(f"Could not load parsed invoices: {e}")
 
-    prev_m = shift_month(current_month, -1)
+    # Attach invoice info to expense items in groups
+    for group in expenses:
+        for item in group['items']:
+            inv = expense_to_invoice.get(item['id'])
+            item['invoice'] = inv
+
     return templates.TemplateResponse(request, 'expenses.html', context={
-        'current_month': current_month, 'today': today,
-        'month_nom': month_label(current_month), 'month_gen': month_label(current_month, 'gen'),
-        'prev_month': prev_m, 'next_month': shift_month(current_month, 1),
-        'prev_nom': month_label(prev_m), 'prev_loc': month_label(prev_m, 'loc'),
-        'prev_gen': month_label(prev_m, 'gen'),
-        'next_nom': month_label(shift_month(current_month, 1)),
-        'has_next': current_month < today[:7],
-        'r': result, 'categories': CATEGORIES,
-        'other_cats': other_cats, 'other_total': other_total, 'bar': bar,
-        'food': by_cat.get(FOOD_CATEGORY),
-        'has_expenses': bool(expenses_raw),
-        'all_invoices': all_invoices, 'waiting': waiting,
-        'waiting_total': sum(i['total'] or 0 for i in waiting),
-        'has_processing': any(i['state'] == 'processing' for i in all_invoices),
-        'done_message': DONE_MESSAGES.get(done, ''),
+        'expenses': expenses, 'by_category': by_category,
+        'total': total, 'current_month': current_month,
+        'months': months, 'categories': CATEGORIES,
+        'revenue': revenue, 'net_profit': net_profit,
+        'pending_invoices': pending_invoices,
+        'all_invoices': all_invoices,
+        'pending_items_counts': pending_items_counts,
     })
 
 
@@ -280,47 +141,21 @@ async def expenses_page(request: Request, month: str = '', done: str = ''):
 async def add_expense(
     name: str = Form(...), category: str = Form('Інше'),
     amount: Optional[str] = Form(''), month: str = Form(''),
-    note: str = Form(''), recurring: str = Form(''),
+    note: str = Form(''),
 ):
-    month = month if _valid_month(month) else warsaw_today()[:7]
+    month = month or warsaw_today()[:7]
+    try:
+        amt = float(amount) if amount else 0.0
+    except (ValueError, TypeError):
+        amt = 0.0
     db = get_db()
     db.execute(
-        'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, ?, ?)',
-        (name.strip(), category, _dec(amount), month, 1 if recurring else 0, note)
+        'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, 0, ?)',
+        (name, category, amt, month, note)
     )
     db.commit()
     db.close()
-    _clear_badges()
-    return _redirect(month, 'added')
-
-
-@router.post('/expenses/copy-recurring')
-async def copy_recurring(month: str = Form('')):
-    """Enter every recurring cost still missing this month with last month's amount (idempotent)."""
-    month = month if _valid_month(month) else warsaw_today()[:7]
-    db = get_db()
-    missing = missing_recurring(db, month)
-    note = f'як у {month_label(shift_month(month, -1), "loc")}'
-    for r in missing:
-        db.execute(
-            'INSERT INTO expenses (name, category, amount, month, recurring, note) VALUES (?, ?, ?, ?, 1, ?)',
-            (r['name'], r['category'], r['amount'], month, note))
-    db.commit()
-    db.close()
-    _clear_badges()
-    return _redirect(month, 'copied' if missing else 'nothing')
-
-
-@router.post('/expenses/dismiss-missing')
-async def dismiss_missing(name: str = Form(...), month: str = Form('')):
-    """'Цього місяця не буде': a recurring cost stops counting as missing for this month."""
-    month = month if _valid_month(month) else warsaw_today()[:7]
-    db = get_db()
-    db.execute('INSERT OR IGNORE INTO expenses_dismissed (name, month) VALUES (?, ?)', (name, month))
-    db.commit()
-    db.close()
-    _clear_badges()
-    return _redirect(month, 'dismissed')
+    return RedirectResponse(f'/expenses?month={month}', status_code=303)
 
 
 @router.post('/expenses/update/{expense_id}')
@@ -337,11 +172,15 @@ async def update_expense(
     updates = []
     params = []
     if amount is not None:
+        try:
+            amt = float(amount) if amount else 0.0
+        except (ValueError, TypeError):
+            amt = 0.0
         updates.append('amount = ?')
-        params.append(_dec(amount))
-    if name and name.strip():
+        params.append(amt)
+    if name:
         updates.append('name = ?')
-        params.append(name.strip())
+        params.append(name)
     if category:
         updates.append('category = ?')
         params.append(category)
@@ -351,8 +190,7 @@ async def update_expense(
         db.execute(f'UPDATE expenses SET {", ".join(updates)} WHERE id = ?', params)
         db.commit()
     db.close()
-    _clear_badges()
-    return _redirect(m, 'updated')
+    return RedirectResponse(f'/expenses?month={m}', status_code=303)
 
 
 @router.post('/expenses/delete/{expense_id}')
@@ -363,8 +201,7 @@ async def delete_expense(expense_id: int):
     db.execute('DELETE FROM expenses WHERE id = ?', (expense_id,))
     db.commit()
     db.close()
-    _clear_badges()
-    return _redirect(m, 'deleted')
+    return RedirectResponse(f'/expenses?month={m}', status_code=303)
 
 
 # ── Invoice parsing endpoints ──
@@ -535,8 +372,7 @@ async def approve_invoice(invoice_id: int, category: str = Form('Продукт�
         except Exception:
             pass
 
-    _clear_badges()
-    return _redirect(month, 'approved', 'invoices')
+    return RedirectResponse(f'/expenses?month={month}', status_code=303)
 
 
 @router.post('/expenses/skip-invoice/{invoice_id}')
@@ -548,27 +384,7 @@ async def skip_invoice(invoice_id: int):
     db.execute("UPDATE parsed_invoices SET expense_status = 'skipped' WHERE id = ?", (invoice_id,))
     db.commit()
     db.close()
-    _clear_badges()
-    return _redirect(month, 'skipped', 'invoices')
-
-
-@router.post('/expenses/manual-invoice/{invoice_id}')
-async def manual_invoice(invoice_id: int, vendor: str = Form(...), total: str = Form(...),
-                         category: str = Form('Продукти')):
-    """'Ввести вручну' for an invoice that was not recognised: owner types the supplier and the
-    sum, then it is added to expenses exactly like an approved one."""
-    amount = _dec(total)
-    db = get_db()
-    inv = db.execute('SELECT month, expense_status FROM parsed_invoices WHERE id = ?', (invoice_id,)).fetchone()
-    if not inv or inv['expense_status'] != 'pending' or amount <= 0 or not vendor.strip():
-        db.close()
-        return _redirect(inv['month'] if inv else '', anchor='invoices')
-    db.execute("UPDATE parsed_invoices SET vendor = ?, total = ?, parse_status = 'parsed' WHERE id = ?",
-               (vendor.strip(), amount, invoice_id))
-    db.commit()
-    db.close()
-    await approve_invoice(invoice_id, category)
-    return _redirect(inv['month'], 'manual', 'invoices')
+    return RedirectResponse(f'/expenses?month={month}', status_code=303)
 
 
 @router.get('/expenses/scan-drive')
@@ -770,25 +586,6 @@ async def supplier_history(request: Request, vendor: str = ''):
         ''', (vendor,)).fetchall()
 
     db.close()
-
-    def span(v):
-        a, b = v['first_month'], v['last_month']
-        if not (a and _valid_month(a)):
-            return ''
-        if a == b or not (b and _valid_month(b)):
-            return month_label(a)
-        return f'{month_label(a)} – {month_label(b)}'
-
-    vendor_rows = [{**dict(v), 'span': span(v)} for v in vendors]
-    by_month = []
-    for inv in invoices:
-        if not by_month or by_month[-1]['month'] != inv['month']:
-            label = month_label(inv['month']) if _valid_month(inv['month'] or '') else (inv['month'] or '—')
-            by_month.append({'month': inv['month'], 'label': label, 'total': 0, 'items': []})
-        by_month[-1]['total'] += inv['total'] or 0
-        by_month[-1]['items'].append(inv)
-
     return templates.TemplateResponse(request, 'supplier_history.html', context={
-        'vendors': vendor_rows, 'selected_vendor': vendor, 'invoices': invoices, 'by_month': by_month,
-        'vendors_total': sum(v['total_sum'] or 0 for v in vendors),
+        'vendors': vendors, 'selected_vendor': vendor, 'invoices': invoices,
     })

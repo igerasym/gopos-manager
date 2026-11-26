@@ -9,4 +9,3 @@ __pycache__/
 catchmyaction-key.pem
 *.pem
 MeshClaw/
-data/

@@ -1,136 +1,113 @@
 {% extends "base.html" %}
-{% from "_ui.html" import page_header %}
 
-{% block page_title %}Інвентаризація{% endblock %}
-{% block main_class %}{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="/static/pages/stock.css?v=1">{% endblock %}
-{% block section_tabs %}{% with stock_tab='count' %}{% include "_stock_tabs.html" %}{% endwith %}{% endblock %}
-
-{% block content %}
-{% set who = count['display_name'] or count['username'] or 'хтось' %}
-{% call page_header('Інвентаризація ' ~ (count['date'] | shortdate), eyebrow=who ~ (', ' ~ count['time'] if count['time'] else '') ~ (' · ' ~ count['note'] if count['note'] else '')) %}
-    <a class="btn btn-secondary" href="/inventory/history">{{ icon('chevron-left') }}Історія</a>
-    <button class="btn btn-secondary" type="button" data-sheet-open="sheet-add-item">{{ icon('plus') }}Додати позицію</button>
-{% endcall %}
-
-{% set saved_msg = {'1': 'Інвентаризацію збережено', 'update': 'Кількість змінено', 'add': 'Позицію додано'} %}
-{% if saved in saved_msg %}<div hidden data-toast-now="{{ saved_msg[saved] }}" data-toast-type="ok"></div>{% endif %}
-
-<section class="card mb-4" aria-label="Підсумок">
-    <div class="stat-row stat-row-flat">
-        <div class="stat"><span class="stat-label">Пораховано</span><span class="stat-value num">{{ items | length }}</span></div>
-        <div class="stat"><span class="stat-label">Не вистачило</span><span class="stat-value num">{{ short_count }}</span></div>
-        {% if is_admin %}<div class="stat"><span class="stat-label">Втрати</span><span class="stat-value num danger-text">{% if total_diff_value %}−{% endif %}{{ total_diff_value | zl }}</span></div>{% endif %}
-    </div>
-    {% if over_count %}<p class="small muted mt-3">Ще {{ over_count }} {{ over_count | plural('позиції', 'позицій', 'позицій') }} виявилось більше, ніж у системі.{% if is_admin %} Втрати пораховано за поточними цінами.{% endif %}</p>
-    {% elif is_admin %}<p class="small muted mt-3">Втрати пораховано за поточними цінами.</p>{% endif %}
-</section>
-
-<section class="card card-flush" aria-labelledby="items-h">
-    <header class="card-head"><h2 id="items-h">{% if is_admin %}Що коштувало найбільше{% else %}Пораховані позиції{% endif %}</h2>
-        <span class="small muted">Різниця менше 0,05&nbsp;кг, л або шт вважається збігом</span></header>
-    {% if items %}
-    <ul class="rows journal-rows only-phone">
-        {% for i in items %}
-        <li class="row{% if is_admin and loop.index <= 3 and i.loss %} is-top{% endif %}">
-            <span class="row-main">
-                <span class="row-title">{{ i.name }}</span>
-                <span class="row-sub">було {{ i.expected | qty(i.unit) }} · пораховано {{ i.actual | qty(i.unit) }}</span>
-            </span>
-            <span class="row-trail">
-                {% if i.status == 'short' %}<span class="row-value num danger-text">{{ i.difference | num(3, strip=True, sign=True) }} {{ i.unit | unit_ua }}</span>{% if is_admin and i.loss %}<span class="small muted num">−{{ i.loss | zl }}</span>{% endif %}
-                {% elif i.status == 'over' %}<span class="chip chip-info">{{ i.difference | num(3, strip=True, sign=True) }} {{ i.unit | unit_ua }}</span>
-                {% else %}<span class="chip chip-ok">{{ icon('check', 14) }}Збіг</span>{% endif %}
-            </span>
-            <button class="btn btn-quiet btn-icon" type="button" aria-label="Змінити кількість: {{ i.name }}"
-                    data-count-edit data-item="{{ i.id }}" data-name="{{ i.name }}" data-actual="{{ i.actual | num(3, strip=True) }}" data-unit="{{ i.unit | unit_ua }}">{{ icon('pencil') }}</button>
-        </li>
-        {% endfor %}
-    </ul>
-    <div class="table-wrap hide-phone">
-    <table class="table">
-        <thead><tr>
-            <th scope="col">Інгредієнт</th>
-            <th scope="col" class="num">У системі</th>
-            <th scope="col" class="num">Пораховано</th>
-            <th scope="col" class="num">Різниця</th>
-            {% if is_admin %}<th scope="col" class="num" aria-sort="descending">Втрати</th>{% endif %}
-            <th scope="col">Статус</th>
-            <th scope="col"><span class="sr-only">Дії</span></th>
-        </tr></thead>
-        <tbody>
-        {% for i in items %}
-            <tr{% if is_admin and loop.index <= 3 and i.loss %} class="is-top"{% endif %}>
-                <td class="cell-primary" data-label="Інгредієнт">{{ i.name }}</td>
-                <td class="num" data-label="У системі">{{ i.expected | qty(i.unit) }}</td>
-                <td class="num" data-label="Пораховано">{{ i.actual | qty(i.unit) }}</td>
-                <td class="num{{ ' danger-text' if i.status == 'short' }}" data-label="Різниця">{% if i.status == 'match' %}0{% else %}{{ i.difference | num(3, strip=True, sign=True) }} {{ i.unit | unit_ua }}{% endif %}</td>
-                {% if is_admin %}<td class="num" data-label="Втрати">{% if i.loss %}−{{ i.loss | zl }}{% else %}<span class="muted">—</span>{% endif %}</td>{% endif %}
-                <td data-label="Статус">
-                    {% if i.status == 'short' %}<span class="chip chip-danger">{{ icon('alert', 14) }}Не вистачило</span>
-                    {% elif i.status == 'over' %}<span class="chip chip-info">{{ icon('info', 14) }}Більше, ніж у системі</span>
-                    {% else %}<span class="chip chip-ok">{{ icon('check', 14) }}Збіг</span>{% endif %}
-                </td>
-                <td class="cell-actions" data-label="">
-                    <button class="btn btn-quiet btn-icon" type="button" aria-label="Змінити кількість: {{ i.name }}"
-                            data-count-edit data-item="{{ i.id }}" data-name="{{ i.name }}" data-actual="{{ i.actual | num(3, strip=True) }}" data-unit="{{ i.unit | unit_ua }}">{{ icon('pencil') }}</button>
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    </div>
-    {% else %}
-    <p class="muted card-body">У цій інвентаризації немає позицій.</p>
-    {% endif %}
-</section>
-
-{% if is_admin %}
-<form class="mt-4" method="post" action="/inventory/count/{{ count['id'] }}/delete"
-      data-confirm="Видалити інвентаризацію {{ count['date'] | shortdate }}? Залишки на складі не зміняться." data-confirm-ok="Видалити">
-    <button class="btn btn-quiet danger-text" type="submit">{{ icon('trash') }}Видалити інвентаризацію</button>
-</form>
-{% endif %}
-
-<dialog class="sheet" id="sheet-count-edit" aria-labelledby="sheet-count-edit-h">
-    <div class="sheet-grip" aria-hidden="true"></div>
-    <div class="sheet-head"><h2 id="sheet-count-edit-h">Змінити кількість</h2><button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
-    <form method="post" action="/inventory/count/{{ count['id'] }}/update" style="display:contents">
-        <input type="hidden" name="item_id" id="ce-item">
-        <div class="sheet-body form">
-            <div class="field">
-                <label class="field-label" for="ce-actual" id="ce-label">Пораховано</label>
-                <div class="input-group"><input class="input" id="ce-actual" name="actual" inputmode="decimal" required autocomplete="off" pattern="[0-9]+([.,][0-9]+)?"><span class="input-suffix" id="ce-unit"></span></div>
-                <span class="field-help">Залишок на складі теж зміниться</span>
-            </div>
-        </div>
-        <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button><button class="btn btn-primary" type="submit">Зберегти</button></div>
-    </form>
-</dialog>
-
-<dialog class="sheet" id="sheet-add-item" aria-labelledby="sheet-add-item-h">
-    <div class="sheet-grip" aria-hidden="true"></div>
-    <div class="sheet-head"><h2 id="sheet-add-item-h">Додати позицію</h2><button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
-    <form method="post" action="/inventory/count/{{ count['id'] }}/add" style="display:contents" data-unit-form>
-        <div class="sheet-body form">
-            <div class="field">
-                <label class="field-label" for="ai-find">Інгредієнт</label>
-                <div class="search">{{ icon('search') }}<input class="input" type="search" id="ai-find" placeholder="Пошук" autocomplete="off" data-filter-select="ai-ing" aria-label="Пошук інгредієнта"></div>
-                <select class="select mt-2" id="ai-ing" name="ingredient_id" required data-unit-source>
-                    <option value="">Оберіть інгредієнт</option>
-                    {% for i in all_ingredients %}<option value="{{ i['id'] }}" data-unit="{{ i['unit'] | unit_ua }}">{{ i['name'] }}</option>{% endfor %}
-                </select>
-            </div>
-            <div class="field">
-                <label class="field-label" for="ai-q">Пораховано</label>
-                <div class="input-group"><input class="input" id="ai-q" name="actual" inputmode="decimal" required autocomplete="off" pattern="[0-9]+([.,][0-9]+)?"><span class="input-suffix" data-unit-target>—</span></div>
-            </div>
-        </div>
-        <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button><button class="btn btn-primary" type="submit">Додати</button></div>
-    </form>
-</dialog>
+{% block extra_style %}
+.diff-positive { color: var(--green); font-weight: 600; }
+.diff-negative { color: var(--red); font-weight: 600; }
+.diff-zero { color: var(--text-secondary); }
+.edit-qty { width: 80px; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; font-size: .85em; text-align: right; background: transparent; transition: all .15s; }
+.edit-qty:hover { border-color: var(--border); background: #fff; }
+.edit-qty:focus { border-color: var(--accent); background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(67,97,238,.1); }
+.save-btn { opacity: 0; transition: opacity .15s; }
+form:focus-within .save-btn { opacity: 1; }
 {% endblock %}
 
-{% block extra_js %}
-<script src="/static/pages/stock.js?v=1"></script>
+{% block content %}
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <div>
+        <h2 style="margin:0;">Інвентаризація — {{ count['date'] }} {{ count['time'] or '' }}</h2>
+        <span class="text-muted" style="font-size:.85em;">
+            {{ count['display_name'] or count['username'] or 'Невідомо' }}
+            {% if count['note'] %} · {{ count['note'] }}{% endif %}
+        </span>
+    </div>
+    <a href="/inventory/history" class="btn btn-outline btn-sm">← Історія</a>
+</div>
+
+<div class="grid-3" style="margin-bottom: 16px;">
+    <div class="card kpi">
+        <div class="kpi-label">Підраховано позицій</div>
+        <div class="kpi-value">{{ items|length }}</div>
+    </div>
+    <div class="card kpi">
+        <div class="kpi-label">Нестачі</div>
+        <div class="kpi-value" style="color:var(--red);">{{ short_count }}</div>
+    </div>
+    {% if request.state.user and request.state.user.role == 'admin' %}
+    <div class="card kpi">
+        <div class="kpi-label">Вартість втрат</div>
+        <div class="kpi-value" style="color:var(--red);">{{ '{:.2f}'.format(total_diff_value) }} zł</div>
+        <div class="kpi-change neutral">орієнтовні втрати</div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">Підраховані позиції</div>
+        <div class="card-subtitle">Натисніть на кількість для редагування</div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Інгредієнт</th>
+                <th>Одиниця</th>
+                <th class="text-right">Очікувана</th>
+                <th class="text-right">Фактична</th>
+                <th class="text-right">Різниця</th>
+                <th>Статус</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for i in items %}
+            <tr>
+                <td>{{ i['name'] }}</td>
+                <td class="text-muted">{{ i['unit'] }}</td>
+                <td class="text-right text-muted">{{ '{:.1f}'.format(i['expected']) }}</td>
+                <td class="text-right">
+                    <form method="post" action="/inventory/count/{{ count['id'] }}/update" style="display:inline-flex; align-items:center; gap:3px;">
+                        <input type="hidden" name="item_id" value="{{ i['id'] }}">
+                        <input type="number" name="actual" value="{{ i['actual'] }}" step="0.01" class="edit-qty">
+                        <button class="btn btn-primary save-btn" type="submit" style="padding:2px 6px; font-size:.7em;">✓</button>
+                    </form>
+                </td>
+                <td class="text-right {{ 'diff-positive' if i['status'] == 'over' else 'diff-negative' if i['status'] == 'short' else 'diff-zero' }}">
+                    {{ '{:+.1f}'.format(i['difference']) if i['status'] != 'match' else '0.0' }}
+                </td>
+                <td>
+                    {% if i['status'] == 'short' %}
+                    <span class="badge badge-red">Нестача</span>
+                    {% elif i['status'] == 'over' %}
+                    <span class="badge badge-green">Надлишок</span>
+                    {% else %}
+                    <span class="badge" style="background:#f1f5f9; color:#64748b;">Збіг</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Add missing item -->
+<div class="card" style="margin-top: 16px;">
+    <div class="card-header"><div class="card-title">Додати позицію до підрахунку</div></div>
+    <form class="form-row" method="post" action="/inventory/count/{{ count['id'] }}/add">
+        <div class="form-group" style="flex:2;">
+            <label>Інгредієнт</label>
+            <select name="ingredient_id" class="form-control" required>
+                <option value="">— Обрати —</option>
+                {% for i in all_ingredients %}
+                <option value="{{ i['id'] }}">{{ i['name'] }} ({{ i['unit'] }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="flex:0 0 100px;">
+            <label>Фактична к-сть</label>
+            <input name="actual" type="number" step="0.01" class="form-control" required>
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">+ Додати</button>
+    </form>
+</div>
+
 {% endblock %}

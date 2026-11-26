@@ -4,6 +4,7 @@ import json
 import logging
 
 from app.db import get_db
+from app.gopos_api import warsaw_today
 
 log = logging.getLogger(__name__)
 
@@ -341,8 +342,8 @@ def _handle_match_mapping(db, m: dict, ing_id: int, invoice_db_id: int) -> tuple
     if converted_qty > 0:
         total_price = new_price * converted_qty if new_price > 0 else 0
         db.execute(
-            'INSERT INTO deliveries (ingredient_id, quantity, price, note) VALUES (?, ?, ?, ?)',
-            (ing_id, converted_qty, total_price, f'Auto from invoice #{invoice_db_id}')
+            'INSERT INTO deliveries (date, ingredient_id, quantity, price, note) VALUES (?, ?, ?, ?, ?)',
+            (warsaw_today(), ing_id, converted_qty, total_price, f'Auto from invoice #{invoice_db_id}')
         )
         db.execute(
             'UPDATE ingredients SET quantity = quantity + ? WHERE id = ?',

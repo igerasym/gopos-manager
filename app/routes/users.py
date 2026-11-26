@@ -12,26 +12,13 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates'
 
 router = APIRouter()
 
-DONE_MESSAGES = {
-    'added': 'Користувача додано',
-    'role': 'Роль змінено',
-    'password': 'Пароль змінено',
-    'deleted': 'Користувача видалено',
-}
-
-
-def _back(done: str = '') -> RedirectResponse:
-    return RedirectResponse(f'/users?done={done}' if done else '/users', status_code=303)
-
 
 @router.get('/users', response_class=HTMLResponse)
-async def users_page(request: Request, done: str = ''):
+async def users_page(request: Request):
     db = get_db()
     users = db.execute('SELECT id, username, role, display_name FROM users ORDER BY username').fetchall()
     db.close()
-    return templates.TemplateResponse(request, 'users.html', context={
-        'users': users, 'done_message': DONE_MESSAGES.get(done, ''),
-    })
+    return templates.TemplateResponse(request, 'users.html', context={'users': users})
 
 
 @router.post('/users/add')
@@ -40,7 +27,7 @@ async def add_user(
     role: str = Form('barista'), display_name: str = Form(''),
 ):
     if role not in ROLE_ACCESS:
-        return _back()
+        return RedirectResponse('/users', status_code=303)
     db = get_db()
     db.execute(
         'INSERT OR IGNORE INTO users (username, password_hash, role, display_name) VALUES (?, ?, ?, ?)',
@@ -48,19 +35,19 @@ async def add_user(
     )
     db.commit()
     db.close()
-    return _back('added')
+    return RedirectResponse('/users', status_code=303)
 
 
 @router.post('/users/role/{user_id}')
 async def change_role(user_id: int, role: str = Form(...)):
     if role not in ROLE_ACCESS:
-        return _back()
+        return RedirectResponse('/users', status_code=303)
     db = get_db()
     db.execute('UPDATE users SET role = ? WHERE id = ?', (role, user_id))
     db.commit()
     db.close()
     _user_cache.clear()  # role change takes effect now, not after the 5-min cache
-    return _back('role')
+    return RedirectResponse('/users', status_code=303)
 
 
 @router.post('/users/password/{user_id}')
@@ -69,7 +56,7 @@ async def change_password(user_id: int, password: str = Form(...)):
     db.execute('UPDATE users SET password_hash = ? WHERE id = ?', (hash_password(password), user_id))
     db.commit()
     db.close()
-    return _back('password')
+    return RedirectResponse('/users', status_code=303)
 
 
 @router.post('/users/delete/{user_id}')
@@ -78,4 +65,4 @@ async def delete_user(user_id: int):
     db.execute('DELETE FROM users WHERE id = ? AND username != "admin"', (user_id,))
     db.commit()
     db.close()
-    return _back('deleted')
+    return RedirectResponse('/users', status_code=303)

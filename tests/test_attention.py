@@ -33,9 +33,7 @@ def setup_db(tmp_path, monkeypatch):
     db.execute("INSERT INTO stock_counts (date) VALUES (?)", (TODAY.isoformat(),))
     db.commit()
     db.close()
-    attention.clear_cache()
     yield
-    attention.clear_cache()
 
 
 def _run(sql_rows=(), **kw):
@@ -62,7 +60,6 @@ def test_empty_db_has_nothing():
 def test_non_admin_gets_nothing():
     _run([("INSERT INTO ingredients (name, quantity, min_quantity) VALUES ('Mleko', 1, 5)", ())])
     assert attention.get_attention_items(CHEF, today=TODAY, now=NOW) == []
-    assert attention.nav_counts(CHEF) == {}
 
 
 def test_invoices_waiting():
@@ -198,7 +195,7 @@ def test_sales_stale_after_failed_sync():
     rows = [("INSERT INTO sync_log (started_at, finished_at, status) VALUES ('2026-11-25 09:00:00', '2026-11-25 09:15:00', 'done')", ()),
             ("INSERT INTO sync_log (started_at, finished_at, status) VALUES ('2026-11-25 12:00:00', '2026-11-25 12:00:05', 'error')", ())]
     it = _by_kind(_run(rows), 'sales_stale')
-    assert it['text'].startswith('Дані з каси не оновлювались з ')
+    assert it['text'] == 'Дані з каси давно не оновлювались'
     assert it['severity'] == 'danger'
     assert _run()[0]['kind'] == 'sales_stale'   # danger first
 
@@ -206,7 +203,7 @@ def test_sales_stale_after_failed_sync():
 def test_sales_stale_intraday(monkeypatch):
     monkeypatch.setattr(gopos_api, 'LAST_INTRADAY_SYNC', '11:15')
     it = _by_kind(_run(), 'sales_stale')
-    assert it['text'] == 'Дані з каси не оновлювались з 11:15'
+    assert it['text'] == 'Дані з каси давно не оновлювались' and 'сьогодні о 11:15' in it['sub']
     monkeypatch.setattr(gopos_api, 'LAST_INTRADAY_SYNC', '13:15')
     assert 'sales_stale' not in _kinds(_run())
 
@@ -230,16 +227,6 @@ def test_dismiss_hides_until_tomorrow_and_new_items_come_back():
     assert 'low_stock' in _kinds(_run([("INSERT INTO ingredients (name, quantity, min_quantity) VALUES ('B', 0, 1)", ())]))
 
 
-def test_nav_counts_cached(monkeypatch):
-    _run([("INSERT INTO ingredients (name, quantity, min_quantity) VALUES ('A', 0, 1)", ()),
-          ("INSERT INTO parsed_invoices (file_id, file_name, total, parse_status, expense_status) VALUES ('a','a',5,'parsed','pending')", ())])
-    first = attention.nav_counts(ADMIN)
-    assert first['money'] == 1 and first['today'] >= 2
-    calls = []
-    monkeypatch.setattr(attention, 'get_attention_items', lambda *a, **k: calls.append(1) or [])
-    assert attention.nav_counts(ADMIN) == first and calls == []
-    attention.clear_cache()
-    assert attention.nav_counts(ADMIN)['today'] == 0 and calls == [1]
 
 
 # ── routes ──
@@ -249,25 +236,10 @@ def _client(user):
     return c
 
 
-def test_more_page_for_admin():
-    r = _client('admin').get('/more')
-    assert r.status_code == 200
-    assert 'Оновити дані з каси' in r.text and 'href="/users"' in r.text and '/export/sales.csv' in r.text
 
 
-def test_more_page_forbidden_for_chef_but_sheet_in_nav():
-    c = _client('chef')
-    assert c.get('/more').status_code == 403
-    html = c.get('/inventory').text
-    assert 'id="more-sheet"' in html and 'href="/logout"' in html
-    assert 'Сьогодні' not in html and 'Гроші' not in html
 
 
-def test_nav_badges_rendered_for_admin():
-    _run([("INSERT INTO parsed_invoices (file_id, file_name, total, parse_status, expense_status) VALUES ('a','a',5,'parsed','pending')", ())])
-    html = _client('admin').get('/inventory').text
-    assert 'lang="uk"' in html
-    assert 'class="nav-badge"' in html and 'Сьогодні' in html and 'href="/more"' in html
 
 
 def test_dismiss_endpoint_json_and_redirect():
@@ -306,22 +278,8 @@ def test_recurring_cost_counts_as_entered_by_category():
     it = _by_kind(_run(rows), 'costs_incomplete')
     assert it['text'] == 'Ще не внесено: Податки і ZUS'
     assert it['amount'] == 3400
-    # the 'Гроші' page uses the same rule
-    from app.routes.expenses import missing_recurring
-    db = get_db()
-    try:
-        assert [m['name'] for m in missing_recurring(db, '2026-11')] == ['ZUS']
-    finally:
-        db.close()
 
 
-def test_attention_block_shows_all_behind_a_button():
-    from app.templating import templates
-    items = [attention._item('low_stock', 'warn', 'box', f'Рядок {i}', key=str(i)) for i in range(7)]
-    html = templates.env.from_string(
-        '{% from "_ui.html" import attention_block %}{{ attention_block(items, limit=5) }}').render(items=items)
-    assert html.count('data-attention-extra') == 2
-    assert 'Показати всі (7)' in html
 
 
 def test_data_freshness_prefers_intraday_then_sync_log(monkeypatch):
@@ -344,3 +302,34 @@ def test_data_freshness_never_synced(monkeypatch):
     f = attention.data_freshness(db, now=NOW)
     db.close()
     assert f == {'at': None, 'error': False, 'text': 'Дані з каси ще не оновлювались'}
+
+
+def test_dashboard_shows_block_capped_with_show_all():
+    db = get_db()
+    for i in range(7):
+        db.execute("INSERT INTO ingredients (name, quantity, min_quantity) VALUES (?, 0, 1)", (f'I{i}',))
+    db.commit(); db.close()
+    # 7 low-stock ingredients are ONE row; add more kinds to exceed the cap
+    db = get_db()
+    db.execute("INSERT INTO parsed_invoices (file_id, file_name, vendor, total, parse_status, expense_status) VALUES ('a','a.pdf','Makro',100,'parsed','pending')")
+    db.execute("INSERT INTO parsed_invoices (file_id, file_name, parse_status, expense_status) VALUES ('e','e.pdf','error','pending')")
+    db.execute("DELETE FROM stock_counts"); db.execute("INSERT INTO stock_counts (date) VALUES ('2026-01-01')")
+    db.execute("INSERT INTO pos_products (product_name, pos_kind) VALUES ('Nowy', 'unclassified')")
+    db.execute("INSERT INTO sales (date, product_name, quantity, total_money) VALUES (?, 'Nowy', 1, 20)", (TODAY.isoformat(),))
+    db.execute("INSERT INTO sales (date, product_name, quantity, total_money) VALUES (?, 'Bez', 1, 900)", (TODAY.isoformat(),))
+    db.execute("INSERT INTO invoice_items_pending (parsed_invoice_id, invoice_name, status) VALUES (1, 'p', 'pending')")
+    db.commit(); db.close()
+    html = _client('admin').get('/').text
+    items = attention.get_attention_items(ADMIN, today=TODAY, now=NOW)
+    assert len(items) > 5
+    assert 'Що потребує уваги' in html
+    assert html.count('data-attention-extra style') == len(items) - 5
+    assert f'Показати всі ({len(items)})' in html
+    assert 'Сховати до завтра' in html
+
+
+def test_dashboard_all_clear_line_and_chef_sees_nothing():
+    # fresh DB: a recent count exists, nothing else to flag except a never-synced till is not a row
+    html = _client('admin').get('/').text
+    assert 'Все гаразд' in html and 'attention-card' not in html
+    assert 'attention-card' not in _client('chef').get('/inventory').text

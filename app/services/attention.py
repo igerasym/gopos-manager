@@ -1,39 +1,60 @@
-"""'Що потребує уваги': the owner's to-do list, computed from existing tables.
+"""'Що потребує уваги': the owner's to-do list on the dashboard, computed from existing tables.
 
 get_attention_items(user) -> list of dicts, most urgent first:
-    kind          rule id (see RULES), also the dismiss kind
-    key           short signature of what the item is about; a dismissal hides
+    kind, key     rule id and a short signature of what the row is about; a dismissal hides
                   (kind, key) only, so a NEW invoice / ingredient brings the row back
     severity      'danger' | 'warn' | 'info'
-    icon          icon name for templating.icon()
-    text          one plain-Ukrainian sentence (untrusted names inside: autoescape it)
-    sub           secondary line or ''
-    amount        money in zł (float) or None
-    amount_note   small caption under the amount ('' = none), e.g. 'витрати минулого місяця'
-    amount_expense True when the amount is money going out (shown with a minus, not as profit)
-    count         how many things the row is about
-    href          where the action button goes
-    action_label  button text
+    text, sub     plain-Ukrainian sentence and secondary line (names inside are untrusted: autoescape)
+    amount        money in zł or None; amount_note / amount_expense say it is money going out
+    count, href, action_label   how many things, where the button goes ('' href = no button)
 
-nav_counts(user) -> {'today': <attention rows>, 'money': <invoices waiting>}, cached 60 s.
-
-Admin only (owner view): other roles get [] / {}. Every rule is read-only, capped and
-wrapped: a failing rule is logged and skipped, it never breaks a page.
+Admin only: other roles get []. Every rule is read-only, capped and wrapped: a failing rule
+is logged and skipped, it never breaks the dashboard.
 """
 from __future__ import annotations
 
 import calendar
 import hashlib
 import logging
-import threading
-import time
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app import db as db_module
-from app.templating import plural, pct, shortdate, zl
 
 log = logging.getLogger(__name__)
+
+NBSP = '\u00a0'
+MONTHS_UA_SHORT = ['січ.', 'лют.', 'бер.', 'квіт.', 'трав.', 'черв.', 'лип.', 'серп.', 'вер.', 'жовт.', 'лист.', 'груд.']
+WEEKDAYS_UA = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'нд']
+
+
+def plural(n, one: str, few: str, many: str) -> str:
+    """Ukrainian plural form: 1 -> one, 2-4 -> few, 0 / 5-20 / 11-14 -> many."""
+    n = abs(int(n))
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return few
+    return many
+
+
+def pct(v) -> str:
+    return f'{round(v)}%'
+
+
+def zl(v, decimals: int = 0) -> str:
+    """1690.02 -> '1 690 zł' (non-breaking spaces)."""
+    s = f'{v:,.{decimals}f}'.replace(',', NBSP)
+    return f'{s}{NBSP}zł'
+
+
+def shortdate(v, weekday: bool = True) -> str:
+    """'2026-11-13' -> '13 лист., пт'."""
+    d = v if isinstance(v, date) and not isinstance(v, datetime) else (
+        v.date() if isinstance(v, datetime) else datetime.strptime(str(v)[:10], '%Y-%m-%d').date())
+    out = f'{d.day} {MONTHS_UA_SHORT[d.month - 1]}'
+    return f'{out}, {WEEKDAYS_UA[d.weekday()]}' if weekday else out
+
 
 WARSAW = ZoneInfo('Europe/Warsaw')
 SEVERITY_ORDER = {'danger': 0, 'warn': 1, 'info': 2}
@@ -46,20 +67,19 @@ WASTAGE_FACTOR = 1.3
 WASTAGE_MIN_ZL = 20.0
 DEARER_PP = 5.0          # food-cost share rise (percentage points) that triggers a row
 
-# Where each action button goes. Page agents: change the target here when a page moves
-# (e.g. '/inventory?tab=order'); templates and tests read it from the item.
+# Where each action button goes (the original pages).
 HREF = {
-    'invoices_waiting': '/expenses#invoices',
-    'invoice_failed': '/expenses#invoices',
-    'items_unmatched': '/expenses#invoices',
-    'low_stock': '/inventory#order',
-    'no_recipe': '/recipes#no-recipe',
-    'unclassified_product': '/recipes#no-recipe',
-    'costs_incomplete': '/expenses#missing',
+    'invoices_waiting': '/expenses#pending-section',
+    'invoice_failed': '/expenses#pending-section',
+    'items_unmatched': '/expenses#pending-section',
+    'low_stock': '/inventory',
+    'no_recipe': '/recipes',
+    'unclassified_product': '/recipes',
+    'costs_incomplete': '/expenses',
     'count_overdue': '/inventory/count',
     'high_wastage': '/wastage',
     'dish_dearer': '/recipes',
-    'sales_stale': '/more#sync',
+    'sales_stale': '',   # no page to open: the «Синк GoPOS» button is in the top bar
 }
 
 
@@ -401,11 +421,10 @@ def rule_sales_stale(c: _Ctx):
                 stale_since = at
     if stale_since is None:
         return None
-    when = (stale_since.strftime('%H:%M') if stale_since.date() == c.now.date()
-            else f"{shortdate(stale_since.date(), weekday=False)}, {stale_since.strftime('%H:%M')}")
-    return _item('sales_stale', 'danger', 'refresh', f'Дані з каси не оновлювались з {when}',
-                 sub='Цифри продажів можуть бути неповні', key=stale_since.strftime('%Y-%m-%d %H:%M'),
-                 action_label='Оновити')
+    fresh = data_freshness(c.db, c.now)['text']
+    return _item('sales_stale', 'danger', 'refresh', 'Дані з каси давно не оновлювались',
+                 sub=f'{fresh}. Цифри продажів можуть бути неповні, натисніть «Синк GoPOS» угорі.',
+                 key=stale_since.strftime('%Y-%m-%d %H:%M'), action_label='')
 
 
 def data_freshness(db=None, now: datetime | None = None) -> dict:
@@ -479,7 +498,7 @@ def _is_admin(user) -> bool:
 def get_attention_items(user, today: date | None = None, now: datetime | None = None,
                         include_dismissed: bool = False) -> list[dict]:
     """All current attention rows for `user` (owner only), most urgent first.
-    Show at most 5 on the home page; the full list length feeds the nav badge."""
+    The template shows the first 5 and puts the rest behind a button."""
     if not _is_admin(user):
         return []
     try:
@@ -523,50 +542,4 @@ def dismiss(user, kind: str, key: str, today: date | None = None) -> str:
         db.commit()
     finally:
         db.close()
-    clear_cache()
     return until
-
-
-# ── nav badges ────────────────────────────────────────────────────────────────
-_CACHE_TTL = 60
-_cache: dict = {}
-_cache_lock = threading.Lock()
-
-
-def clear_cache():
-    with _cache_lock:
-        _cache.clear()
-
-
-def _invoices_waiting_count() -> int:
-    db = db_module.get_db()
-    try:
-        row = db.execute("SELECT COUNT(*) AS n FROM parsed_invoices WHERE expense_status = 'pending' "
-                         "AND parse_status = 'parsed' AND total > 0").fetchone()
-        return row['n'] if row else 0
-    finally:
-        db.close()
-
-
-def nav_counts(user) -> dict:
-    """{'today': attention rows, 'money': invoices waiting} for admins, {} otherwise."""
-    if not _is_admin(user):
-        return {}
-    key = (user['id'], str(db_module.DB_PATH))
-    now = time.monotonic()
-    with _cache_lock:
-        hit = _cache.get(key)
-        if hit and now - hit[0] < _CACHE_TTL:
-            return dict(hit[1])
-    counts = {}
-    try:
-        counts['today'] = len(get_attention_items(user))
-    except Exception as e:
-        log.warning('nav_counts today failed: %s', e)
-    try:
-        counts['money'] = _invoices_waiting_count()
-    except Exception as e:
-        log.warning('nav_counts money failed: %s', e)
-    with _cache_lock:
-        _cache[key] = (now, counts)
-    return dict(counts)

@@ -1,112 +1,104 @@
 {% extends "base.html" %}
-{% from "_ui.html" import page_header %}
-{% block page_title %}Користувачі{% endblock %}
-{% block main_class %}{% endblock %}
-
-{% block extra_style %}
-.roles summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-height: var(--tap); }
-.roles summary::-webkit-details-marker { display: none; }
-.roles summary h2 { font-size: var(--fs-lead); }
-.roles[open] summary svg.i { transform: rotate(180deg); }
-.yes { color: var(--ok); } .no { color: var(--text-muted); }
-.rights td, .rights th { text-align: center; }
-.rights td:first-child, .rights th:first-child { text-align: left; }
-@media (max-width: 599px) { .rights td { text-align: right; } }
-{% endblock %}
-
 {% block content %}
-{% set role_names = {'admin': 'Власник', 'chef': 'Кухар', 'barista': 'Бариста'} %}
-{% set role_chips = {'admin': 'chip-accent', 'chef': 'chip-info', 'barista': 'chip-neutral'} %}
-{% if done_message %}<div hidden data-toast-now="{{ done_message }}" data-toast-type="ok"></div>{% endif %}
-{% call page_header('Користувачі', eyebrow=(users | length) ~ ' ' ~ (users | length | plural('людина', 'людини', 'людей')) ~ ' з доступом') %}
-  <button class="btn btn-primary" type="button" data-sheet-open="sheet-add-user">{{ icon('plus') }}Додати</button>
-{% endcall %}
 
-<div class="stack">
-  <section class="card" aria-labelledby="u-h">
-    <header class="card-head"><h2 id="u-h">Хто має доступ</h2></header>
-    <ul class="rows">
-      {% for u in users %}
-      <li><button class="row" type="button" data-sheet-open="sheet-user-{{ u['id'] }}">
-        <span class="row-lead">{{ icon('user') }}</span>
-        <span class="row-main"><span class="row-title">{{ u['display_name'] or u['username'] }}</span><span class="row-sub">логін {{ u['username'] }}</span></span>
-        <span class="row-trail"><span class="chip {{ role_chips.get(u['role'], 'chip-neutral') }}">{{ role_names.get(u['role'], u['role']) }}</span></span>
-        <span class="row-chev">{{ icon('chevron-right') }}</span>
-      </button></li>
-      {% endfor %}
-    </ul>
-  </section>
-
-  <section class="card">
-    <details class="roles">
-      <summary><h2>Що бачить кожна роль</h2>{{ icon('chevron-down') }}</summary>
-      <div class="table-wrap mt-3">
-        <table class="table table-stack rights">
-          <thead><tr><th scope="col">Розділ</th><th scope="col">Власник</th><th scope="col">Кухар</th><th scope="col">Бариста</th></tr></thead>
-          <tbody>
-          {% for label, staff in [('Сьогодні', False), ('Гроші і фактури', False), ('Склад, інвентаризація', True), ('Списання', True), ('Рецепти', True), ('Ціни і собівартість', False), ('Користувачі', False), ('Оновлення даних з каси', False)] %}
-            <tr>
-              <td class="cell-primary" data-label="Розділ">{{ label }}</td>
-              <td data-label="Власник"><span class="yes">{{ icon('check', 18) }}<span class="sr-only">так</span></span></td>
-              {% for role in ['Кухар', 'Бариста'] %}
-              <td data-label="{{ role }}">{% if staff %}<span class="yes">{{ icon('check', 18) }}<span class="sr-only">так</span></span>{% else %}<span class="no">{{ icon('minus', 18) }}<span class="sr-only">ні</span></span>{% endif %}</td>
-              {% endfor %}
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <p class="small muted mt-3">Кухар і бариста бачать склад і рецепти без цін і грошей.</p>
-    </details>
-  </section>
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <h2 style="margin:0;">Користувачі</h2>
+    <span class="text-muted" style="font-size:.85em;">{{ users|length }} користувачів</span>
 </div>
 
-<dialog class="sheet" id="sheet-add-user" aria-labelledby="sheet-add-user-h">
-  <div class="sheet-grip" aria-hidden="true"></div>
-  <div class="sheet-head"><h2 id="sheet-add-user-h">Новий користувач</h2>
-    <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
-  <form method="post" action="/users/add" style="display:contents">
-    <div class="sheet-body form">
-      <div class="field"><label class="field-label" for="nu-name">Імʼя</label><input class="input" id="nu-name" name="display_name"></div>
-      <div class="form-grid">
-        <div class="field"><label class="field-label" for="nu-login">Логін</label><input class="input" id="nu-login" name="username" required autocapitalize="none" autocomplete="off"></div>
-        <div class="field"><label class="field-label" for="nu-pass">Пароль</label><input class="input" id="nu-pass" name="password" type="password" required autocomplete="new-password"></div>
-      </div>
-      <div class="field"><label class="field-label" for="nu-role">Роль</label>
-        <select class="select" id="nu-role" name="role">{% for k, v in role_names.items() %}<option value="{{ k }}"{% if k == 'barista' %} selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
-    </div>
-    <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button><button class="btn btn-primary" type="submit">Додати</button></div>
-  </form>
-</dialog>
+<div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><div class="card-title">Додати користувача</div></div>
+    <form class="form-row" method="post" action="/users/add">
+        <div class="form-group" style="flex:1;">
+            <label>Логін</label>
+            <input name="username" class="form-control" required>
+        </div>
+        <div class="form-group" style="flex:1;">
+            <label>Імʼя</label>
+            <input name="display_name" class="form-control">
+        </div>
+        <div class="form-group" style="flex:1;">
+            <label>Пароль</label>
+            <input name="password" type="password" class="form-control" required>
+        </div>
+        <div class="form-group" style="flex:0 0 120px;">
+            <label>Роль</label>
+            <select name="role" class="form-control">
+                <option value="admin">Admin</option>
+                <option value="chef">Chef</option>
+                <option value="barista" selected>Barista</option>
+            </select>
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">+ Додати</button>
+    </form>
+</div>
 
-{% for u in users %}
-{% set who = u['display_name'] or u['username'] %}
-<dialog class="sheet" id="sheet-user-{{ u['id'] }}" aria-labelledby="sheet-user-{{ u['id'] }}-h">
-  <div class="sheet-grip" aria-hidden="true"></div>
-  <div class="sheet-head"><h2 id="sheet-user-{{ u['id'] }}-h">{{ who }}</h2>
-    <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
-  <div class="sheet-body stack">
-    <p class="muted">Логін {{ u['username'] }}</p>
-    <form class="form" method="post" action="/users/role/{{ u['id'] }}"
-          data-confirm="Змінити роль для {{ who }}? Права зміняться одразу." data-confirm-title="Змінити роль?" data-confirm-ok="Змінити" data-confirm-tone="primary">
-      <div class="field"><label class="field-label" for="ur-{{ u['id'] }}">Роль</label>
-        <select class="select" id="ur-{{ u['id'] }}" name="role">{% for k, v in role_names.items() %}<option value="{{ k }}"{% if k == u['role'] %} selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
-      <div><button class="btn btn-secondary" type="submit">Зберегти роль</button></div>
-    </form>
-    <form class="form" method="post" action="/users/password/{{ u['id'] }}">
-      <div class="field"><label class="field-label" for="up-{{ u['id'] }}">Новий пароль</label>
-        <input class="input" id="up-{{ u['id'] }}" name="password" type="password" required autocomplete="new-password">
-        <span class="field-help">Старий пароль перестане працювати</span></div>
-      <div><button class="btn btn-secondary" type="submit">Змінити пароль</button></div>
-    </form>
-  </div>
-  <div class="sheet-foot">
-    {% if u['username'] != 'admin' %}
-    <form method="post" action="/users/delete/{{ u['id'] }}" data-confirm="Видалити {{ who }}? Ця людина більше не зможе увійти." data-confirm-ok="Видалити">
-      <button class="btn btn-danger" type="submit">{{ icon('trash') }}Видалити</button></form>
-    {% endif %}
-    <button class="btn btn-ghost" type="button" data-sheet-close>Закрити</button>
-  </div>
-</dialog>
-{% endfor %}
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Логін</th>
+                <th>Імʼя</th>
+                <th>Роль</th>
+                <th style="width:200px;">Змінити пароль</th>
+                <th style="width:60px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr>
+                <td style="font-weight:600;">{{ u['username'] }}</td>
+                <td>{{ u['display_name'] or '—' }}</td>
+                <td>
+                    <form method="post" action="/users/role/{{ u['id'] }}" style="display:inline;">
+                        <select name="role" onchange="this.form.submit()" style="padding:4px 6px; border:1px solid transparent; border-radius:4px; background:transparent; cursor:pointer; font-size:.85em;">
+                            <option value="admin" {{ 'selected' if u['role'] == 'admin' }}>Admin</option>
+                            <option value="chef" {{ 'selected' if u['role'] == 'chef' }}>Chef</option>
+                            <option value="barista" {{ 'selected' if u['role'] == 'barista' }}>Barista</option>
+                        </select>
+                    </form>
+                </td>
+                <td>
+                    <form method="post" action="/users/password/{{ u['id'] }}" style="display:flex; gap:4px;">
+                        <input name="password" type="password" placeholder="новий пароль" style="padding:4px 8px; border:1px solid #e2e8f0; border-radius:4px; font-size:.85em; flex:1;">
+                        <button class="btn btn-primary btn-sm" type="submit" style="padding:4px 8px; font-size:.75em;">Зберегти</button>
+                    </form>
+                </td>
+                <td class="text-right">
+                    {% if u['username'] != 'admin' %}
+                    <form method="post" action="/users/delete/{{ u['id'] }}" style="display:inline;">
+                        <button type="button" class="btn btn-outline btn-sm" style="padding:2px 6px; font-size:.7em; color:var(--red);"
+                                onclick="confirmDelete('/users/delete/{{ u['id'] }}', '{{ u['username'] }}')">✕</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card" style="margin-top:16px;">
+    <div class="card-header"><div class="card-title">Права ролей</div></div>
+    <table>
+        <thead>
+            <tr><th>Роль</th><th>Дашборд</th><th>Витрати</th><th>Склад і ревізія</th><th>Списання</th><th>Рецепти</th><th>Ціни і собівартість</th><th>Користувачі</th><th>Синхронізація</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="font-weight:600;">Admin</td>
+                <td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td>
+            </tr>
+            <tr>
+                <td style="font-weight:600;">Chef</td>
+                <td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td>
+            </tr>
+            <tr>
+                <td style="font-weight:600;">Barista</td>
+                <td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
 {% endblock %}

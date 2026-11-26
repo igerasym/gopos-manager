@@ -1,24 +1,10 @@
-"""'Ще' hub (/more) and the attention dismiss endpoint."""
+"""'Сховати до завтра' for a row of the «Що потребує уваги» block."""
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
-from app.db import get_db
 from app.services import attention
-from app.templating import templates
 
 router = APIRouter()
-
-
-@router.get('/more', response_class=HTMLResponse)
-async def more_page(request: Request):
-    return templates.TemplateResponse(request, 'more.html', context={
-        'freshness': attention.data_freshness(),
-        'exports': [
-            ('Продажі', '/export/sales.csv'),
-            ('Витрати', '/export/expenses.csv'),
-            ('Списання', '/export/wastage.csv'),
-        ],
-    })
 
 
 def _safe_next(value: str) -> str:
@@ -32,12 +18,11 @@ def _safe_next(value: str) -> str:
 async def attention_dismiss(request: Request, kind: str = Form(...), key: str = Form(''),
                             next: str = Form('/')):
     user = request.state.user
+    if not user or user['role'] != 'admin':
+        return JSONResponse({'ok': False, 'error': 'forbidden'}, status_code=403)
     if kind not in attention.HREF:
         return JSONResponse({'ok': False, 'error': 'unknown kind'}, status_code=400)
     until = attention.dismiss(user, kind, key)
-    wants_json = 'application/json' in request.headers.get('accept', '') or \
-        request.headers.get('x-requested-with') == 'fetch'
-    if wants_json:
+    if 'application/json' in request.headers.get('accept', ''):
         return JSONResponse({'ok': True, 'until': until})
     return RedirectResponse(_safe_next(next), status_code=303)
-
