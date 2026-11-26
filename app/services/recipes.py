@@ -143,3 +143,142 @@ def recalc_sub_recipes_for_ingredient(db, ingredient_id: int):
     ''', (ingredient_id,)).fetchall()
     for row in affected:
         recalc_sub_recipe_cost(db, row['sub_recipe_id'])
+
+
+# ── Меню page (recipes redesign) ──────────────────────────────────────────────
+
+# Product share of the selling price above which a dish gets a red chip.
+# Hard-coded until a per-category target setting exists (brief section 8).
+COST_SHARE_ALERT = 35.0
+
+# Days of sales that count as "sold recently" for the 'Без рецепту' banner.
+NO_RECIPE_DAYS = 30
+
+# Menu tabs: key -> (label, path). Card categories map onto tabs in `tab_for_category`.
+MENU_TABS = [
+    ('kitchen', 'Кухня', '/recipes'),
+    ('bar', 'Бар', '/recipes/bar'),
+    ('bakery', 'Випічка', '/recipes/bakery'),
+    ('prep', 'Заготовки', '/recipes/sub'),
+]
+TAB_PATHS = {k: p for k, _, p in MENU_TABS}
+BAR_CATEGORIES = {'бар', 'напої', 'кава'}
+BAKERY_CATEGORIES = {'випічка', 'десерти', 'десерт'}
+
+
+def tab_for_category(category: str | None) -> str:
+    """Recipe-card category -> menu tab key. Anything not bar/bakery is kitchen."""
+    c = (category or '').strip().lower()
+    if c in BAR_CATEGORIES:
+        return 'bar'
+    if c in BAKERY_CATEGORIES:
+        return 'bakery'
+    return 'kitchen'
+
+
+def parse_num(value, default: float | None = None) -> float | None:
+    """Parse a user-typed number: accepts '1,5' and '1.5' and surrounding spaces."""
+    if value is None:
+        return default
+    s = str(value).strip().replace('\u202f', '').replace(' ', '').replace(',', '.')
+    if not s:
+        return default
+    try:
+        return float(s)
+    except ValueError:
+        return default
+
+
+def safe_next(value, fallback: str = '/recipes') -> str:
+    """Only allow redirects back into the Меню section (no open redirect)."""
+    v = (value or '').strip()
+    if v.startswith('/recipes') and not v.startswith('//') and '\\' not in v and '\n' not in v and '\r' not in v:
+        return v
+    return fallback
+
+
+def dish_economics(cost: float | None, price: float | None) -> dict:
+    """Cost, price, what we earn per portion and the product share of the price.
+
+    `share` is None when there is no price or no known cost; `alert` is True when the
+    share is above COST_SHARE_ALERT."""
+    cost = cost or 0.0
+    price = price or 0.0
+    has_cost = cost > 0
+    has_price = price > 0
+    share = cost / price * 100 if has_cost and has_price else None
+    earn = price - cost if has_cost and has_price else None
+    return {
+        'cost': cost if has_cost else None,
+        'price': price if has_price else None,
+        'earn': earn,
+        'earn_pct': (earn / price * 100) if earn is not None else None,
+        'share': share,
+        'alert': share is not None and share > COST_SHARE_ALERT,
+    }
+
+
+def get_products_without_recipe(today=None, days: int = NO_RECIPE_DAYS) -> dict:
+    """Products sold in the last `days` days that have no cost (no recipe lines, no
+    resale link). Same rule as the 'Без рецепту' attention row.
+
+    Returns {'items': [{product_name, revenue, share, has_card, tab}], 'count', 'share',
+    'total_revenue'}; items sorted by revenue, highest first."""
+    from datetime import date, timedelta
+    if today is None:
+        from app.gopos_api import warsaw_today
+        today = warsaw_today()
+    if isinstance(today, str):
+        today = date.fromisoformat(today)
+    start = (today - timedelta(days=days - 1)).isoformat()
+    db = get_db()
+    sales = db.execute(
+        'SELECT product_name, SUM(total_money) AS rev FROM sales WHERE date >= ? AND date <= ? '
+        'GROUP BY product_name ORDER BY rev DESC', (start, today.isoformat())).fetchall()
+    tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    kinds = {}
+    if 'pos_products' in tables:
+        kinds = {r['product_name']: r['pos_kind'] for r in db.execute(
+            'SELECT product_name, pos_kind FROM pos_products').fetchall()}
+    cards = {r['product_name']: r['category'] or '' for r in db.execute(
+        'SELECT product_name, category FROM recipe_cards').fetchall()}
+    db.close()
+
+    costs = get_cost_lookup()
+    total = sum((r['rev'] or 0) for r in sales)
+    items = []
+    for r in sales:
+        name = r['product_name']
+        if kinds.get(name) in ('ignore', 'unclassified') or name in costs:
+            continue
+        rev = r['rev'] or 0
+        items.append({'product_name': name, 'revenue': rev,
+                      'share': rev / total * 100 if total else 0.0, 'has_card': name in cards,
+                      'tab': tab_for_category(cards[name]) if name in cards else None})
+    return {
+        'items': items,
+        'count': len(items),
+        'share': sum(i['revenue'] for i in items) / total * 100 if total else 0.0,
+        'total_revenue': total,
+    }
+
+
+def get_sub_recipe_usage(db) -> dict:
+    """ingredient_id of a заготовка -> sorted list of {'name', 'kind'} that use it
+    (kind 'dish' for menu recipes, 'prep' for other заготовки)."""
+    usage: dict[int, list] = {}
+    rows = db.execute('''
+        SELECT DISTINCT r.ingredient_id, r.product_name AS name, 'dish' AS kind
+        FROM recipes r WHERE r.ingredient_id IN (SELECT ingredient_id FROM sub_recipes)
+        UNION
+        SELECT DISTINCT sri.ingredient_id, i.name AS name, 'prep' AS kind
+        FROM sub_recipe_items sri
+        JOIN sub_recipes sr ON sr.id = sri.sub_recipe_id
+        JOIN ingredients i ON i.id = sr.ingredient_id
+        WHERE sri.ingredient_id IN (SELECT ingredient_id FROM sub_recipes)
+    ''').fetchall()
+    for r in rows:
+        usage.setdefault(r['ingredient_id'], []).append({'name': r['name'], 'kind': r['kind']})
+    for v in usage.values():
+        v.sort(key=lambda x: (x['kind'] != 'dish', x['name'].lower()))
+    return usage
