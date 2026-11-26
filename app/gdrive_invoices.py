@@ -1,10 +1,8 @@
 """Google Drive invoice scanner + AWS Textract parser."""
 import io
-import json
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 import boto3
 from google.oauth2 import service_account
@@ -113,7 +111,6 @@ def parse_invoice_textract(file_bytes: bytes) -> dict:
     # Fallback: convert PDF pages to images and parse each
     try:
         import pdfplumber
-        from PIL import Image
         pdf = pdfplumber.open(io.BytesIO(file_bytes))
         all_items = []
         vendor = ''
@@ -253,8 +250,8 @@ def classify_vendor(vendor: str, file_name: str = '') -> tuple[str, str]:
         for r in rules:
             if r['vendor_pattern'].lower() in search_text:
                 return r['category'], r['expense_name']
-    except Exception:
-        pass
+    except Exception as e:  # custom rules are optional; the defaults below still apply
+        log.warning(f'vendor_rules lookup failed: {type(e).__name__}')
 
     # Fallback to default rules
     for pattern, category, name in DEFAULT_VENDOR_RULES:
@@ -281,221 +278,9 @@ def check_price_alerts(ingredient_id: int, new_price: float, old_price: float) -
     return None
 
 
-def scan_and_parse(folder_id: str = None) -> list[dict]:
-    """Scan folder, download and parse all invoices."""
-    files = list_invoices(folder_id)
-    results = []
-
-    # Filter to supported formats
-    supported_types = [
-        'application/pdf',
-        'image/jpeg', 'image/png', 'image/tiff',
-    ]
-
-    for f in files:
-        if f['mimeType'] not in supported_types:
-            log.info(f"Skipping {f['name']} (unsupported type: {f['mimeType']})")
-            continue
-
-        try:
-            log.info(f"Processing: {f['path']}")
-            file_bytes = download_file(f['id'])
-            parsed = parse_invoice_textract(file_bytes)
-            parsed['file_name'] = f['name']
-            parsed['file_path'] = f['path']
-            parsed['file_id'] = f['id']
-            results.append(parsed)
-            log.info(f"  Vendor: {parsed['vendor']}, Items: {len(parsed['items'])}, Total: {parsed['total']}")
-        except Exception as e:
-            log.error(f"  Error parsing {f['name']}: {e}")
-            results.append({
-                'file_name': f['name'],
-                'file_path': f['path'],
-                'file_id': f['id'],
-                'error': str(e),
-            })
-
-    return results
-
-
-def update_ingredient_prices(parsed_invoices: list[dict]) -> dict:
-    """Match parsed invoice items to ingredients and update prices."""
-    db = get_db()
-    ingredients = db.execute('SELECT id, name, unit, unit_price FROM ingredients').fetchall()
-
-    updates = []
-    unmatched = []
-
-    for invoice in parsed_invoices:
-        if 'error' in invoice:
-            continue
-        for item in invoice.get('items', []):
-            item_name = item.get('name', '').strip()
-            if not item_name:
-                continue
-
-            # Try to match with existing ingredient (case-insensitive partial match)
-            matched = None
-            for ing in ingredients:
-                if ing['name'].lower() in item_name.lower() or item_name.lower() in ing['name'].lower():
-                    matched = ing
-                    break
-
-            if matched and item.get('unit_price', 0) > 0:
-                updates.append({
-                    'ingredient_id': matched['id'],
-                    'ingredient_name': matched['name'],
-                    'invoice_item': item_name,
-                    'old_price': matched['unit_price'],
-                    'new_price': item['unit_price'],
-                    'vendor': invoice.get('vendor', ''),
-                })
-            else:
-                unmatched.append({
-                    'name': item_name,
-                    'quantity': item.get('quantity', 0),
-                    'unit_price': item.get('unit_price', 0),
-                    'total': item.get('total', 0),
-                    'vendor': invoice.get('vendor', ''),
-                })
-
-    db.close()
-    return {'updates': updates, 'unmatched': unmatched}
-
-
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     files = list_invoices()
     print(f"Found {len(files)} files:")
     for f in files:
         print(f"  {f['path']} ({f['mimeType']})")
-
-
-def sync_invoices_for_current_month():
-    """Auto-sync: parse all new invoices for current month, notify via Telegram."""
-    import json
-    from app.gopos_api import warsaw_today
-
-    current_month = warsaw_today()[:7]
-    db = get_db()
-
-    # Ensure tables exist
-    db.executescript('''
-        CREATE TABLE IF NOT EXISTS parsed_invoices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_id TEXT NOT NULL UNIQUE,
-            file_name TEXT NOT NULL,
-            invoice_number TEXT DEFAULT '',
-            folder TEXT DEFAULT '',
-            month TEXT DEFAULT '',
-            vendor TEXT DEFAULT '',
-            category TEXT DEFAULT 'Продукти',
-            total REAL DEFAULT 0,
-            items_json TEXT DEFAULT '[]',
-            parse_status TEXT DEFAULT 'pending',
-            expense_status TEXT DEFAULT 'pending',
-            expense_id INTEGER DEFAULT NULL,
-            parsed_at TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS ingredient_mappings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_name TEXT NOT NULL UNIQUE,
-            ingredient_id INTEGER,
-            action TEXT DEFAULT 'match',
-            created_at TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS invoice_items_pending (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            parsed_invoice_id INTEGER NOT NULL,
-            invoice_name TEXT NOT NULL,
-            quantity REAL DEFAULT 0,
-            unit_price REAL DEFAULT 0,
-            total REAL DEFAULT 0,
-            status TEXT DEFAULT 'pending',
-            ingredient_id INTEGER,
-            suggested_ingredient TEXT DEFAULT '',
-            confidence REAL DEFAULT 0
-        );
-    ''')
-    db.commit()
-
-    # Get already parsed (by file_id and invoice_number)
-    parsed_file_ids = set(r['file_id'] for r in db.execute('SELECT file_id FROM parsed_invoices').fetchall())
-    parsed_inv_numbers = set(
-        r['invoice_number'] for r in db.execute(
-            'SELECT invoice_number FROM parsed_invoices WHERE invoice_number != ""'
-        ).fetchall()
-    )
-
-    # Get invoices for current month
-    try:
-        invoices = list_invoices_for_month(current_month)
-    except Exception as e:
-        log.error(f"Could not list invoices: {e}")
-        db.close()
-        return
-
-    supported = ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']
-    new_parsed = []
-    errors = []
-
-    for f in invoices:
-        if f['id'] in parsed_file_ids:
-            continue
-        if f['mimeType'] not in supported:
-            continue
-        try:
-            file_bytes = download_file(f['id'])
-            result = parse_invoice_textract(file_bytes)
-
-            # Check duplicate by invoice number
-            inv_num = result.get('invoice_number', '')
-            if inv_num and inv_num in parsed_inv_numbers:
-                log.info(f"Skipping duplicate invoice {inv_num}: {f['name']}")
-                continue
-
-            # Auto-classify vendor
-            vendor = result.get('vendor', '')
-            category, expense_name = classify_vendor(vendor, f['name'])
-
-            db.execute('''
-                INSERT OR IGNORE INTO parsed_invoices
-                (file_id, file_name, invoice_number, folder, month, vendor, category, total, items_json, parse_status, expense_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'parsed', 'pending')
-            ''', (f['id'], f['name'], inv_num, f.get('path', ''), current_month,
-                  expense_name or vendor, category, result.get('total', 0),
-                  json.dumps(result.get('items', []), ensure_ascii=False)))
-
-            new_parsed.append({
-                'name': f['name'],
-                'vendor': result.get('vendor', ''),
-                'total': result.get('total', 0),
-                'items_count': len(result.get('items', []))
-            })
-            if inv_num:
-                parsed_inv_numbers.add(inv_num)
-
-        except Exception as e:
-            errors.append(f"{f['name']}: {str(e)[:80]}")
-
-    db.commit()
-    db.close()
-
-    # Telegram notification
-    if new_parsed or errors:
-        try:
-            from html import escape
-            from app.telegram_bot import send_message, send_admin
-            if new_parsed:
-                msg = f"📄 <b>Фактури ({current_month})</b>\n\n"
-                msg += f"🆕 Нові: {len(new_parsed)} (чекають підтвердження)\n"
-                for p in new_parsed[:10]:
-                    msg += f"  • {escape(str(p['vendor'] or p['name']))} — {p['total']:.0f} zł ({p['items_count']} товарів)\n"
-                send_message(msg)
-            if errors:  # technical — admin only, with details
-                send_admin(f"🔧 <b>Фактури ({current_month}): {len(errors)} помилок парсингу</b>\n"
-                           + "\n".join(f"  • {escape(e)}" for e in errors[:10]))
-        except Exception as e:
-            log.error(f'Invoice sync notification failed: {e!r}')
-
-    log.info(f"Invoice sync done: {len(new_parsed)} new, {len(errors)} errors")

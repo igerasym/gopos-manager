@@ -268,8 +268,7 @@ def init_db():
             FOREIGN KEY (resale_ingredient_id) REFERENCES ingredients(id)
         );
     ''')
-    # Columns added after the original schema. Prod already has them (added by
-    # hand / scripts/migrate_resale.py); a fresh DB needs them too.
+    # Columns added after the original schema, idempotent: prod gets them on start, a fresh DB too.
     # ingredient units per invoice unit (a 15 kg crate = 15): see services/pack_pricing.py
     _add_column(db, 'ingredient_mappings', 'pack_factor', 'REAL')
     _add_column(db, 'invoice_items_pending', 'pack_factor', 'REAL')   # the model's guess, kept for a manual confirm

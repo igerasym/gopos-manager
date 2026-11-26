@@ -42,7 +42,7 @@ def test_get_shift_staff_aggregates_by_employee():
         {'data': []},
     ]
     with patch.object(gopos_api, 'api_get', side_effect=pages):
-        staff = gopos_api.get_shift_staff('2026-11-05')
+        staff = gopos_api.shift_staff(gopos_api.fetch_closed_orders('2026-11-05', 'employee'))
     assert staff == [
         {'name': 'Alina', 'orders': 2, 'first': '07:41', 'last': '12:10'},
         {'name': 'Nastia', 'orders': 1, 'first': '13:02', 'last': '13:02'},

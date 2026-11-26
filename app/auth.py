@@ -3,10 +3,8 @@ import hashlib
 import hmac
 import os
 import time
-from functools import wraps
 
-from fastapi import Request, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi import Request
 
 from app.db import get_db
 
@@ -89,6 +87,13 @@ def get_current_user(request: Request) -> dict | None:
     if result:
         _user_cache[username] = (result, now)
     return result
+
+
+def is_admin(user_or_request) -> bool:
+    """True for an admin. Takes the user dict/row, or a Request whose state carries the user."""
+    state = getattr(user_or_request, 'state', None)
+    user = getattr(state, 'user', None) if state is not None else user_or_request
+    return bool(user) and user['role'] == 'admin'
 
 
 def can_access(user: dict, path: str) -> bool:

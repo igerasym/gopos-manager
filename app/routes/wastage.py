@@ -7,9 +7,10 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
+from app.auth import is_admin as _is_admin
 from app.db import get_db
-from app.services.recipes import get_cost_lookup
-from app.gopos_api import warsaw_today
+from app.gopos_api import month_bounds, warsaw_today
+from app.services.wastage import price_rows as _price_rows
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 router = APIRouter()
@@ -25,40 +26,10 @@ REASON_UA = {
 }
 
 
-def _is_admin(request: Request) -> bool:
-    user = getattr(request.state, 'user', None)
-    return bool(user and user['role'] == 'admin')
-
-
-def _price_rows(rows) -> list:
-    """Rows as dicts with `cost`/`cost_known` filled in.
-
-    Manual rows already carry quantity x ingredient price. A GoPos write-off is a product
-    (e.g. 'Croissant'), so its cost is quantity x the product's recipe cost at current
-    ingredient prices - the same figure the dashboard uses for COGS. No recipe -> unknown,
-    shown as a dash, not as a free 0.00.
-    """
-    product_cost = get_cost_lookup()
-    out = []
-    for r in rows:
-        d = dict(r)
-        if d['source'] == 'gopos':
-            unit_cost = product_cost.get(d['label'], 0) or 0
-            d['cost'] = d['quantity'] * unit_cost
-            d['cost_known'] = unit_cost > 0
-            d['unit'] = 'шт'
-        else:
-            d['cost_known'] = d['cost'] > 0
-        out.append(d)
-    return out
-
-
 @router.get('/wastage', response_class=HTMLResponse)
 async def wastage_page(request: Request, month: str = ''):
     current_month = month or warsaw_today()[:7]
-    month_start = current_month + '-01'
-    year, mon = int(current_month[:4]), int(current_month[5:7])
-    month_end = f'{year + 1 if mon == 12 else year}-{1 if mon == 12 else mon + 1:02d}-01'
+    month_start, month_end = month_bounds(current_month)
 
     db = get_db()
 
@@ -177,9 +148,7 @@ async def delete_wastage(wastage_id: int):
 @router.get('/export/wastage.csv')
 async def export_wastage_csv(request: Request, month: str = ''):
     current_month = month or warsaw_today()[:7]
-    month_start = current_month + '-01'
-    year, mon = int(current_month[:4]), int(current_month[5:7])
-    month_end = f'{year + 1 if mon == 12 else year}-{1 if mon == 12 else mon + 1:02d}-01'
+    month_start, month_end = month_bounds(current_month)
 
     db = get_db()
     rows = db.execute('''

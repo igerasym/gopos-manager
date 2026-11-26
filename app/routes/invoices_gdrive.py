@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from app.gdrive_invoices import list_invoices, download_file, parse_invoice_textract, update_ingredient_prices
+from app.gdrive_invoices import list_invoices, download_file, parse_invoice_textract
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 log = logging.getLogger(__name__)

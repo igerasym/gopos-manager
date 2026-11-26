@@ -19,8 +19,6 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
 
 def parse_invoice_with_llm(pdf_text: str, existing_ingredients: list[dict]) -> dict:
     """Send invoice text to Claude Haiku on Bedrock, get structured items back."""
-    import boto3
-
     ingredient_list = '\n'.join(
         f'- id={i["id"]}: {i["name"]} ({i["unit"]}, price={i["unit_price"]:.3f})'
         for i in existing_ingredients

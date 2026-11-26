@@ -9,7 +9,7 @@ import requests
 from dotenv import load_dotenv
 from pathlib import Path
 
-from app.db import get_db, init_db
+from app.db import get_db
 
 load_dotenv(Path(__file__).parent.parent / '.env')
 log = logging.getLogger(__name__)
@@ -46,6 +46,13 @@ def warsaw_today() -> str:
     if now.hour < BUSINESS_DAY_START_HOUR:
         now -= timedelta(days=1)
     return now.strftime('%Y-%m-%d')
+
+
+def month_bounds(month: str) -> tuple:
+    """'2026-12' -> ('2026-12-01', '2027-01-01'): first day and the first day after."""
+    year, mon = int(month[:4]), int(month[5:7])
+    nxt = f'{year + 1}-01-01' if mon == 12 else f'{year}-{mon + 1:02d}-01'
+    return f'{month}-01', nxt
 
 
 def get_token() -> str:
@@ -253,29 +260,7 @@ def sync_orders_for_date(date_str: str) -> int:
     voided/refunded after the webhook counted them drop out.
     Returns number of products imported.
     """
-    from datetime import datetime, timedelta
-
-    next_day = (datetime.strptime(date_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
-    closed_from = f'{date_str}T{BUSINESS_DAY_START_HOUR:02d}:00:00'
-    closed_to = f'{next_day}T{BUSINESS_DAY_START_HOUR:02d}:00:00'
-
-    # Get all closed orders with product names
-    all_orders = []
-    page = 0
-    while page < 50:  # GoPos rejects page >= 50 (422); 50 x 100 = 5000 orders/day
-        data = api_get('orders', {
-            'closed_at_from': closed_from,
-            'closed_at_to': closed_to,
-            'status': 'CLOSED',
-            'include': 'items,items.product',
-            'size': 100,
-            'page': page,
-        })
-        orders = data.get('data', [])
-        if not orders:
-            break
-        all_orders.extend(orders)
-        page += 1
+    all_orders = fetch_closed_orders(date_str, 'items,items.product')
 
     log.info(f'Got {len(all_orders)} orders for {date_str}')
 
@@ -482,24 +467,7 @@ def sync_writeoffs_for_date(date_str: str):
     Wastage rows are keyed by (date, product_name, source='gopos') — so re-running
     is safe: DELETE + INSERT in one transaction, same as the sales sync.
     """
-    next_day = (datetime.strptime(date_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
-
-    all_orders = []
-    page = 0
-    while page < 50:
-        data = api_get('orders', {
-            'closed_at_from': f'{date_str}T{BUSINESS_DAY_START_HOUR:02d}:00:00',
-            'closed_at_to': f'{next_day}T{BUSINESS_DAY_START_HOUR:02d}:00:00',
-            'status': 'CLOSED',
-            'include': 'items,items.product,promotions',
-            'size': 100,
-            'page': page,
-        })
-        orders = data.get('data', [])
-        if not orders:
-            break
-        all_orders.extend(orders)
-        page += 1
+    all_orders = fetch_closed_orders(date_str, 'items,items.product,promotions')
 
     # Find write-off orders
     writeoff_agg = {}  # product_name → quantity
@@ -514,7 +482,6 @@ def sync_writeoffs_for_date(date_str: str):
             if not name:
                 continue
             paid = (item.get('total_price') or {}).get('amount', 0)
-            before = (item.get('sub_total_price') or {}).get('amount', 0)
             # Only count items that were actually zeroed out (total_price = 0 or discounted to 0)
             if paid > 0:
                 continue
@@ -694,22 +661,6 @@ def discounted_items(orders: list) -> dict:
                 e['qty'] += it.get('quantity', 1)
                 e['value'] += full - paid
     return result
-
-
-def get_shift_staff(date_str: str) -> list:
-    """Who worked on a business day (see shift_staff)."""
-    return shift_staff(fetch_closed_orders(date_str, 'employee'))
-
-
-def sync_products_and_categories():
-    """Alias for sync_products — called from gopos_sync.py."""
-    return sync_products()
-
-
-def get_selling_prices() -> dict:
-    """Get current selling prices from GoPos API."""
-    items = api_get_all('items')
-    return {item['name']: item.get('price', {}).get('amount', 0) for item in items}
 
 
 def _mask_token(text) -> str:
