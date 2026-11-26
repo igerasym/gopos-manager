@@ -457,10 +457,23 @@ def data_freshness(db=None, now: datetime | None = None) -> dict:
         db = db or db_module.get_db()
         last = db.execute('SELECT status, finished_at, started_at FROM sync_log ORDER BY id DESC LIMIT 1').fetchone()
         error = bool(last) and last['status'] == 'error'
-        if at is None:
-            row = db.execute('SELECT finished_at FROM sync_log WHERE finished_at IS NOT NULL '
-                             "AND status != 'error' ORDER BY id DESC LIMIT 1").fetchone()
-            at = _local_to_warsaw(row['finished_at']) if row else None
+        # newest of: the in-memory refresh, the stored mark (written by every sync and every
+        # webhook order, so it survives a restart) and the last finished sync
+        candidates = [at] if at else []
+        try:
+            from app import gopos_api
+            stored = gopos_api.last_refreshed_utc(db)
+            if stored:
+                candidates.append(stored.replace(tzinfo=ZoneInfo('UTC')).astimezone(WARSAW))
+        except Exception as e:
+            log.warning('data_freshness (stored mark): %s', e)
+        row = db.execute('SELECT finished_at FROM sync_log WHERE finished_at IS NOT NULL '
+                         "AND status != 'error' ORDER BY id DESC LIMIT 1").fetchone()
+        if row:
+            synced = _local_to_warsaw(row['finished_at'])
+            if synced:
+                candidates.append(synced)
+        at = max(candidates) if candidates else None
     except Exception as e:
         log.warning('data_freshness: %s', e)
     finally:
