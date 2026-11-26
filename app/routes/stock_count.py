@@ -1,18 +1,50 @@
-"""Stock count routes."""
-from datetime import datetime
+"""Stock count (Інвентаризація) routes."""
+from datetime import date as _date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import get_db
 from app.gopos_api import warsaw_today
+from app.routes.inventory import low_stock_count, parse_decimal
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
 
 router = APIRouter()
+
+# A difference smaller than this (in the item's unit) is rounding noise, not a shortage.
+DIFF_EPS = 0.05
+# Warn on the history page when the last count is older than this many days.
+COUNT_OVERDUE_DAYS = 7
+
+
+def _is_admin(request: Request) -> bool:
+    user = getattr(request.state, 'user', None)
+    return bool(user and user['role'] == 'admin')
+
+
+def _safe_decimal(value):
+    try:
+        return parse_decimal(value)
+    except ValueError:
+        return None
+
+
+def diff_status(difference: float) -> str:
+    """'short' (не вистачило), 'over' (більше, ніж у системі) or 'match'."""
+    if difference <= -DIFF_EPS:
+        return 'short'
+    if difference >= DIFF_EPS:
+        return 'over'
+    return 'match'
+
+
+def item_loss(difference: float, unit_price: float) -> float:
+    """Money lost on one counted item: only real shortages, at the current unit price."""
+    return -difference * (unit_price or 0) if diff_status(difference) == 'short' else 0.0
 
 
 @router.get('/inventory/count', response_class=HTMLResponse)
@@ -23,7 +55,7 @@ async def stock_count_page(request: Request):
     ''').fetchall()
     db.close()
     return templates.TemplateResponse(request, 'stock_count.html', context={
-        'items': items,
+        'items': items, 'low_count': low_stock_count(),
     })
 
 
@@ -47,10 +79,9 @@ async def save_stock_count(request: Request):
 
     items = db.execute('SELECT id, quantity FROM ingredients').fetchall()
     for item in items:
-        actual_str = form.get(f'qty_{item["id"]}', '')
-        if actual_str == '':
-            continue
-        actual = float(actual_str)
+        actual = _safe_decimal(form.get(f'qty_{item["id"]}', ''))
+        if actual is None:
+            continue  # empty = not counted
         expected = item['quantity']
         difference = actual - expected
 
@@ -69,11 +100,12 @@ async def save_stock_count(request: Request):
 
     db.commit()
     db.close()
-    return RedirectResponse(f'/inventory/count/{count_id}', status_code=303)
+    return RedirectResponse(f'/inventory/count/{count_id}?saved=1', status_code=303)
 
 
 @router.get('/inventory/count/{count_id}', response_class=HTMLResponse)
-async def stock_count_detail(request: Request, count_id: int):
+async def stock_count_detail(request: Request, count_id: int, saved: str = ''):
+    is_admin = _is_admin(request)
     db = get_db()
     count = db.execute('''
         SELECT sc.*, u.display_name, u.username
@@ -84,30 +116,34 @@ async def stock_count_detail(request: Request, count_id: int):
         db.close()
         return RedirectResponse('/inventory/history', status_code=302)
 
-    items = db.execute('''
-        SELECT sci.*, i.name, i.unit
+    rows = db.execute('''
+        SELECT sci.*, i.name, i.unit, COALESCE(i.unit_price, 0) AS unit_price
         FROM stock_count_items sci
         JOIN ingredients i ON sci.ingredient_id = i.id
         WHERE sci.stock_count_id = ?
         ORDER BY i.name
     ''', (count_id,)).fetchall()
-
-    # Ingredients not yet in this count
-    counted_ids = [it['ingredient_id'] for it in items]
     all_ingredients = db.execute('SELECT id, name, unit FROM ingredients ORDER BY name').fetchall()
-
-    total_diff_value = sum(
-        abs(it['difference']) * (db.execute(
-            'SELECT COALESCE(unit_price, 0) as p FROM ingredients WHERE id = ?',
-            (it['ingredient_id'],)
-        ).fetchone()['p'] or 0)
-        for it in items if it['difference'] < 0
-    )
-
     db.close()
+
+    items = []
+    for r in rows:
+        d = dict(r)
+        d['status'] = diff_status(d['difference'])
+        d['loss'] = item_loss(d['difference'], d['unit_price'])
+        items.append(d)
+    if is_admin:
+        items.sort(key=lambda d: (-d['loss'], d['difference'], d['name']))
+    else:
+        items.sort(key=lambda d: (d['difference'], d['name']))
+
     return templates.TemplateResponse(request, 'stock_count_detail.html', context={
-        'count': count, 'items': items, 'total_diff_value': total_diff_value,
-        'all_ingredients': all_ingredients,
+        'count': count, 'items': items,
+        'total_diff_value': sum(d['loss'] for d in items),
+        'short_count': sum(1 for d in items if d['status'] == 'short'),
+        'over_count': sum(1 for d in items if d['status'] == 'over'),
+        'all_ingredients': all_ingredients, 'is_admin': is_admin,
+        'low_count': low_stock_count(), 'saved': saved,
     })
 
 
@@ -116,27 +152,24 @@ async def update_stock_count_item(request: Request, count_id: int):
     form = await request.form()
     db = get_db()
 
-    item_id = int(form.get('item_id', 0))
-    actual = float(form.get('actual', 0))
+    item_id = int(form.get('item_id', 0) or 0)
+    actual = _safe_decimal(form.get('actual', ''))
 
     # Update the count item
-    old = db.execute('SELECT expected FROM stock_count_items WHERE id = ?', (item_id,)).fetchone()
-    if old:
+    old = db.execute('SELECT expected, ingredient_id FROM stock_count_items WHERE id = ? AND stock_count_id = ?',
+                     (item_id, count_id)).fetchone()
+    if old and actual is not None:
         difference = actual - old['expected']
         db.execute(
             'UPDATE stock_count_items SET actual = ?, difference = ? WHERE id = ?',
             (actual, difference, item_id)
         )
         # Also update ingredient stock
-        ing = db.execute(
-            'SELECT ingredient_id FROM stock_count_items WHERE id = ?', (item_id,)
-        ).fetchone()
-        if ing:
-            db.execute('UPDATE ingredients SET quantity = ? WHERE id = ?', (actual, ing['ingredient_id']))
+        db.execute('UPDATE ingredients SET quantity = ? WHERE id = ?', (actual, old['ingredient_id']))
 
     db.commit()
     db.close()
-    return RedirectResponse(f'/inventory/count/{count_id}', status_code=303)
+    return RedirectResponse(f'/inventory/count/{count_id}?saved=update', status_code=303)
 
 
 @router.post('/inventory/count/{count_id}/add')
@@ -144,8 +177,11 @@ async def add_stock_count_item(request: Request, count_id: int):
     form = await request.form()
     db = get_db()
 
-    ingredient_id = int(form.get('ingredient_id', 0))
-    actual = float(form.get('actual', 0))
+    ingredient_id = int(form.get('ingredient_id', 0) or 0)
+    actual = _safe_decimal(form.get('actual', ''))
+    if actual is None or not ingredient_id:
+        db.close()
+        return RedirectResponse(f'/inventory/count/{count_id}', status_code=303)
 
     # Check if already in this count
     existing = db.execute(
@@ -172,26 +208,43 @@ async def add_stock_count_item(request: Request, count_id: int):
     db.execute('UPDATE ingredients SET quantity = ? WHERE id = ?', (actual, ingredient_id))
     db.commit()
     db.close()
-    return RedirectResponse(f'/inventory/count/{count_id}', status_code=303)
+    return RedirectResponse(f'/inventory/count/{count_id}?saved=add', status_code=303)
 
 
-@router.get('/inventory/history', response_class=HTMLResponse)
-async def stock_count_history(request: Request):
+def count_history() -> list[dict]:
+    """Counts newest first, each with item count, real shortages (|diff| ≥ DIFF_EPS) and loss in zł."""
     db = get_db()
     counts = db.execute('''
         SELECT sc.id, sc.date, sc.time, sc.note, sc.created_at,
                u.display_name, u.username,
-               COUNT(sci.id) as item_count,
-               SUM(CASE WHEN sci.difference < 0 THEN 1 ELSE 0 END) as shortage_count
+               COUNT(sci.id) AS item_count,
+               COALESCE(SUM(CASE WHEN sci.difference <= -? THEN 1 ELSE 0 END), 0) AS shortage_count,
+               COALESCE(SUM(CASE WHEN sci.difference <= -? THEN -sci.difference * COALESCE(i.unit_price, 0) ELSE 0 END), 0) AS loss
         FROM stock_counts sc
         LEFT JOIN users u ON sc.user_id = u.id
         LEFT JOIN stock_count_items sci ON sci.stock_count_id = sc.id
+        LEFT JOIN ingredients i ON i.id = sci.ingredient_id
         GROUP BY sc.id
         ORDER BY sc.date DESC, sc.id DESC
-    ''').fetchall()
+    ''', (DIFF_EPS, DIFF_EPS)).fetchall()
     db.close()
+    return [dict(c) for c in counts]
+
+
+@router.get('/inventory/history', response_class=HTMLResponse)
+async def stock_count_history(request: Request, saved: str = ''):
+    counts = count_history()
+    days_since = None
+    if counts:
+        try:
+            days_since = (_date.fromisoformat(warsaw_today()) - _date.fromisoformat(counts[0]['date'])).days
+        except ValueError:
+            days_since = None
     return templates.TemplateResponse(request, 'stock_count_history.html', context={
-        'counts': counts,
+        'counts': counts, 'is_admin': _is_admin(request),
+        'days_since': days_since, 'overdue_days': COUNT_OVERDUE_DAYS,
+        'loss_series': [round(c['loss'], 2) for c in reversed(counts[:12])],
+        'low_count': low_stock_count(), 'saved': saved,
     })
 
 
@@ -202,4 +255,4 @@ async def delete_stock_count(count_id: int):
     db.execute('DELETE FROM stock_counts WHERE id = ?', (count_id,))
     db.commit()
     db.close()
-    return RedirectResponse('/inventory/history', status_code=303)
+    return RedirectResponse('/inventory/history?saved=delete', status_code=303)
