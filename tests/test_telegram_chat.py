@@ -402,3 +402,65 @@ def test_menu_is_registered_per_chat_with_finance_filter(monkeypatch):
     by_chat = {p['scope']['chat_id']: {c['command'] for c in p['commands']} for m, p in sent if m == 'setMyCommands'}
     assert 'costs' in by_chat[int(OWNER)] and 'costs' not in by_chat[int(PARTNER)]
     assert 'help' in by_chat[int(PARTNER)]
+
+
+# ── who is on shift (live GoPOS, read-only) ──
+
+def _orders(*rows):
+    return [{'employee': {'name': n} if n else None, 'closed_at': f'2026-11-25T{t}:00'} for n, t in rows]
+
+
+@pytest.fixture
+def shift_api(monkeypatch):
+    from app import gopos_api
+    tt._shift_cache.clear()
+    calls = []
+
+    def fake(day, include):
+        calls.append((day, include))
+        return _orders(('Alina', '08:05'), ('Alina', '09:40'), ('Nastia', '12:10'), ('Barista', '12:30'), (None, '13:00'))
+
+    monkeypatch.setattr(gopos_api, 'fetch_closed_orders', fake)
+    return calls
+
+
+def test_shift_tool_lists_employees_with_first_and_last_order(shift_api):
+    out = tt.run_tool('shift_staff', {}, TODAY, finance=False)
+    people = {p['name']: p for p in out['staff']}
+    assert people['Alina'] == {'name': 'Alina', 'orders': 2, 'first_order': '08:05', 'last_order': '09:40'}
+    assert people['Nastia']['orders'] == 1 and out['orders_total'] == 5
+    assert shift_api == [(TODAY, 'employee')]          # one live call, only the employee field
+    assert 'not a schedule' in out['note'] and 'freshness_note' in out
+
+
+def test_shift_tool_is_cached_and_validates_date(shift_api):
+    tt.run_tool('shift_staff', {}, TODAY, False)
+    tt.run_tool('shift_staff', {}, TODAY, False)
+    assert len(shift_api) == 1
+    assert 'error' in tt.run_tool('shift_staff', {'date': '2026-12-01'}, TODAY, False)   # future
+    assert 'error' in tt.run_tool('shift_staff', {'date': 'yesterday'}, TODAY, False)
+
+
+def test_shift_tool_survives_a_gopos_outage(monkeypatch):
+    from app import gopos_api
+    tt._shift_cache.clear()
+    monkeypatch.setattr(gopos_api, 'fetch_closed_orders', lambda d, i: (_ for _ in ()).throw(ConnectionError('x')))
+    out = tt.run_tool('shift_staff', {}, TODAY, False)
+    assert 'not reachable' in out['error'] and 'ConnectionError' in out['error']
+
+
+def test_who_is_on_shift_is_answered_in_chat_through_the_tool_not_a_command(shift_api):
+    client = _client(_tool_use('shift_staff', {}), _final('Зараз Alina (з 08:05) і Nastia.'))
+    with patch.object(tc.tb, 'send_message') as send:
+        tc.handle_update(_update(PARTNER, 'Хто на зміні?'), client)
+    assert 'Alina' in send.call_args.args[0]
+    sent = client.converse.call_args_list[1].kwargs['messages']
+    result = next(b['toolResult']['content'][0]['json'] for m in sent for b in m['content'] if 'toolResult' in b)
+    assert {p['name'] for p in result['staff']} >= {'Alina', 'Nastia', 'Barista'}
+    assert 'shift' not in {c['command'] for c in tc.skills.menu(True)}    # no /shift command
+
+
+def test_prompt_routes_shift_questions_to_the_tool_and_is_honest_about_the_rota():
+    p = tc.system_prompt(TODAY, True)
+    assert 'shift_staff' in p and 'not a rota' in p and 'Barista' in p
+    assert 'staff or shift data' not in p
