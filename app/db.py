@@ -270,6 +270,9 @@ def init_db():
     ''')
     # Columns added after the original schema. Prod already has them (added by
     # hand / scripts/migrate_resale.py); a fresh DB needs them too.
+    # ingredient units per invoice unit (a 15 kg crate = 15): see services/pack_pricing.py
+    _add_column(db, 'ingredient_mappings', 'pack_factor', 'REAL')
+    _add_column(db, 'invoice_items_pending', 'pack_factor', 'REAL')   # the model's guess, kept for a manual confirm
     _add_column(db, 'ingredients', 'kind', "TEXT NOT NULL DEFAULT 'raw'")
     _add_column(db, 'deliveries', 'supplier_id', 'INTEGER REFERENCES suppliers(id)')
     _add_column(db, 'pos_products', 'gopos_item_id', 'INTEGER')
