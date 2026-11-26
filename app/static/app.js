@@ -92,8 +92,8 @@ if (document.getElementById('sync-btn')) {
                     if (polling) { clearInterval(polling); polling = null; }
                     setTimeout(function() { window.location.reload(); }, 2000);
                 } else if (d.status === 'done' && !syncing) {
-                    if (d.finished_at) {
-                        el.innerHTML = '<span style="color:rgba(255,255,255,.4); font-size:.75em;">Останній синк: ' + d.finished_at.substring(5, 16) + '</span>';
+                    if (d.refreshed_short) {
+                        el.innerHTML = '<span style="color:rgba(255,255,255,.55); font-size:.75em;">Дані ' + esc(d.refreshed_short) + '</span>';
                     }
                 } else if (d.status === 'error') {
                     syncing = false;
@@ -102,6 +102,9 @@ if (document.getElementById('sync-btn')) {
                     btn.style.opacity = '1';
                     if (polling) { clearInterval(polling); polling = null; }
                 } else {
+                    if (d.refreshed_short) {
+                        el.innerHTML = '<span style="color:rgba(255,255,255,.55); font-size:.75em;">Дані ' + esc(d.refreshed_short) + '</span>';
+                    }
                     btn.disabled = false;
                     btn.style.opacity = '1';
                 }
