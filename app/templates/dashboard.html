@@ -1,6 +1,42 @@
 {% extends "base.html" %}
 {% block content %}
 
+<!-- Що потребує уваги -->
+{% if attention_items %}
+<div class="card attention-card">
+    <div class="card-header">
+        <div class="card-title">Що потребує уваги <span class="badge badge-orange">{{ attention_items|length }}</span></div>
+    </div>
+    {% for it in attention_items %}
+    <div class="attention-row"{% if loop.index > 5 %} data-attention-extra style="display:none;"{% endif %}>
+        <span class="badge {{ 'badge-red' if it.severity == 'danger' else 'badge-orange' if it.severity == 'warn' else 'badge-green' }}">{{ '!' if it.severity == 'danger' else '•' }}</span>
+        <div class="attention-main">
+            <div class="attention-text">{{ it.text }}</div>
+            {% if it.sub %}<div class="card-subtitle">{{ it.sub }}</div>{% endif %}
+        </div>
+        {% if it.amount %}
+        <div class="attention-amount">{{ '{:,.0f}'.format(it.amount).replace(',', ' ') }} zł{% if it.amount_note %}<div class="card-subtitle">{{ it.amount_note }}</div>{% endif %}</div>
+        {% endif %}
+        {% if it.href %}<a class="btn btn-primary btn-sm" href="{{ it.href }}">{{ it.action_label }}</a>{% endif %}
+        <form method="post" action="/attention/dismiss" style="margin:0;">
+            <input type="hidden" name="kind" value="{{ it.kind }}">
+            <input type="hidden" name="key" value="{{ it.key }}">
+            <input type="hidden" name="next" value="/">
+            <button class="btn btn-outline btn-sm" type="submit">Сховати до завтра</button>
+        </form>
+    </div>
+    {% endfor %}
+    {% if attention_items|length > 5 %}
+    <div style="padding-top:12px;">
+        <button class="btn btn-outline btn-sm" type="button"
+                onclick="document.querySelectorAll('[data-attention-extra]').forEach(function(e){e.style.display='flex';}); this.parentNode.remove();">Показати всі ({{ attention_items|length }})</button>
+    </div>
+    {% endif %}
+</div>
+{% elif request.state.user and request.state.user['role'] == 'admin' %}
+<p class="card-subtitle" style="margin-bottom:12px;">✓ Все гаразд</p>
+{% endif %}
+
 <!-- Date filter -->
 <div class="card" style="padding: 14px 20px;">
     <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;">

@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from app.db import get_db
 from app import gopos_api
 from app.gopos_api import warsaw_today
+from app.services.attention import get_attention_items
 from app.services.recipes import get_cost_lookup
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
@@ -291,6 +292,7 @@ async def dashboard(request: Request, date_from: str = '', date_to: str = ''):
 
     db.close()
     return templates.TemplateResponse(request, 'dashboard.html', context={
+        'attention_items': get_attention_items(getattr(request.state, 'user', None)),
         'date_from': date_from, 'date_to': date_to,
         'presets': presets, 'active_preset': active_preset,
         'sales': sales_with_cost, 'totals': totals,

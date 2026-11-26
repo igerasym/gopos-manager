@@ -199,3 +199,11 @@ tr:hover td { background: #f8fafc; }
 .modal .deps { margin: 12px 0; padding: 10px 14px; background: var(--bg); border-radius: 8px; font-size: .85em; }
 .modal .deps span { display: inline-block; background: var(--orange-bg); color: #92400e; padding: 2px 8px; border-radius: 12px; font-size: .8em; margin: 2px; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* Attention block on the dashboard */
+.attention-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.attention-row:last-of-type { border-bottom: none; }
+.attention-main { flex: 1; min-width: 0; }
+.attention-text { font-size: .9em; font-weight: 500; }
+.attention-amount { font-weight: 600; font-size: .9em; text-align: right; white-space: nowrap; }
+@media (max-width: 700px) { .attention-row { flex-wrap: wrap; } }
