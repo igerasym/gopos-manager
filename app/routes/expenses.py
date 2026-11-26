@@ -122,14 +122,8 @@ def month_pnl(db, d_from: str, d_to: str) -> dict:
 def missing_recurring(db, month: str) -> list[dict]:
     """Recurring costs of the previous month that are not entered (nor dismissed) for `month`.
     Same rule as the 'costs_incomplete' attention row."""
-    prev = shift_month(month, -1)
-    last = db.execute(
-        'SELECT name, category, SUM(amount) AS amount FROM expenses WHERE month = ? AND recurring = 1 '
-        'GROUP BY name ORDER BY amount DESC', (prev,)).fetchall()
-    present = {r['name'] for r in db.execute('SELECT DISTINCT name FROM expenses WHERE month = ?', (month,))}
-    dismissed = {r['name'] for r in db.execute('SELECT name FROM expenses_dismissed WHERE month = ?', (month,))}
-    return [{'name': r['name'], 'category': r['category'], 'amount': round(r['amount'] or 0, 2)}
-            for r in last if r['name'] not in present and r['name'] not in dismissed]
+    from app.services.attention import missing_recurring_costs
+    return missing_recurring_costs(db, month, shift_month(month, -1))
 
 
 def month_result(db, month: str, today: str) -> dict:

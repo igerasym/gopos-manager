@@ -25,7 +25,7 @@
           <span class="row-sub">{% if 'pdf' in f['mimeType'] %}PDF{% elif 'image' in f['mimeType'] %}Фото{% else %}{{ f['mimeType'] | truncate(20) }}{% endif %}
             {%- if f.get('createdTime') %} · {{ f.get('createdTime', '')[:10] | shortdate }}{% endif %}</span></span>
         {% if f['mimeType'] in supported %}
-        <button class="btn btn-secondary" type="button" data-parse="{{ f['id'] }}">Розпізнати</button>
+        <button class="btn btn-secondary" type="button" data-parse="{{ f['id'] }}">Прочитати фактуру</button>
         {% endif %}
       </li>
       {% endfor %}

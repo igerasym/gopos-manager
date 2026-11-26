@@ -10,9 +10,9 @@
 {% call page_header('Списання', eyebrow='Склад') %}
     <form method="get" action="/export/wastage.csv" class="inline-form">
         <input type="hidden" name="month" value="{{ current_month }}">
-        <button class="btn btn-secondary" type="submit">{{ icon('download') }}<span class="hide-phone">Завантажити CSV</span><span class="only-phone">CSV</span></button>
+        <button class="btn btn-secondary" type="submit">{{ icon('download') }}<span class="hide-phone">Таблиця для бухгалтера (CSV)</span><span class="only-phone">Таблиця (CSV)</span></button>
     </form>
-    <button class="btn btn-primary only-desktop" type="button" data-sheet-open="sheet-wastage">{{ icon('plus') }}Списати</button>
+    <button class="btn btn-primary" type="button" data-sheet-open="sheet-wastage">{{ icon('plus') }}Списати</button>
 {% endcall %}
 
 {% set saved_msg = {'add': 'Списання записано', 'delete': 'Запис видалено, кількість повернуто на склад'} %}
@@ -31,7 +31,7 @@
         {% if is_admin %}
         <div class="hero-top"><h2 id="loss-h" class="qlabel">Втрати за {{ month_label }}{% if is_current_month %} (поки що){% endif %}</h2></div>
         <div>
-            <div class="big num">{{ total_cost | num(2) }}<small>zł</small></div>
+            <div class="big num">{{ total_cost | num(2) }}&nbsp;<small>zł</small></div>
             {% set t = trend(total_cost, prev_total, good='down') %}
             <p class="sentence mt-2">
                 {% if share_pct is not none %}Це {{ share_pct | pct(1) }} виручки за місяць.{% endif %}
@@ -167,7 +167,6 @@
     {% endif %}
 </section>
 
-<button class="fab" type="button" data-sheet-open="sheet-wastage" aria-label="Списати">{{ icon('plus') }}</button>
 {% include "_wastage_sheet.html" %}
 {% endblock %}
 

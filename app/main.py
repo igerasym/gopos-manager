@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -11,6 +11,7 @@ from app.db import init_db, enable_wal
 from app.auth import get_current_user, can_access, create_default_admin, check_session_secret
 from app.routes import auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync, expenses, invoices_gdrive, webhook, wastage, more
 from app.templating import configure_env
+from app.errors import error_page, install as install_error_pages, wants_html
 
 BASE_DIR = Path(__file__).parent
 
@@ -149,13 +150,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not can_access(user, path):
             if path == '/':
                 return RedirectResponse('/inventory', status_code=302)
-            return HTMLResponse(
-                '<h2>Доступ заборонено</h2><p>Ваша роль не має доступу до цієї сторінки.</p>'
-                '<a href="/inventory">← Назад</a>', status_code=403)
+            request.state.user = user
+            if wants_html(request):
+                return error_page(request, 403)
+            return JSONResponse({'detail': 'Доступ заборонено'}, status_code=403)
         request.state.user = user
         return await call_next(request)
 
 app.add_middleware(AuthMiddleware)
+install_error_pages(app)
 
 for r in (auth, dashboard, inventory, invoice, recipes, sub_recipes, stock_count, users, sync, expenses, invoices_gdrive, webhook, wastage, more):
     app.include_router(r.router)

@@ -9,26 +9,10 @@ from app.templating import templates
 router = APIRouter()
 
 
-def _last_sync():
-    """Last sync_log row as {'status', 'at' (Warsaw datetime or None), 'message'} or None."""
-    db = get_db()
-    try:
-        row = db.execute('SELECT status, message, started_at, finished_at FROM sync_log '
-                         'ORDER BY id DESC LIMIT 1').fetchone()
-    except Exception:
-        row = None
-    finally:
-        db.close()
-    if not row:
-        return None
-    at = attention._local_to_warsaw(row['finished_at'] or row['started_at'] or '')
-    return {'status': row['status'], 'at': at, 'message': row['message'] or ''}
-
-
 @router.get('/more', response_class=HTMLResponse)
 async def more_page(request: Request):
     return templates.TemplateResponse(request, 'more.html', context={
-        'last_sync': _last_sync(),
+        'freshness': attention.data_freshness(),
         'exports': [
             ('Продажі', '/export/sales.csv'),
             ('Витрати', '/export/expenses.csv'),

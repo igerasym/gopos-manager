@@ -2,6 +2,14 @@
 {% from "_ui.html" import attention_block, trend_chip, empty_state, page_header %}
 {% block page_title %}Сьогодні{% endblock %}
 {% block main_class %}{% endblock %}
+{% block extra_style %}
+.business-night { display: flex; align-items: center; gap: 6px; margin: calc(-1 * var(--s3)) 0 var(--s3); }
+.stat-takeaway { white-space: normal; }
+.stat-takeaway small { white-space: nowrap; }
+.stat-takeaway .tk-rev { display: block; margin-top: 2px; }
+/* phone: the day's revenue first, the to-do list under it */
+@media (max-width: 599px) { .today-main > .hero { order: -1; } }
+{% endblock %}
 
 {% block content %}
 {% set p = per.p %}
@@ -13,12 +21,18 @@
 {% else %}{% set when = 'за період' %}{% set title = 'Виручка за період' %}{% endif %}
 {% set t = trend(cmp_cur, cmp_prev) if per.cmp_ok else None %}
 
+{#- the same period on 'Усі страви' -#}
+{% if p in ('week', 'month') %}{% set pq = 'p=' ~ p %}
+{% elif p == 'day' %}{% set pq = 'date=' ~ per.start %}
+{% else %}{% set pq = 'p=range&date_from=' ~ per.start ~ '&date_to=' ~ per.end %}{% endif %}
+
 {% call page_header('Сьогодні', eyebrow=(date_to | shortdate)) %}
-  <a class="btn btn-secondary" href="/dashboard/products">Усі продукти{{ icon('chevron-right', 18) }}</a>
+  <a class="btn btn-secondary" href="/dashboard/products?{{ pq }}">Усі страви{{ icon('chevron-right', 18) }}</a>
 {% endcall %}
+{% if business_night %}<p class="small muted business-night">{{ icon('clock', 16) }} {{ business_night }}</p>{% endif %}
 
 <div class="cols-2">
-  <div class="stack">
+  <div class="stack today-main">
     {{ attention_block(attention_items, limit=5, next='/') }}
 
     <section class="card hero" aria-labelledby="hero-h">
@@ -37,7 +51,7 @@
       {% if p != 'day' %}<p class="small muted">{{ per.start | shortdate(weekday=False) }} — {{ per.end | shortdate(weekday=False) }}</p>{% endif %}
 
       <div>
-        <div class="big num">{{ revenue | num(2) }}<small>zł</small></div>
+        <div class="big num">{{ revenue | num(2) }}&nbsp;<small>zł</small></div>
         {% if t %}
           <p class="sentence mt-2">{{ trend_chip(t) }}
             {% if t.direction == 'flat' %}так само, як{% else %}{{ t.word }}, ніж{% endif %}
@@ -57,14 +71,14 @@
         <div class="stat"><span class="stat-label">Чеки</span>
           <span class="stat-value num">{{ checks.orders | num if checks.orders else '—' }}</span></div>
         <div class="stat"><span class="stat-label">Середній чек</span>
-          <span class="stat-value num">{% if checks.avg %}{{ checks.avg | num(2) }} <small>zł</small>{% else %}—{% endif %}</span></div>
+          <span class="stat-value num">{% if checks.avg %}{{ checks.avg | num(2) }}&nbsp;<small>zł</small>{% else %}—{% endif %}</span></div>
         <div class="stat"><span class="stat-label">На винос</span>
-          <span class="stat-value num">{% if checks.takeaway_pct is not none %}{{ checks.takeaway_pct | num }}<small>% чеків</small>{% else %}—{% endif %}</span></div>
+          <span class="stat-value num stat-takeaway">{% if checks.takeaway_pct is not none %}{{ checks.takeaway_pct | pct }}&nbsp;<small>чеків{% if checks.takeaway_rev_pct is not none %},</small><small class="tk-rev">{{ checks.takeaway_rev_pct | pct }}&nbsp;виручки{% endif %}</small>{% else %}—{% endif %}</span></div>
       </div>
 
       <div class="stat-foot">
         {{ icon('clock', 16) }}
-        {% if per.in_progress and as_of %}оновлено о {{ as_of }}{% elif per.in_progress %}ще не оновлювали з запуску{% else %}дані за завершені дні{% endif %}
+        {% if per.in_progress %}{{ freshness.text }}{% else %}Дані за завершені дні{% endif %}
         <button class="btn btn-ghost" type="button" id="refresh-btn" style="margin-left:auto">{{ icon('refresh', 16) }}Оновити дані з каси</button>
       </div>
     </section>
@@ -116,7 +130,7 @@
         {% endfor %}
       </ul>
       {% endfor %}
-      <a class="link" href="/dashboard/products?p={{ p }}&date_from={{ per.start }}&date_to={{ per.end }}">Усі продукти{{ icon('chevron-right', 18) }}</a>
+      <a class="link" href="/dashboard/products?{{ pq }}">Усі страви{{ icon('chevron-right', 18) }}</a>
       {% else %}
         {{ empty_state('cup', 'Продажів ще немає', 'Щойно з’являться чеки, тут буде топ-5') }}
       {% endif %}

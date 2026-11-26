@@ -10,6 +10,7 @@
 {% set titles = {'stock': 'Запаси', 'order': 'Що замовити', 'deliveries': 'Поставки'} %}
 {% call page_header(titles[tab], eyebrow='Склад') %}
     {% if is_admin %}<a class="btn btn-secondary" href="/inventory/upload">{{ icon('upload') }}<span class="hide-phone">Завантажити фактуру</span><span class="only-phone">Фактура</span></a>{% endif %}
+    <button class="btn btn-primary hide-desktop" type="button" data-sheet-open="sheet-add" aria-label="Додати: поставку, списання, інгредієнт">{{ icon('plus') }}Додати</button>
     <span class="only-desktop btn-row">
         <button class="btn btn-secondary" type="button" data-sheet-open="sheet-wastage">{{ icon('trash') }}Списання</button>
         <button class="btn btn-secondary" type="button" data-sheet-open="sheet-ingredient">{{ icon('plus') }}Інгредієнт</button>
@@ -26,13 +27,13 @@
 <section class="card order-sum" aria-labelledby="sum-h">
     <div>
         <h2 id="sum-h" class="qlabel">Що треба замовити сьогодні</h2>
-        {% if is_admin %}<div class="big num">{{ order_total | num(2) }}<small>zł</small></div>{% endif %}
+        {% if is_admin %}<div class="big num">{{ order_total | num(2) }}&nbsp;<small>zł</small></div>{% endif %}
         {% set nsup = groups | length %}
         <p class="sentence">{{ order_lines }} {{ order_lines | plural('позиція', 'позиції', 'позицій') }} у {{ nsup }} {{ nsup | plural('постачальника', 'постачальників', 'постачальників') }}.{% if is_admin %} Суми приблизні, за останніми цінами.{% endif %}</p>
         {% if is_admin and order_unpriced %}<p class="small muted mt-2">{{ icon('info', 16) }} Без ціни: {{ order_unpriced }} {{ order_unpriced | plural('позиція', 'позиції', 'позицій') }}, у суму не входять.</p>{% endif %}
     </div>
     <div class="btn-row">
-        <button class="btn btn-secondary" type="button" data-copy="order-all">{{ icon('copy') }}Скопіювати все</button>
+        <button class="btn btn-secondary" type="button" data-copy="order-all" data-copy-msg="Скопійовано весь список: {{ order_lines }} {{ order_lines | plural('позиція', 'позиції', 'позицій') }} у {{ groups | length }} {{ groups | length | plural('постачальника', 'постачальників', 'постачальників') }}">{{ icon('copy') }}Скопіювати все</button>
         <textarea hidden id="order-all">{{ order_text_all }}</textarea>
     </div>
 </section>
@@ -55,7 +56,7 @@
         {% endfor %}
         </ul>
         <div class="card-foot">
-            <button class="btn btn-secondary btn-block" type="button" data-copy="order-{{ loop.index }}">{{ icon('copy') }}Скопіювати список</button>
+            <button class="btn btn-secondary btn-block" type="button" data-copy="order-{{ loop.index }}" data-copy-msg="Скопійовано список для {{ g.supplier }}: {{ g.lines | length }} {{ g.lines | length | plural('позиція', 'позиції', 'позицій') }}">{{ icon('copy') }}Скопіювати список</button>
             <textarea hidden id="order-{{ loop.index }}">{{ g.text }}</textarea>
         </div>
     </section>
@@ -72,7 +73,7 @@
     {% if is_admin %}
     <div>
         <h2 id="val-h" class="qlabel">Вартість запасу</h2>
-        <div class="big num">{{ stock_value | num(0) }}<small>zł</small></div>
+        <div class="big num">{{ stock_value | num(0) }}&nbsp;<small>zł</small></div>
         <p class="sentence">{{ all_items | length }} {{ all_items | length | plural('позиція', 'позиції', 'позицій') }} на складі, {{ low_count }} {{ low_count | plural('закінчується', 'закінчуються', 'закінчуються') }}.</p>
         {% if unpriced_count %}<p class="small muted mt-2">Без ціни: {{ unpriced_count }} {{ unpriced_count | plural('позиція', 'позиції', 'позицій') }}, у вартість не входять.</p>{% endif %}
     </div>
@@ -100,7 +101,7 @@
     {% set raw = items | rejectattr('is_sub_recipe') | list %}
     {% set subs = items | selectattr('is_sub_recipe') | list %}
     {% if items %}
-    {% for group_title, group in [('', raw), ('Заготовки (власного виробництва)', subs)] if group %}
+    {% for group_title, group in [('', raw), ('Заготовки: напівфабрикати, які готуєте самі', subs)] if group %}
     {% if group_title %}<h3 class="group-title">{{ group_title }}</h3>{% endif %}
     <ul class="rows stock-rows">
         {% for i in group %}
@@ -166,7 +167,6 @@
 </section>
 {% endif %}
 
-<button class="fab" type="button" data-sheet-open="sheet-add" aria-label="Додати: поставку, списання, інгредієнт">{{ icon('plus') }}</button>
 
 {# ───────────────────────── sheets ───────────────────────── #}
 <dialog class="sheet" id="sheet-add" aria-labelledby="sheet-add-h">

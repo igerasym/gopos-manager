@@ -122,7 +122,7 @@ def test_products_page_lists_sales_and_flags_missing_recipes():
     c = TestClient(app, follow_redirects=False)
     c.cookies.set('session', sign_cookie('admin'))
     html = c.get('/dashboard/products').text
-    assert 'Усі продукти' in html and 'Latte' in html
+    assert 'Усі страви' in html and 'Latte' in html
     assert 'Неповні дані' in html and 'Без рецепту' in html   # never "норма" without a recipe
     assert 'ABC' not in html
 

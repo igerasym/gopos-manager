@@ -47,7 +47,7 @@ def test_gopos_writeoff_is_priced_from_recipe():
 
 def test_total_includes_recipe_cost_and_manual_cost():
     html = _admin().get('/wastage').text
-    assert num(12.12, 2) + '<small>zł</small>' in html  # 7.92 + 4.20 in the hero
+    assert num(12.12, 2) + '&nbsp;<small>zł</small>' in html  # 7.92 + 4.20 in the hero
 
 
 def test_product_without_recipe_is_flagged_not_counted():

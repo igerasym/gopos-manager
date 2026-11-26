@@ -28,7 +28,7 @@
 
 <section class="card card-flush" aria-labelledby="items-h">
     <header class="card-head"><h2 id="items-h">{% if is_admin %}Що коштувало найбільше{% else %}Пораховані позиції{% endif %}</h2>
-        <span class="small muted">Різниця менше 0,05 вважається збігом</span></header>
+        <span class="small muted">Різниця менше 0,05&nbsp;кг, л або шт вважається збігом</span></header>
     {% if items %}
     <ul class="rows journal-rows only-phone">
         {% for i in items %}

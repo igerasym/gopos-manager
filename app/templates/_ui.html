@@ -16,15 +16,15 @@
 <section class="card attention" aria-labelledby="att-h">
     <header class="card-head"><h2 id="att-h">Що потребує уваги</h2><span class="chip chip-warn">{{ icon('alert', 14) }}{{ items | length }}</span></header>
     <ul class="attention-list">
-        {%- for it in items[:limit] %}
-        <li class="attention-row" data-severity="{{ it.severity }}" data-kind="{{ it.kind }}">
+        {%- for it in items %}
+        <li class="attention-row"{% if loop.index > limit %} hidden data-attention-extra{% endif %} data-severity="{{ it.severity }}" data-kind="{{ it.kind }}">
             <span class="attention-icon">{{ icon(it.icon) }}</span>
             <div class="flex-1">
                 <div class="attention-text">{{ it.text }}</div>
                 {%- if it.sub %}<div class="attention-sub">{{ it.sub }}</div>{% endif %}
             </div>
             <div class="attention-actions">
-                {%- if it.amount %}<span class="attention-amount num">{{ it.amount | zl }}</span>{% endif %}
+                {%- if it.amount %}<span class="attention-amount num{% if it.amount_expense %} is-expense{% endif %}">{% if it.amount_expense %}−{% endif %}{{ it.amount | zl }}{% if it.amount_note %}<small>{{ it.amount_note }}</small>{% endif %}</span>{% endif %}
                 <a class="btn btn-secondary" href="{{ it.href }}">{{ it.action_label }}</a>
                 <form method="post" action="/attention/dismiss" data-attention-dismiss>
                     <input type="hidden" name="kind" value="{{ it.kind }}">
@@ -36,6 +36,9 @@
         </li>
         {%- endfor %}
     </ul>
+    {%- if items | length > limit %}
+    <div class="attention-more"><button class="btn btn-quiet" type="button" data-attention-more aria-expanded="false">{{ icon('chevron-down', 16) }}Показати всі ({{ items | length }})</button></div>
+    {%- endif %}
 </section>
 {%- endif %}
 {%- endmacro %}

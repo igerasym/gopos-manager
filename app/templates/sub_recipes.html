@@ -44,7 +44,7 @@
 
 {% block content %}
 {% call page_header('Меню', eyebrow='Заготовки') %}
-    <button class="btn btn-primary only-desktop" type="button" data-sheet-open="sheet-new-prep">{{ icon('plus') }}Нова заготовка</button>
+    <button class="btn btn-primary" type="button" data-sheet-open="sheet-new-prep">{{ icon('plus') }}Нова заготовка</button>
 {% endcall %}
 <nav class="tabs menu-tabs" aria-label="Розділи меню">
     {%- for key, label, path in tabs %}
@@ -80,7 +80,6 @@
     {% endif %}
 </section>
 
-<button class="fab" type="button" data-sheet-open="sheet-new-prep" aria-label="Нова заготовка">{{ icon('plus') }}</button>
 
 {% for p in preps %}
 {%- set used = usage.get(p.ingredient_id, []) %}

@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from app.db import get_db
 from app import gopos_api
 from app.gopos_api import warsaw_today
-from app.services.attention import get_attention_items
+from app.services.attention import data_freshness, get_attention_items
 from app.services.recipes import get_cost_lookup
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / 'templates')
@@ -116,15 +116,18 @@ def _revenue(db, d_from: str, d_to: str) -> float:
 
 
 def checks_stats(db, d_from: str, d_to: str) -> dict:
-    """Checks (orders), average check and takeaway share (of checks) from daily_takeaway."""
+    """Checks (orders), average check and takeaway share (of checks and of revenue)
+    from daily_takeaway."""
     r = db.execute('''SELECT COALESCE(SUM(orders),0) AS orders,
                              COALESCE(SUM(revenue),0) AS revenue,
-                             COALESCE(SUM(takeaway_orders),0) AS t_orders
+                             COALESCE(SUM(takeaway_orders),0) AS t_orders,
+                             COALESCE(SUM(takeaway_revenue),0) AS t_revenue
                       FROM daily_takeaway WHERE date >= ? AND date <= ?''', (d_from, d_to)).fetchone()
     if not r['orders']:
-        return {'orders': None, 'avg': None, 'takeaway_pct': None}
+        return {'orders': None, 'avg': None, 'takeaway_pct': None, 'takeaway_rev_pct': None}
     return {'orders': r['orders'], 'avg': r['revenue'] / r['orders'],
-            'takeaway_pct': r['t_orders'] / r['orders'] * 100}
+            'takeaway_pct': r['t_orders'] / r['orders'] * 100,
+            'takeaway_rev_pct': r['t_revenue'] / r['revenue'] * 100 if r['revenue'] else None}
 
 
 def week_bars(db, anchor: str, today: str) -> list[dict]:
@@ -312,6 +315,18 @@ def compute_pnl(db, d_from: str, d_to: str) -> dict:
     }
 
 
+def business_night_hint(now=None) -> str:
+    """Between 00:00 and 05:00 Warsaw the business day is still yesterday's: say so,
+    so '25 лист.' at 01:40 on the 26th makes sense. '' the rest of the day."""
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+    now = now or _dt.now(ZoneInfo('Europe/Warsaw'))
+    start = gopos_api.BUSINESS_DAY_START_HOUR
+    if now.hour < start:
+        return f'Робочий день триває до {start:02d}:00'
+    return ''
+
+
 # ── Pages ────────────────────────────────────────────────────────────────────
 
 @router.get('/', response_class=HTMLResponse)
@@ -344,14 +359,15 @@ async def dashboard(request: Request, p: str = '', date: str = '', date_from: st
         'week': week, 'week_total': week_total, 'week_cmp': week_cmp,
         'week_has_data': any((c['now'] or 0) > 0 or c['ghost'] > 0 for c in week),
         'top': top,
-        'as_of': gopos_api.LAST_INTRADAY_SYNC,
+        'freshness': data_freshness(),
+        'business_night': business_night_hint(),
         'attention_items': get_attention_items(user),
     })
 
 
 @router.get('/dashboard/products', response_class=HTMLResponse)
 async def products_page(request: Request, p: str = '', date: str = '', date_from: str = '', date_to: str = ''):
-    """'Усі продукти': what sold, what it earned and how much of the price goes to ingredients."""
+    """'Усі страви': what sold, what it earned and how much of the price goes to ingredients."""
     today = warsaw_today()
     db = get_db()
     per = resolve_period(db, today, p, date, date_from, date_to)

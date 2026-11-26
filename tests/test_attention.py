@@ -89,7 +89,7 @@ def test_items_unmatched():
     db_rows += [("INSERT INTO invoice_items_pending (parsed_invoice_id, invoice_name, status) VALUES (9, ?, 'pending')", (f'p{i}',))
                 for i in range(6)]
     it = _by_kind(_run(db_rows), 'items_unmatched')
-    assert it['text'] == '6 позицій з фактур не привʼязані до інгредієнтів'
+    assert it['text'] == '6 позицій з фактур ще не звірені зі складом'
 
 
 def test_low_stock_grouped_by_supplier():
@@ -284,3 +284,60 @@ def test_dismiss_endpoint_json_and_redirect():
 
 def test_dismiss_endpoint_admin_only():
     assert _client('chef').post('/attention/dismiss', data={'kind': 'low_stock'}).status_code == 403
+
+
+def test_costs_incomplete_labels_the_amount_as_last_months_expense():
+    it = _by_kind(_run([("INSERT INTO expenses (name, category, amount, month, recurring) "
+                         "VALUES ('Wynagrodzenia', 'Зарплати', 38000, '2026-10', 1)", ())]), 'costs_incomplete')
+    assert it['amount_expense'] is True
+    assert it['amount_note'] == 'витрати минулого місяця'
+
+
+def test_recurring_cost_counts_as_entered_by_category():
+    """Last month 'Prąd + gaz' (Комунальні); this month a different name in Комунальні."""
+    rows = [
+        ("INSERT INTO expenses (name, category, amount, month, recurring) VALUES ('Prąd + gaz', 'Комунальні', 2600, '2026-10', 1)", ()),
+        ("INSERT INTO expenses (name, category, amount, month, recurring) VALUES ('ZUS', 'Податки і ZUS', 3400, '2026-10', 1)", ()),
+        ("INSERT INTO expenses (name, category, amount, month, recurring) VALUES ('Rachunek PGE', 'Комунальні', 121.5, '2026-11', 0)", ()),
+    ]
+    it = _by_kind(_run(rows), 'costs_incomplete')
+    assert it['text'] == 'Ще не внесено: Податки і ZUS'
+    assert it['amount'] == 3400
+    # the 'Гроші' page uses the same rule
+    from app.routes.expenses import missing_recurring
+    db = get_db()
+    try:
+        assert [m['name'] for m in missing_recurring(db, '2026-11')] == ['ZUS']
+    finally:
+        db.close()
+
+
+def test_attention_block_shows_all_behind_a_button():
+    from app.templating import templates
+    items = [attention._item('low_stock', 'warn', 'box', f'Рядок {i}', key=str(i)) for i in range(7)]
+    html = templates.env.from_string(
+        '{% from "_ui.html" import attention_block %}{{ attention_block(items, limit=5) }}').render(items=items)
+    assert html.count('data-attention-extra') == 2
+    assert 'Показати всі (7)' in html
+
+
+def test_data_freshness_prefers_intraday_then_sync_log(monkeypatch):
+    monkeypatch.setattr(gopos_api, 'LAST_INTRADAY_SYNC', '13:45')
+    f = attention.data_freshness(now=NOW)
+    assert f['text'] == 'Дані з каси оновлено сьогодні о 13:45'
+    monkeypatch.setattr(gopos_api, 'LAST_INTRADAY_SYNC', None)
+    db = get_db()
+    db.execute("INSERT INTO sync_log (status, started_at, finished_at) VALUES ('done', '2026-11-24 03:29:00', '2026-11-24 03:30:00')")
+    db.commit()
+    f = attention.data_freshness(db, now=NOW)
+    db.close()
+    assert f['at'] is not None and f['text'].startswith('Дані з каси оновлено 24 лист. о ')
+    assert not f['error']
+
+
+def test_data_freshness_never_synced(monkeypatch):
+    monkeypatch.setattr(gopos_api, 'LAST_INTRADAY_SYNC', None)
+    db = get_db(); db.execute('DELETE FROM sync_log'); db.commit()
+    f = attention.data_freshness(db, now=NOW)
+    db.close()
+    assert f == {'at': None, 'error': False, 'text': 'Дані з каси ще не оновлювались'}

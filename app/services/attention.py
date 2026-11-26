@@ -9,6 +9,8 @@ get_attention_items(user) -> list of dicts, most urgent first:
     text          one plain-Ukrainian sentence (untrusted names inside: autoescape it)
     sub           secondary line or ''
     amount        money in zł (float) or None
+    amount_note   small caption under the amount ('' = none), e.g. 'витрати минулого місяця'
+    amount_expense True when the amount is money going out (shown with a minus, not as profit)
     count         how many things the row is about
     href          where the action button goes
     action_label  button text
@@ -115,10 +117,12 @@ class _Ctx:
         return self._prices
 
 
-def _item(kind, severity, icon, text, sub='', amount=None, count=1, key='', action_label=''):
+def _item(kind, severity, icon, text, sub='', amount=None, count=1, key='', action_label='',
+          amount_note='', amount_expense=False):
     return {'kind': kind, 'key': key or kind, 'severity': severity, 'icon': icon,
             'text': text, 'sub': sub, 'amount': amount, 'count': count,
-            'href': HREF[kind], 'action_label': action_label}
+            'href': HREF[kind], 'action_label': action_label,
+            'amount_note': amount_note, 'amount_expense': amount_expense}
 
 
 # ── rules ─────────────────────────────────────────────────────────────────────
@@ -159,10 +163,10 @@ def rule_items_unmatched(c: _Ctx):
     if not n:
         return None
     return _item('items_unmatched', 'info', 'link',
-                 f"{n} {plural(n, 'позиція', 'позиції', 'позицій')} з фактур не "
-                 f"{plural(n, 'привʼязана', 'привʼязані', 'привʼязані')} до інгредієнтів",
+                 f"{n} {plural(n, 'позиція', 'позиції', 'позицій')} з фактур ще не "
+                 f"{plural(n, 'звірена', 'звірені', 'звірені')} зі складом",
                  sub='Без цього склад і ціни не оновляться', count=n, key=_sig(n, row['mx']),
-                 action_label='Привʼязати')
+                 action_label='Звірити зі складом')
 
 
 def rule_low_stock(c: _Ctx):
@@ -232,27 +236,43 @@ def rule_unclassified_product(c: _Ctx):
                  count=n, key=_sig(*names), action_label='Налаштувати')
 
 
+def missing_recurring_costs(db, month: str, prev: str) -> list[dict]:
+    """Recurring costs of `prev` month still missing in `month` (the one rule shared by the
+    'costs_incomplete' attention row and the 'Гроші' page).
+
+    A cost counts as entered when this month already has an expense with the same name OR,
+    when it has a category, any expense in the same category (e.g. last month 'Prąd + gaz'
+    under 'Комунальні', this month 'Rachunek PGE' under 'Комунальні'). A dismissed name
+    ('Цього місяця не буде') never counts as missing."""
+    last = db.execute(
+        'SELECT name, category, SUM(amount) AS amount FROM expenses WHERE month = ? AND recurring = 1 '
+        'GROUP BY name ORDER BY amount DESC LIMIT ?', (prev, MAX_ROWS)).fetchall()
+    if not last:
+        return []
+    rows = db.execute('SELECT DISTINCT name, category FROM expenses WHERE month = ?', (month,)).fetchall()
+    names = {r['name'] for r in rows}
+    cats = {r['category'] for r in rows if r['category']}
+    dismissed = {r['name'] for r in db.execute('SELECT name FROM expenses_dismissed WHERE month = ?', (month,))}
+    return [{'name': r['name'], 'category': r['category'], 'amount': round(r['amount'] or 0, 2)}
+            for r in last
+            if r['name'] not in names and r['name'] not in dismissed
+            and not (r['category'] and r['category'] in cats)]
+
+
 def rule_costs_incomplete(c: _Ctx):
     if c.today.day <= COSTS_CHECK_FROM_DAY:
         return None
     cur = c.today.strftime('%Y-%m')
     first = c.today.replace(day=1)
     prev = (first - timedelta(days=1)).strftime('%Y-%m')
-    last = c.db.execute(
-        'SELECT name, category, SUM(amount) AS amount FROM expenses WHERE month = ? AND recurring = 1 '
-        'GROUP BY name ORDER BY amount DESC LIMIT ?', (prev, MAX_ROWS)).fetchall()
-    if not last:
-        return None
-    present = {r['name'] for r in c.db.execute('SELECT DISTINCT name FROM expenses WHERE month = ?', (cur,))}
-    dismissed = {r['name'] for r in c.db.execute('SELECT name FROM expenses_dismissed WHERE month = ?', (cur,))}
-    missing = [r for r in last if r['name'] not in present and r['name'] not in dismissed]
+    missing = missing_recurring_costs(c.db, cur, prev)
     if not missing:
         return None
     cats = list(dict.fromkeys((r['category'] or r['name']) for r in missing))
     amount = round(sum(r['amount'] or 0 for r in missing), 2)
     return _item('costs_incomplete', 'warn', 'coin', f'Ще не внесено: {_first_names(cats, 4)}',
-                 sub=f'Прибуток за цей місяць поки що неповний · минулого місяця це було ≈ {zl(amount, 0)}',
-                 amount=amount, count=len(missing), key=_sig(cur, *sorted(r['name'] for r in missing)),
+                 sub='Без них прибуток за цей місяць поки що неповний',
+                 amount=amount, amount_note='витрати минулого місяця', amount_expense=True, count=len(missing), key=_sig(cur, *sorted(r['name'] for r in missing)),
                  action_label='Внести')
 
 
@@ -384,6 +404,51 @@ def rule_sales_stale(c: _Ctx):
     return _item('sales_stale', 'danger', 'refresh', f'Дані з каси не оновлювались з {when}',
                  sub='Цифри продажів можуть бути неповні', key=stale_since.strftime('%Y-%m-%d %H:%M'),
                  action_label='Оновити')
+
+
+def data_freshness(db=None, now: datetime | None = None) -> dict:
+    """When sales were last refreshed from the till, one source for every page.
+
+    The in-memory last intraday refresh (gopos_api.LAST_INTRADAY_SYNC, 'HH:MM' Warsaw) wins;
+    otherwise the last finished sync_log row. Returns {'at': Warsaw datetime | None,
+    'error': bool (the newest sync_log row failed), 'text': one plain sentence}."""
+    now = now or _now_warsaw()
+    at = None
+    try:
+        from app import gopos_api
+        hhmm = gopos_api.LAST_INTRADAY_SYNC
+    except Exception:
+        hhmm = None
+    if hhmm:
+        try:
+            h, m = (int(x) for x in hhmm.split(':'))
+            at = now.replace(hour=h, minute=m, second=0, microsecond=0)
+            if at > now:
+                at -= timedelta(days=1)
+        except ValueError:
+            at = None
+    own = db is None
+    error = False
+    try:
+        db = db or db_module.get_db()
+        last = db.execute('SELECT status, finished_at, started_at FROM sync_log ORDER BY id DESC LIMIT 1').fetchone()
+        error = bool(last) and last['status'] == 'error'
+        if at is None:
+            row = db.execute('SELECT finished_at FROM sync_log WHERE finished_at IS NOT NULL '
+                             "AND status != 'error' ORDER BY id DESC LIMIT 1").fetchone()
+            at = _local_to_warsaw(row['finished_at']) if row else None
+    except Exception as e:
+        log.warning('data_freshness: %s', e)
+    finally:
+        if own and db is not None:
+            db.close()
+    if at is None:
+        text = 'Дані з каси ще не оновлювались'
+    elif at.date() == now.date():
+        text = f"Дані з каси оновлено сьогодні о {at.strftime('%H:%M')}"
+    else:
+        text = f"Дані з каси оновлено {shortdate(at.date(), weekday=False)} о {at.strftime('%H:%M')}"
+    return {'at': at, 'error': error, 'text': text}
 
 
 RULES = [

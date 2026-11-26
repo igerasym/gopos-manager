@@ -68,13 +68,13 @@
 {%- macro ingredient_select(sid) -%}
 <select class="select" id="{{ sid }}" name="ingredient_id" data-unit-target="{{ sid }}">
     <option value="">Оберіть інгредієнт</option>
-    {%- for i in ingredients %}<option value="{{ i['id'] }}" data-unit="{{ i['unit'] }}">{{ i['name'] }}</option>{% endfor %}
+    {%- for i in ingredients %}<option value="{{ i['id'] }}" data-unit="{{ i['unit'] }}"{% if is_admin and not i['priced'] %} data-noprice="1"{% endif %}>{{ i['name'] }}</option>{% endfor %}
 </select>
 {%- endmacro -%}
 
 {% block content %}
 {% call page_header('Меню', eyebrow=tab_label) %}
-    <button class="btn btn-primary only-desktop" type="button" data-sheet-open="sheet-new" data-product="">{{ icon('plus') }}Нова страва</button>
+    <button class="btn btn-primary" type="button" data-sheet-open="sheet-new" data-product="">{{ icon('plus') }}Нова страва</button>
 {% endcall %}
 <nav class="tabs menu-tabs" aria-label="Розділи меню">
     {%- for key, label, path in tabs %}
@@ -178,7 +178,6 @@
 
 </div>
 
-<button class="fab" type="button" data-sheet-open="sheet-new" data-product="" aria-label="Нова страва">{{ icon('plus') }}</button>
 
 {#- ── Dish sheets ───────────────────────────────────────────── -#}
 {% for d in dishes %}
@@ -296,32 +295,37 @@
     <form method="post" action="/recipes/card" style="display:contents">
         <div class="sheet-body">
             <input type="hidden" name="display" value="1">
-            <div class="field"><label class="field-label" for="new-name">Страва з каси</label>
+            <div class="field"><label class="field-label" for="new-name">Назва страви, як у касі</label>
                 <input class="input" id="new-name" name="product_name" list="menu-products" required autocomplete="off">
-                <span class="field-help">Назва точно як у касі</span></div>
+                </div>
             <div class="form-grid">
                 <div class="field"><label class="field-label" for="new-cat">Категорія</label>
-                    <input class="input" id="new-cat" name="category" list="menu-categories" value="{{ tab_label if tab != 'kitchen' else 'Кухня' }}"></div>
+                    <select class="select" id="new-cat" name="category" data-default="{{ default_category }}">
+                        {%- for c in card_categories %}<option value="{{ c }}"{% if c == default_category %} selected{% endif %}>{{ c }}</option>{% endfor %}
+                    </select></div>
                 <div class="field"><label class="field-label" for="new-pw">Порція <span class="optional">(необовʼязково)</span></label>
                     <input class="input" id="new-pw" name="portion_weight"></div>
             </div>
             <div class="form-grid">
                 <div class="field"><label class="field-label" for="new-ing">Перший інгредієнт <span class="optional">(необовʼязково)</span></label>{{ ingredient_select('new-ing') }}</div>
                 <div class="field"><label class="field-label" for="new-amt">Кількість на порцію</label>
-                    <div class="input-group"><input class="input" id="new-amt" name="amount" inputmode="decimal"><span class="input-suffix" id="new-ing-suffix">г</span></div></div>
+                    <div class="input-group"><input class="input" id="new-amt" name="amount" inputmode="decimal"><span class="input-suffix" id="new-ing-suffix">г</span></div>
+                    <span class="field-help" id="new-ing-help" aria-live="polite"></span></div>
             </div>
+            {%- if is_admin %}
+            <p class="small warn-text" id="new-ing-noprice" hidden>{{ icon('alert', 16) }} Ціни цього інгредієнта немає: собівартість буде 0</p>
+            {%- endif %}
             <div class="field"><label class="field-label" for="new-desc">Приготування <span class="optional">(необовʼязково)</span></label>
                 <textarea class="textarea" id="new-desc" name="description" rows="2"></textarea></div>
-            <p class="small muted">Решту інгредієнтів додасте у картці страви.</p>
+            <p class="small muted">Решту інгредієнтів додасте у картці страви. Поки інгредієнтів немає, страва буде в списку з позначкою, що їх бракує.</p>
         </div>
         <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Скасувати</button><button class="btn btn-primary" type="submit">Створити</button></div>
     </form>
 </dialog>
 
-<datalist id="menu-products">{% for p in products %}<option value="{{ p['product_name'] }}">{% endfor %}</datalist>
+<datalist id="menu-products">{% for p in products %}<option value="{{ p['product_name'] }}"{% if pos_cats.get(p['product_name']) %} data-cat="{{ pos_cats[p['product_name']] }}"{% endif %}>{% endfor %}</datalist>
 <datalist id="menu-categories">
-    {%- for c in ['Кухня', 'Бар', 'Випічка'] %}<option value="{{ c }}">{% endfor %}
-    {%- for c in categories if c not in ['Кухня', 'Бар', 'Випічка'] %}<option value="{{ c }}">{% endfor %}
+    {%- for c in card_categories %}<option value="{{ c }}">{% endfor %}
 </datalist>
 {% endblock %}
 
@@ -337,7 +341,42 @@
         var out = document.getElementById(sel.getAttribute('data-unit-target') + '-suffix');
         var u = opt ? opt.getAttribute('data-unit') : '';
         if (out) out.textContent = UNIT[u] || u || 'г';
+        if (sel.id === 'new-ing') newIngHint();
     });
+    // New dish: say in which unit the price is and in which the amount, warn about a missing price.
+    var BIG = { kg: 'кг', L: 'л' };
+    function newIngHint() {
+        var sel = document.getElementById('new-ing');
+        var help = document.getElementById('new-ing-help');
+        var warn = document.getElementById('new-ing-noprice');
+        var amt = document.getElementById('new-amt');
+        if (!sel || !help) return;
+        var opt = sel.options[sel.selectedIndex];
+        var u = opt && opt.value ? opt.getAttribute('data-unit') : '';
+        var small = UNIT[u] || u;
+        var text = '';
+        if (BIG[u]) {
+            text = 'Склад рахує в ' + BIG[u] + ', тут вводьте в ' + small + ': 1 ' + BIG[u] + ' = 1000 ' + small + '.';
+            var v = parseFloat(String(amt && amt.value || '').replace(',', '.'));
+            if (v > 0 && v < 1) text += ' ' + String(v).replace('.', ',') + ' ' + small + ' — дуже мало. Мали на увазі ' + Math.round(v * 1000) + ' ' + small + '?';
+        }
+        help.textContent = text;
+        if (warn) warn.hidden = !(opt && opt.getAttribute('data-noprice'));
+    }
+    var amtEl = document.getElementById('new-amt');
+    if (amtEl) amtEl.addEventListener('input', newIngHint);
+    // Category follows the till category of the chosen dish (coffee -> Бар), else the tab.
+    function newCatFromName() {
+        var input = document.getElementById('new-name');
+        var cat = document.getElementById('new-cat');
+        if (!input || !cat) return;
+        var opt = Array.prototype.find.call(document.querySelectorAll('#menu-products option'),
+            function (o) { return o.value === input.value; });
+        var want = (opt && opt.getAttribute('data-cat')) || cat.getAttribute('data-default');
+        if (want && Array.prototype.some.call(cat.options, function (o) { return o.value === want; })) cat.value = want;
+    }
+    var nameEl = document.getElementById('new-name');
+    if (nameEl) nameEl.addEventListener('change', newCatFromName);
     // "Додати рецепт" for a product: prefill the name in the new-dish sheet.
     document.addEventListener('click', function (e) {
         var b = e.target.closest('[data-sheet-open="sheet-new"]');
@@ -345,6 +384,7 @@
         var name = b.getAttribute('data-product') || '';
         var input = document.getElementById('new-name');
         if (input) input.value = name;
+        newCatFromName();
         var h = document.getElementById('sheet-new-h');
         if (h) h.textContent = name ? 'Рецепт: ' + name : 'Нова страва';
     }, true);

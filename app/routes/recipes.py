@@ -9,7 +9,8 @@ from fastapi.templating import Jinja2Templates
 from app.db import get_db
 from app.services.recipes import (
     COST_SHARE_ALERT, MENU_TABS, TAB_PATHS, dish_economics, get_products_without_recipe,
-    get_recipe_map_with_costs, get_selling_prices, parse_num, safe_next, tab_for_category,
+    card_category_for_pos, get_recipe_map_with_costs, get_selling_prices, parse_num, safe_next,
+    tab_for_category,
 )
 from app.services.units import from_display
 
@@ -71,6 +72,17 @@ def _tab_counts(db) -> dict:
     return counts
 
 
+def card_categories(existing) -> list[str]:
+    """Categories offered in the new-dish sheet: the three tabs first, then the others in use."""
+    base = ['Кухня', 'Бар', 'Випічка']
+    return base + [c for c in existing if c and c not in base]
+
+
+def default_category(tab: str) -> str:
+    """The category a new dish starts with on a Меню tab."""
+    return {'bar': 'Бар', 'bakery': 'Випічка'}.get(tab, 'Кухня')
+
+
 async def _render_recipes(request: Request, tab: str):
     is_admin = _is_admin(request)
     db = get_db()
@@ -78,7 +90,13 @@ async def _render_recipes(request: Request, tab: str):
         SELECT product_name, category, portion_weight, description
         FROM recipe_cards ORDER BY category, product_name
     ''').fetchall()
-    ingredients = db.execute('SELECT id, name, unit FROM ingredients ORDER BY name').fetchall()
+    ingredients = db.execute('SELECT id, name, unit, COALESCE(unit_price, 0) > 0 AS priced '
+                             'FROM ingredients ORDER BY name').fetchall()
+    try:
+        pos_cats = {r['product_name']: card_category_for_pos(r['category']) for r in db.execute(
+            'SELECT product_name, category FROM pos_products').fetchall()}
+    except Exception:  # old DB without pos_products
+        pos_cats = {}
     products = db.execute('SELECT DISTINCT product_name FROM sales ORDER BY product_name').fetchall()
     categories = [r['category'] for r in db.execute(
         "SELECT DISTINCT category FROM recipe_cards WHERE category != '' ORDER BY category").fetchall()]
@@ -130,8 +148,9 @@ async def _render_recipes(request: Request, tab: str):
         'tab_path': TAB_PATHS[tab], 'tab_paths': TAB_PATHS,
         'dishes': dishes, 'orphans': orphans, 'missing': missing, 'sheet_ids': sheet_ids,
         'ingredients': ingredients, 'products': products, 'categories': categories,
+        'pos_cats': pos_cats, 'card_categories': card_categories(categories),
         'is_admin': is_admin, 'sort': sort, 'alert_pct': COST_SHARE_ALERT,
-        'open_id': open_id,
+        'open_id': open_id, 'default_category': default_category(tab),
         'saved_msg': SAVED_MESSAGES.get(request.query_params.get('saved', ''), ''),
     })
 

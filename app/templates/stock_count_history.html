@@ -27,11 +27,11 @@
         {% if is_admin %}{{ sparkline(loss_series, label='Втрати по інвентаризаціях') }}{% endif %}</div>
     {% if is_admin %}
     <div>
-        <div class="big num">{% if last['loss'] %}−{% endif %}{{ last['loss'] | num(2) }}<small>zł</small></div>
+        <div class="big num">{% if last['loss'] %}−{% endif %}{{ last['loss'] | num(2) }}&nbsp;<small>zł</small></div>
         {% set prev = counts[1] if counts | length > 1 else none %}
         {% set t = trend(last['loss'], prev['loss'], good='down') if prev else none %}
         <p class="sentence mt-2">Не вистачило {{ last['shortage_count'] }} {{ last['shortage_count'] | plural('позиції', 'позицій', 'позицій') }} з {{ last['item_count'] }}.
-            {% if t %}{{ trend_chip(t) }} {{ t.word }} втрат, ніж минулого разу ({{ prev['loss'] | zl(0) }}).{% endif %}</p>
+            {% if t %}{% if t.direction == 'flat' %}Втрат приблизно стільки ж, скільки минулого разу ({{ prev['loss'] | zl(0) }}).{% else %}<span class="chip chip-{{ t.css }}">{{ icon(t.icon, 14) }}{{ t.text }}</span> Втрат на {{ t.text }} {{ t.word }}, ніж минулого разу ({{ prev['loss'] | zl(0) }}).{% endif %}{% endif %}</p>
     </div>
     {% else %}
     <p class="sentence">Пораховано {{ last['item_count'] }} {{ last['item_count'] | plural('позицію', 'позиції', 'позицій') }}, не вистачило {{ last['shortage_count'] }}.</p>

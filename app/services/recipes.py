@@ -166,6 +166,23 @@ BAR_CATEGORIES = {'бар', 'напої', 'кава'}
 BAKERY_CATEGORIES = {'випічка', 'десерти', 'десерт'}
 
 
+# Till (GoPOS) categories -> the Меню category a new dish card should start with.
+POS_BAR_CATEGORIES = {'kawa', 'napoje', 'herbata', 'bar', 'напої', 'кава'}
+POS_BAKERY_CATEGORIES = {'desery', 'wypieki', 'ciasta', 'випічка', 'десерти'}
+
+
+def card_category_for_pos(pos_category: str | None) -> str:
+    """'Kawa' -> 'Бар', 'Desery' -> 'Випічка', unknown -> '' (let the tab decide)."""
+    c = (pos_category or '').strip().lower()
+    if c in POS_BAR_CATEGORIES:
+        return 'Бар'
+    if c in POS_BAKERY_CATEGORIES:
+        return 'Випічка'
+    if c:
+        return 'Кухня'
+    return ''
+
+
 def tab_for_category(category: str | None) -> str:
     """Recipe-card category -> menu tab key. Anything not bar/bakery is kitchen."""
     c = (category or '').strip().lower()

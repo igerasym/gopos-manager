@@ -1,14 +1,15 @@
 {% extends "base.html" %}
 {% from "_ui.html" import empty_state, page_header %}
-{% block page_title %}Усі продукти{% endblock %}
+{% block page_title %}Усі страви{% endblock %}
 {% block main_class %}{% endblock %}
 
 {% block content %}
 {% set p = per.p %}
-{% call page_header('Усі продукти', eyebrow=((per.start | shortdate(weekday=False)) ~ ((' — ' ~ (per.end | shortdate(weekday=False))) if per.start != per.end else ''))) %}
-  <a class="btn btn-secondary" href="/export/sales.csv?date_from={{ per.start }}&date_to={{ per.end }}" download>{{ icon('download') }}Завантажити CSV</a>
+{% if p in ("week", "month") %}{% set pq = "p=" ~ p %}{% elif p == "day" %}{% set pq = "date=" ~ per.start %}{% else %}{% set pq = "p=range&date_from=" ~ per.start ~ "&date_to=" ~ per.end %}{% endif %}
+{% call page_header('Усі страви', eyebrow=((per.start | shortdate(weekday=False)) ~ ((' — ' ~ (per.end | shortdate(weekday=False))) if per.start != per.end else ''))) %}
+  <a class="btn btn-secondary" href="/export/sales.csv?date_from={{ per.start }}&date_to={{ per.end }}" download>{{ icon('download') }}Таблиця для бухгалтера (CSV)</a>
 {% endcall %}
-<p class="mb-3"><a class="link" href="/">{{ icon('chevron-left', 18) }}Сьогодні</a></p>
+<p class="mb-3"><a class="link" href="/?{{ pq }}">{{ icon("chevron-left", 18) }}Сьогодні</a></p>
 
 <div class="btn-row mb-3">
   <div class="seg" role="group" aria-label="Період">
@@ -23,7 +24,7 @@
 <section class="card" aria-labelledby="sum-h">
   <h2 id="sum-h" class="qlabel">Скільки йде на продукти</h2>
   {% if coverage.without_recipe == 0 %}
-    <p class="sentence">З кожних 100 zł виручки на продукти йде <b class="num">{{ cost_share | num(1, strip=True) }} zł</b>
+    <p class="sentence">З кожних 100&nbsp;zł виручки на продукти йде <b class="num">{{ cost_share | num(1, strip=True) }}&nbsp;zł</b>
       ({{ total_cogs | zl(0) }} з {{ revenue | zl(0) }}).</p>
   {% else %}
     <div class="notice notice-warn">{{ icon('alert') }}

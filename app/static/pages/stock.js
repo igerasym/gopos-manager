@@ -16,7 +16,7 @@
         if (!b) return;
         e.preventDefault();
         closeSheet(b.closest('dialog'));
-        openSheet(b.getAttribute('data-sheet-swap'), document.querySelector('.fab'));
+        openSheet(b.getAttribute('data-sheet-swap'), document.querySelector('[data-sheet-open="sheet-add"]'));
     });
 
     // Copy a plain-text order list.
@@ -26,9 +26,10 @@
         const src = document.getElementById(b.getAttribute('data-copy'));
         if (!src) return;
         const text = src.value;
+        const done = b.getAttribute('data-copy-msg') || 'Список скопійовано';
         try {
             await navigator.clipboard.writeText(text);
-            toast('Список скопійовано', { type: 'ok' });
+            toast(done, { type: 'ok' });
         } catch (err) {
             // Fallback for http / old browsers: select a temporary textarea.
             const t = document.createElement('textarea');
@@ -36,7 +37,7 @@
             document.body.appendChild(t); t.select();
             const ok = document.execCommand && document.execCommand('copy');
             t.remove();
-            toast(ok ? 'Список скопійовано' : 'Не вдалося скопіювати', { type: ok ? 'ok' : 'error' });
+            toast(ok ? done : 'Не вдалося скопіювати', { type: ok ? 'ok' : 'error' });
         }
     });
 

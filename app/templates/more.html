@@ -10,10 +10,8 @@
     <section class="card" id="sync" aria-labelledby="sync-h">
         <header class="card-head"><h2 id="sync-h">Дані з каси</h2><span id="sync-status"></span></header>
         <p class="muted mb-3">
-            {%- if last_sync and last_sync.at %}
-            Востаннє оновлено {{ last_sync.at | shortdate(weekday=False) }} о {{ last_sync.at.strftime('%H:%M') }}
-            {%- if last_sync.status == 'error' %} · <span class="danger-text strong">з помилкою</span>{% endif %}
-            {%- else %}Ще не оновлювались{% endif -%}
+            {{- freshness.text }}
+            {%- if freshness.error %} · <span class="danger-text strong">останнє оновлення з помилкою</span>{% endif %}
         </p>
         <p class="small muted mb-3">Продажі за сьогодні оновлюються самі щогодини, повністю — щовечора.</p>
         <form action="/sync" method="post">
@@ -25,7 +23,7 @@
         <header class="card-head"><h2 id="exp-h">Вивантажити для бухгалтера</h2></header>
         <ul class="rows">
             {% for label, href in exports %}
-            <li><a class="row" href="{{ href }}"><span class="row-lead">{{ icon('download') }}</span><span class="row-main"><span class="row-title">{{ label }}</span><span class="row-sub">Файл CSV</span></span><span class="row-chev">{{ icon('chevron-right') }}</span></a></li>
+            <li><a class="row" href="{{ href }}"><span class="row-lead">{{ icon('download') }}</span><span class="row-main"><span class="row-title">{{ label }}</span><span class="row-sub">Таблиця для бухгалтера (CSV)</span></span><span class="row-chev">{{ icon('chevron-right') }}</span></a></li>
             {% endfor %}
         </ul>
     </section>

@@ -10,7 +10,7 @@
         /* theme before first paint: saved choice wins, otherwise the system setting */
         try { var t = localStorage.getItem('tfm-theme'); if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=5">
+    <link rel="stylesheet" href="/static/style.css?v=6">
     {% block extra_css %}{% endblock %}
     <style>{% block extra_style %}{% endblock %}</style>
 </head>
@@ -126,7 +126,7 @@
 
     <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 
-    <script src="/static/app.js?v=6"></script>
+    <script src="/static/app.js?v=7"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

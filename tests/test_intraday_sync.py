@@ -85,7 +85,8 @@ def test_dashboard_shows_refresh_time_for_the_running_day(monkeypatch):
     db.close()
     c = TestClient(app, follow_redirects=False)
     c.cookies.set('session', sign_cookie('admin'))
-    assert 'оновлено о 13:45' in c.get('/').text
+    html = c.get('/').text
+    assert 'Дані з каси оновлено' in html and 'о 13:45' in html
 
 
 def test_scheduler_registers_the_intraday_job():

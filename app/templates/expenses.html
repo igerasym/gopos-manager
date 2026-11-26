@@ -112,24 +112,25 @@
     <header class="card-head"><h2 id="r-h">Результат {{ month_gen }}</h2>
       <span class="small muted">{{ r.from[8:] | int }}–{{ r.to | shortdate(weekday=False) }}</span></header>
     <div class="eq" role="group" aria-label="Виручка мінус закупівля продуктів мінус інші витрати дорівнює прибуток">
-      <div class="eq-it"><span class="eq-op" aria-hidden="true"></span><span class="eq-lb">Виручка</span><span class="eq-vl num">{{ r.revenue | num(2) }} <small>zł</small></span></div>
+      <div class="eq-it"><span class="eq-op" aria-hidden="true"></span><span class="eq-lb">Виручка</span><span class="eq-vl num">{{ r.revenue | num(2) }}&nbsp;<small>zł</small></span></div>
       <span class="eq-opc" aria-hidden="true">−</span>
-      <div class="eq-it"><span class="eq-op" aria-hidden="true">−</span><span class="eq-lb">Закупівля продуктів</span><span class="eq-vl num">{{ r.food_purchases | num(2) }} <small>zł</small></span></div>
+      <div class="eq-it"><span class="eq-op" aria-hidden="true">−</span><span class="eq-lb">Закупівля продуктів</span><span class="eq-vl num">{{ r.food_purchases | num(2) }}&nbsp;<small>zł</small></span></div>
       <span class="eq-opc" aria-hidden="true">−</span>
-      <div class="eq-it"><span class="eq-op" aria-hidden="true">−</span><span class="eq-lb">Інші витрати</span><span class="eq-vl num">{{ r.other | num(2) }} <small>zł</small></span></div>
+      <div class="eq-it"><span class="eq-op" aria-hidden="true">−</span><span class="eq-lb">Інші витрати</span><span class="eq-vl num">{{ r.other | num(2) }}&nbsp;<small>zł</small></span></div>
       <span class="eq-opc" aria-hidden="true">=</span>
       <div class="eq-it eq-res{% if r.profit < 0 %} is-loss{% elif r_incomplete %} is-warn{% endif %}"><span class="eq-op" aria-hidden="true">=</span>
         <span class="eq-lb">{{ 'Збиток' if r.profit < 0 else 'Прибуток' }}{% if r.is_current or r_incomplete %} <span class="muted">поки що</span>{% endif %}</span>
-        <span class="eq-vl num">{{ r.profit | num(2) }} <small>zł</small>{% if r_incomplete %}<span class="eq-tag">неповний</span>{% endif %}</span></div>
+        <span class="eq-vl num">{{ r.profit | num(2) }}&nbsp;<small>zł</small>{% if r_incomplete %}<span class="eq-tag">неповний</span>{% endif %}</span></div>
     </div>
 
     {% if r.missing %}
     <div class="notice notice-warn" id="missing" role="status">{{ icon('alert') }}
       <div class="notice-body">
         <div><b class="notice-title">Ще не внесено:</b> {{ r.missing_categories | join(', ') }}. У {{ prev_loc }} на це пішло близько <span class="num">{{ r.missing_total | zl(0) }}</span>, тож справжній прибуток буде меншим.</div>
+        <div class="small">Прибуток «поки що» вище рахує лише те, що вже внесено. Орієнтуйтеся на очікуваний:</div>
         <div class="forecast"><span class="qlabel">Очікуваний прибуток, якщо витрати як у {{ prev_loc }}</span>
-          <span class="big num">≈ {{ r.forecast | num }}<small>zł</small></span>
-          {% if r.forecast_per100 is not none %}<span class="small muted">З кожних 100 zł виручки лишиться близько {{ r.forecast_per100 | num }} zł</span>{% endif %}</div>
+          <span class="big num">≈ {{ r.forecast | num }}&nbsp;<small>zł</small></span>
+          {% if r.forecast_per100 is not none %}<span class="small muted">З кожних 100&nbsp;zł виручки лишиться близько {{ r.forecast_per100 | num }}&nbsp;zł</span>{% endif %}</div>
         <div class="notice-actions">
           <button class="btn btn-primary" type="button" data-sheet-open="sheet-missing">Внести витрати</button>
           <form method="post" action="/expenses/copy-recurring"><input type="hidden" name="month" value="{{ current_month }}">
@@ -138,7 +139,7 @@
       </div>
     </div>
     {% elif r.per100 is not none and r.revenue > 0 %}
-    <p class="sentence" style="padding: 0 20px">З кожних 100 zł виручки лишається <b class="num">{{ r.per100 | num }} zł</b>.</p>
+    <p class="sentence" style="padding: 0 20px">З кожних 100&nbsp;zł виручки лишається <b class="num">{{ r.per100 | num }}&nbsp;zł</b>.</p>
     {% endif %}
 
     {% if r.coverage_incomplete %}
@@ -164,10 +165,18 @@
       <dl>
         <dt>Виручка</dt><dd class="num">{{ r.revenue | zl }}</dd>
         <dt>Знижки<small>вже враховані у виручці</small></dt><dd class="num">{{ r.discounts | zl }}</dd>
-        <dt>Виручка без ПДВ (VAT)</dt><dd class="num">{{ r.net_revenue | zl }}</dd>
         <dt>Закупівля продуктів<small>що реально оплачено за фактурами цього місяця</small></dt><dd class="num">{{ r.food_purchases | zl }}</dd>
         <dt>Інші витрати<small>оренда, зарплати, рахунки…</small></dt><dd class="num">{{ r.other | zl }}</dd>
+        {%- if r.is_current or r_incomplete %}
+        <dt class="total">Прибуток поки що<small>{% if r.missing %}без витрат, які ще не внесені{% else %}місяць ще не закінчився{% endif %}</small></dt><dd class="num total">{{ r.profit | zl }}</dd>
+        {%- else %}
         <dt class="total">Чистий прибуток (після всіх витрат)</dt><dd class="num total">{{ r.profit | zl }}</dd>
+        {%- endif %}
+        {%- if r.missing %}
+        <dt>Ще не внесено<small>{{ r.missing_categories | join(', ') }}, як у {{ prev_loc }}</small></dt><dd class="num">{{ (-r.missing_total) | zl }}</dd>
+        <dt class="total">Очікуваний прибуток<small>цій цифрі можна вірити, поки витрати не внесені</small></dt><dd class="num total">≈ {{ r.forecast | zl(0) }}</dd>
+        {%- endif %}
+        <dt>Довідково: виручка без ПДВ (VAT)<small>у розрахунку прибутку не використовується</small></dt><dd class="num">{{ r.net_revenue | zl }}</dd>
         <dt>Довідково: собівартість проданого за рецептами<small>скільки коштували інгредієнти того, що продали{% if r.coverage_incomplete %} (лише страви з рецептом){% endif %}</small></dt><dd class="num">{{ r.cogs | zl }}</dd>
       </dl>
     </details>
@@ -230,7 +239,7 @@
       {% endif %}
       <div class="btn-row mt-4">
         <a class="link" href="/suppliers/history">По постачальниках{{ icon('chevron-right', 18) }}</a>
-        {% if has_expenses %}<a class="btn btn-quiet" href="/export/expenses.csv?month={{ current_month }}" download>{{ icon('download') }}CSV</a>{% endif %}
+        {% if has_expenses %}<a class="btn btn-quiet" href="/export/expenses.csv?month={{ current_month }}" download>{{ icon('download') }}Таблиця для бухгалтера (CSV)</a>{% endif %}
       </div>
     </section>
 
@@ -262,7 +271,7 @@
             {% if inv.state == 'waiting' %}<span class="chip chip-info">{{ icon('clock', 14) }}Чекає</span>
               <button class="btn btn-secondary" type="button" data-sheet-open="sheet-inv-{{ inv.id }}">Підтвердити</button>
             {% elif inv.state == 'added' %}<span class="chip chip-ok">{{ icon('check', 14) }}Додано</span>
-              {% if inv.pending_items %}<button class="btn btn-quiet" type="button" data-items-open="{{ inv.id }}" data-vendor="{{ inv.vendor }}">{{ inv.pending_items }} без привʼязки</button>{% endif %}
+              {% if inv.pending_items %}<button class="btn btn-quiet" type="button" data-items-open="{{ inv.id }}" data-vendor="{{ inv.vendor }}">{{ inv.pending_items }} не звірені зі складом</button>{% endif %}
             {% elif inv.state == 'processing' %}<span class="chip chip-info">{{ icon('refresh', 14) }}Розпізнаємо…</span>
             {% elif inv.state == 'new' %}<span class="chip chip-neutral">Ще не розпізнано</span>
             {% elif inv.state == 'skipped' %}<span class="chip chip-neutral">Пропущено</span>
@@ -282,9 +291,9 @@
       </div>
       {% endif %}
       <div class="btn-row mt-4">
-        <button class="btn btn-secondary" type="button" id="scan-btn" data-month="{{ current_month }}">{{ icon('search') }}Знайти нові</button>
+        <button class="btn btn-secondary" type="button" id="scan-btn" data-month="{{ current_month }}">{{ icon('search') }}Шукати нові файли</button>
         <form method="post" action="/expenses/process-invoices" id="process-form"><input type="hidden" name="month" value="{{ current_month }}">
-          <button class="btn btn-secondary" type="submit">{{ icon('refresh') }}Розпізнати</button></form>
+          <button class="btn btn-secondary" type="submit">{{ icon('refresh') }}Прочитати нові фактури</button></form>
         <a class="btn btn-quiet" href="/inventory/upload">{{ icon('upload') }}Завантажити накладну</a>
       </div>
     </section>
@@ -382,18 +391,18 @@
         <select class="select" id="ic-{{ inv.id }}" name="category">{% for c in categories %}<option value="{{ c }}"{% if c == inv.category %} selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
       <div class="btn-row">
         <a class="btn btn-secondary" href="https://drive.google.com/file/d/{{ inv.file_id }}/view" target="_blank" rel="noopener">{{ icon('file') }}Відкрити файл</a>
-        {% if inv.pending_items %}<button class="btn btn-secondary" type="button" data-items-open="{{ inv.id }}" data-vendor="{{ inv.vendor }}">{{ icon('link') }}Привʼязати товари ({{ inv.pending_items }})</button>
+        {% if inv.pending_items %}<button class="btn btn-secondary" type="button" data-items-open="{{ inv.id }}" data-vendor="{{ inv.vendor }}">{{ icon('link') }}Звірити зі складом ({{ inv.pending_items }})</button>
         {% else %}<button class="btn btn-secondary" type="button" data-llm="{{ inv.id }}">{{ icon('link') }}Підібрати інгредієнти</button>{% endif %}
       </div>
-      <p class="small muted">Привʼязка оновлює ціни інгредієнтів, а з ними й собівартість страв.</p>
+      <p class="small muted">Звірка зі складом оновлює ціни інгредієнтів, а з ними й собівартість страв.</p>
     </div>
     <div class="sheet-foot">
-      <button class="btn btn-quiet" type="submit" form="skip-{{ inv.id }}">Пропустити</button>
+      <button class="btn btn-quiet" type="submit" form="skip-{{ inv.id }}">Не враховувати</button>
       <button class="btn btn-primary" type="submit">Додати у витрати</button></div>
   </form>
 </dialog>
 <form method="post" action="/expenses/skip-invoice/{{ inv.id }}" id="skip-{{ inv.id }}" hidden
-      data-confirm="Фактура «{{ inv.vendor }}» не потрапить у витрати." data-confirm-title="Пропустити фактуру?" data-confirm-ok="Пропустити" data-confirm-tone="primary"></form>
+      data-confirm="Фактура «{{ inv.vendor }}» не потрапить у витрати і не змінить склад та ціни. Так роблять із дублікатом або чужою фактурою." data-confirm-title="Не враховувати фактуру?" data-confirm-ok="Не враховувати" data-confirm-tone="primary"></form>
 {% elif inv.state == 'failed' and inv.expense_status == 'pending' %}
 <dialog class="sheet" id="sheet-manual-{{ inv.id }}" aria-labelledby="sheet-manual-{{ inv.id }}-h">
   <div class="sheet-grip" aria-hidden="true"></div>
@@ -401,7 +410,10 @@
     <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
   <form method="post" action="/expenses/manual-invoice/{{ inv.id }}" style="display:contents">
     <div class="sheet-body form">
-      <p class="small muted">Файл {{ inv.file_name }}. Подивіться суму у файлі й введіть її тут.</p>
+      <p class="small muted">Файл {{ inv.file_name }}. Відкрийте його, подивіться суму й введіть її тут.</p>
+      {%- if inv.file_id %}
+      <div><a class="btn btn-secondary" href="https://drive.google.com/file/d/{{ inv.file_id }}/view" target="_blank" rel="noopener">{{ icon('file') }}Відкрити файл</a></div>
+      {%- endif %}
       <div class="field"><label class="field-label" for="mv-{{ inv.id }}">Постачальник</label><input class="input" id="mv-{{ inv.id }}" name="vendor" value="{{ inv.vendor }}" required></div>
       <div class="form-grid">
         <div class="field"><label class="field-label" for="mt-{{ inv.id }}">Сума</label>
@@ -418,7 +430,7 @@
 
 <dialog class="sheet sheet-wide" id="sheet-items" aria-labelledby="sheet-items-h">
   <div class="sheet-grip" aria-hidden="true"></div>
-  <div class="sheet-head"><h2 id="sheet-items-h">Привʼязка до інгредієнтів</h2>
+  <div class="sheet-head"><h2 id="sheet-items-h">Звірити зі складом</h2>
     <button class="btn btn-quiet btn-icon" type="button" data-sheet-close aria-label="Закрити">{{ icon('x') }}</button></div>
   <div class="sheet-body" id="items-content"></div>
   <div class="sheet-foot"><button class="btn btn-ghost" type="button" data-sheet-close>Закрити</button>
@@ -506,14 +518,14 @@ function showItems(invoiceId, vendor) {
                 '<th scope="col">Що зробити</th><th scope="col">Інгредієнт</th><th scope="col"><span class="sr-only">Дії</span></th></tr></thead><tbody>';
             currentItems.forEach(item => {
                 const id = Number(item.id);
-                const price = item.unit_price ? Number(item.unit_price).toFixed(2).replace('.', ',') + ' zł' : '—';
+                const price = item.unit_price ? Number(item.unit_price).toFixed(2).replace('.', ',') + '\u00a0zł' : '—';
                 html += '<tr id="item-' + id + '">';
                 html += '<td class="cell-primary" data-label="Товар">' + esc(item.invoice_name) + '</td>';
                 html += '<td class="num" data-label="Кількість">' + esc(String(item.quantity || '').replace('.', ',')) + '</td>';
                 html += '<td class="num" data-label="Ціна">' + esc(price) + '</td>';
                 if (item.status === 'pending') {
                     html += '<td data-label="Що зробити"><select class="select" id="action-' + id + '" data-action-for="' + id + '" aria-label="Що зробити">' +
-                        '<option value="match">Привʼязати до наявного</option><option value="new">Новий інгредієнт</option><option value="skip">Пропустити</option></select></td>';
+                        '<option value="match">Це наявний інгредієнт</option><option value="new">Новий інгредієнт</option><option value="skip">Не враховувати</option></select></td>';
                     html += '<td data-label="Інгредієнт"><div id="ing-input-' + id + '">' + ingInput(item, 'match') + '</div></td>';
                     html += '<td class="cell-actions"><button class="btn btn-secondary" type="button" data-confirm-item="' + id + '">OK</button></td>';
                 } else {

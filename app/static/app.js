@@ -111,7 +111,21 @@ function toast(message, opts) {
     opts = opts || {};
     const box = document.getElementById('toasts');
     if (!box) return null;
+    // The same message again while it is still on screen: count it, do not stack a copy.
+    const kind = opts.type || '';
+    const same = Array.from(box.children).find(t => t.dataset.msg === message && t.dataset.kind === kind);
+    if (same && !opts.action) {
+        const n = (Number(same.dataset.n) || 1) + 1;
+        same.dataset.n = String(n);
+        let c = same.querySelector('.toast-count');
+        if (!c) { c = document.createElement('span'); c.className = 'toast-count'; same.querySelector('.toast-msg').after(c); }
+        c.textContent = '×' + n;
+        clearTimeout(same._timer);
+        same._timer = setTimeout(() => same.remove(), opts.timeout || 4000);
+        return same;
+    }
     const el = document.createElement('div');
+    el.dataset.msg = message; el.dataset.kind = kind;
     el.className = 'toast' + (opts.type === 'error' ? ' toast-error' : opts.type === 'ok' ? ' toast-ok' : '');
     if (opts.type === 'error') el.setAttribute('role', 'alert');
     const msg = document.createElement('span');
@@ -128,6 +142,7 @@ function toast(message, opts) {
     }
     box.appendChild(el);
     timer = setTimeout(remove, opts.timeout || (opts.action ? 7000 : 4000));
+    el._timer = timer;
     return el;
 }
 
@@ -191,6 +206,55 @@ document.addEventListener('click', e => {
     });
 }, true);
 
+/* ── scrollable tab rows: fade the cut edge, keep the active tab in view ── */
+(function () {
+    function update(nav) {
+        const max = nav.scrollWidth - nav.clientWidth;
+        nav.classList.toggle('fade-l', max > 1 && nav.scrollLeft > 1);
+        nav.classList.toggle('fade-r', max > 1 && nav.scrollLeft < max - 1);
+        const w = nav.parentElement;
+        if (w && w.classList.contains('tabs-wrap')) {
+            w.classList.toggle('more-l', nav.classList.contains('fade-l'));
+            w.classList.toggle('more-r', nav.classList.contains('fade-r'));
+        }
+    }
+    function arrow(nav, dir) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'tabs-arrow tabs-arrow-' + dir; b.tabIndex = -1;
+        b.setAttribute('aria-hidden', 'true');
+        b.innerHTML = '<svg class="i" width="18" height="18" focusable="false"><use href="#i-chevron-' + (dir === 'r' ? 'right' : 'left') + '"/></svg>';
+        b.addEventListener('click', () => { nav.scrollLeft += (dir === 'r' ? 1 : -1) * nav.clientWidth * 0.6; });
+        return b;
+    }
+    document.querySelectorAll('.tabs').forEach(nav => {
+        // wrap once, so the edge arrows can sit over the row
+        if (!nav.parentElement.classList.contains('tabs-wrap')) {
+            const w = document.createElement('div');
+            w.className = 'tabs-wrap';
+            nav.before(w); w.appendChild(nav); w.appendChild(arrow(nav, 'l')); w.appendChild(arrow(nav, 'r'));
+        }
+        const cur = nav.querySelector('[aria-current=page], [aria-selected=true]');
+        if (cur && nav.scrollWidth > nav.clientWidth) {
+            const left = cur.offsetLeft - nav.offsetLeft - (nav.clientWidth - cur.offsetWidth) / 2;
+            const prev = nav.style.scrollBehavior; nav.style.scrollBehavior = 'auto';
+            nav.scrollLeft = Math.max(0, left);
+            nav.style.scrollBehavior = prev;
+        }
+        update(nav);
+        nav.addEventListener('scroll', () => update(nav), { passive: true });
+        window.addEventListener('resize', () => update(nav));
+    });
+})();
+
+/* ── "Що потребує уваги": show the rows past the first five ─────────────── */
+document.addEventListener('click', e => {
+    const b = e.target.closest('[data-attention-more]');
+    if (!b) return;
+    const box = b.closest('.attention');
+    if (box) box.querySelectorAll('[data-attention-extra]').forEach(li => { li.hidden = false; });
+    b.closest('.attention-more').remove();
+});
+
 /* ── data-toast ────────────────────────────────────────────────────────── */
 document.addEventListener('click', e => {
     const el = e.target.closest('[data-toast]');
@@ -212,6 +276,20 @@ document.addEventListener('submit', e => {
                 row.classList.add('is-hiding');
                 setTimeout(() => {
                     row.remove();
+                    const card0 = list && list.closest('.attention');
+                    if (card0) {
+                        // keep the counts honest: header chip = rows left, next hidden row moves up
+                        const left = list.querySelectorAll('.attention-row').length;
+                        const chip = card0.querySelector('.card-head .chip');
+                        if (chip && chip.lastChild) chip.lastChild.textContent = String(left);
+                        const next = list.querySelector('[data-attention-extra][hidden]');
+                        if (next) next.hidden = false;
+                        const more = card0.querySelector('[data-attention-more]');
+                        if (more) {
+                            if (!list.querySelector('[data-attention-extra][hidden]')) more.closest('.attention-more').remove();
+                            else more.lastChild.textContent = 'Показати всі (' + left + ')';
+                        }
+                    }
                     if (list && !list.querySelector('.attention-row')) {
                         const card = list.closest('.attention');
                         if (card) card.hidden = true;
